@@ -1,39 +1,33 @@
-import streamlit as st
 import pandas as pd
-from supabase import create_client, Client
+import streamlit as st
+from supabase import create_client
 
-# 1. Configuração simples da página
-st.set_page_config(
-    page_title="Painel de Estoque",
-    page_icon="📦",
-    layout="wide"
-)
+st.set_page_config(page_title="Painel de Almoxarifado", layout="wide")
 
-# 2. Conexão com o Supabase
-@st.cache_resource
-def init_supabase():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
-    return create_client(url, key)
+st.title("📦 Painel de Almoxarifado - Âmbar Energia")
 
-supabase: Client = init_supabase()
+SUPABASE_URL = "https://qkeyubnipkysowpaczwf.supabase.co"
+SUPABASE_KEY = "sb_publishable_eOqm6_U_dX-bS4Zla0bB6Q_kL5eHG52"
 
-# 3. Busca de Dados
-@st.cache_data(ttl=300)
-def load_data():
-    response = supabase.table("painel_estoque").select("*").execute()
-    if response.data:
-        return pd.DataFrame(response.data)
-    return pd.DataFrame()
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# 4. Tela Básica
-st.title("📦 Teste de Conexão - Almoxarifado")
 
-with st.spinner("Conectando ao banco de dados..."):
-    df = load_data()
+@st.cache_data(ttl=600)
+def carregar_dados_completos():
+  response = supabase.table("painel_estoque").select("*").execute()
+  return pd.DataFrame(response.data)
+
+
+with st.spinner("Carregando dados completos do estoque consolidado..."):
+  df = carregar_dados_completos()
 
 if not df.empty:
-    st.success("Conexão bem-sucedida! Dados carregados:")
-    st.dataframe(df)
+  st.success(
+      f"Base carregada com sucesso! Total de registros: {len(df)} linhas."
+  )
+  st.dataframe(df, use_container_width=True)
 else:
-    st.warning("Nenhum dado encontrado ou tabela vazia.")
+  st.warning(
+      "A tabela retornou vazia. Verifique se os dados foram enviados para o"
+      " Supabase."
+  )
