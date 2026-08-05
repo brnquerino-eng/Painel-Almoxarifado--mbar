@@ -1,35 +1,38 @@
+import pandas as pd
 import streamlit as st
 from supabase import create_client
 
-st.title("🧪 Teste de Conexão - Supabase")
+# Configuração inicial da página
+st.set_page_config(page_title="Painel de Almoxarifado", layout="wide")
 
-# 1. Verifica se as chaves dos Segredos estão acessíveis
-try:
-  url = st.secrets["SUPABASE_URL"]
-  key = st.secrets["SUPABASE_KEY"]
-  st.success("✅ As chaves do Supabase foram encontradas nos Segredos!")
+st.title("📦 Painel de Almoxarifado - Âmbar Energia")
 
-  # 2. Inicializa o cliente do Supabase
-  supabase = create_client(url, key)
+# Credenciais preenchidas diretamente (sem campos vazios)
+SUPABASE_URL = "https://qkeyubnipkysowpaczwf.supabase.co"
+SUPABASE_KEY = "sb_publishable_eOqm6_U_dX-bS4Zla0bB6Q_kL5eHG52"
 
-  # 3. Botão para testar a busca de dados na tabela principal do almoxarifado
-  if st.button("🔍 Testar Leitura da Base de Dados"):
-    with st.spinner("Conectando ao Supabase..."):
-      # Consulta os primeiros registros da tabela de estoque
-      response = (
-          supabase.table("painel_estoque").select("*").limit(5).execute()
-      )
+# Inicialização do cliente Supabase
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-      if response.data:
-        st.success(
-            "🎉 Conexão bem-sucedida! Dados recuperados do banco com sucesso:"
-        )
-        st.dataframe(response.data)
-      else:
-        st.warning(
-            "A conexão funcionou, mas a tabela retornou vazia ou não possui"
-            " registros."
-        )
 
-except Exception as e:
-  st.error(f"❌ Erro na configuração ou conexão: {e}")
+# Função com cache para puxar todos os dados da tabela painel_estoque
+@st.cache_data(ttl=600)
+def carregar_dados_completos():
+  response = supabase.table("painel_estoque").select("*").execute()
+  return pd.DataFrame(response.data)
+
+
+# Bloco de execução visual no Streamlit
+with st.spinner("Carregando dados completos do estoque consolidado..."):
+  df = carregar_dados_completos()
+
+if not df.empty:
+  st.success(
+      f"Base carregada com sucesso! Total de registros: {len(df)} linhas."
+  )
+  st.dataframe(df, use_container_width=True)
+else:
+  st.warning(
+      "A tabela retornou vazia. Verifique se os dados foram enviados para o"
+      " Supabase."
+  )
