@@ -258,6 +258,25 @@ with col_btn:
     if st.button(label_botao, use_container_width=True):
         modal_filtros()
 
+# 5.1 Renderização do Resumo Inteligente de Quantidades (Adicionado aqui)
+f_unidades_atuais = st.session_state.get('f_unidades', [])
+
+if not f_unidades_atuais:
+    texto_informativo = "Exibindo dados consolidados de **todas as unidades** (Ativas e Gerenciais)."
+else:
+    sel_ativas = [u for u in f_unidades_atuais if u in unidades_ativas]
+    sel_gerenciais = [u for u in f_unidades_atuais if u in unidades_gerenciais]
+    
+    partes = []
+    if sel_ativas:
+        partes.append(f"**{len(sel_ativas)} unidade(s) ativa(s)**")
+    if sel_gerenciais:
+        partes.append(f"**{len(sel_gerenciais)} gerencial(is)**")
+        
+    texto_informativo = "Exibindo dados de " + " e ".join(partes) + "."
+
+st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
+
 # 6. Filtragem Rigorosa e Precisa com base nas listas selecionadas
 df_filtrado = df_completo.copy()
 
