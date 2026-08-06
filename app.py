@@ -123,44 +123,40 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS com Animações Fluidas
+# 4. Estilização CSS com Animações Fluidas e Glassmorphism
 st.markdown("""
 <style>
-    /* 1. Efeito suave ao atualizar a página (menos agressivo para não piscar) */
-    @keyframes fadeInPage {
-        from {
-            opacity: 0.6;
-            transform: translateY(2px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
+    /* 1. Efeito suave ao atualizar a página (O "respirar" do painel) */
+    @keyframes smoothPageLoad {
+        0% { opacity: 0.2; transform: scale(0.98); }
+        100% { opacity: 1; transform: scale(1); }
     }
     .stApp {
         background-color: #0f141c;
-        animation: fadeInPage 0.3s ease-out forwards;
+        animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
 
-    /* 2. Animação de entrada super elegante EXCLUSIVA para a Modal */
-    @keyframes popModal {
-        0% { opacity: 0; transform: scale(0.95) translateY(-10px); }
+    /* 2. Animação de entrada LENTA e ELEGANTE para a Modal (Crescendo do centro) */
+    @keyframes scaleInModal {
+        0% { opacity: 0; transform: scale(0.8) translateY(-20px); }
         100% { opacity: 1; transform: scale(1) translateY(0); }
     }
     
-    /* 3. Animação do fundo escuro (Overlay) para esmaecer suavemente */
-    @keyframes fadeOverlay {
-        0% { opacity: 0; }
-        100% { opacity: 1; }
+    /* 3. Fundo esmaecido com desfoque tipo vidro (Glassmorphism) */
+    @keyframes fadeInScrim {
+        0% { opacity: 0; backdrop-filter: blur(0px); }
+        100% { opacity: 1; backdrop-filter: blur(5px); }
     }
 
-    /* Seletores ATUALIZADOS para o st.dialog das versões novas do Streamlit */
-    div[data-testid="stDialog"] {
-        animation: popModal 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    /* Atingindo todos os possíveis nomes que o Streamlit usa para a janela */
+    div[role="dialog"], div[data-testid="stDialog"] {
+        animation: scaleInModal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        transform-origin: center center;
     }
     
     div[data-testid="stModalScrim"] {
-        animation: fadeOverlay 0.25s ease-out forwards !important;
+        background-color: rgba(15, 20, 28, 0.7) !important; /* Cor com transparência */
+        animation: fadeInScrim 0.6s ease-out forwards !important;
     }
 
     /* Estilos dos Botões e Layout */
