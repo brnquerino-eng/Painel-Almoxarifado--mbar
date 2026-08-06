@@ -126,10 +126,11 @@ def modal_filtros():
 # 4. Estilização CSS com Animações Fluidas
 st.markdown("""
 <style>
+    /* 1. Efeito suave ao atualizar a página (menos agressivo para não piscar) */
     @keyframes fadeInPage {
         from {
-            opacity: 0.2;
-            transform: translateY(4px);
+            opacity: 0.6;
+            transform: translateY(2px);
         }
         to {
             opacity: 1;
@@ -138,24 +139,31 @@ st.markdown("""
     }
     .stApp {
         background-color: #0f141c;
-        animation: fadeInPage 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        animation: fadeInPage 0.3s ease-out forwards;
     }
-    @keyframes fadeInModal {
-        from {
-            opacity: 0;
-            transform: scale(0.95);
-        }
-        to {
-            opacity: 1;
-            transform: scale(1);
-        }
+
+    /* 2. Animação de entrada super elegante EXCLUSIVA para a Modal */
+    @keyframes popModal {
+        0% { opacity: 0; transform: scale(0.95) translateY(-10px); }
+        100% { opacity: 1; transform: scale(1) translateY(0); }
     }
-    div[data-baseweb="modal"] {
-        animation: fadeInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    
+    /* 3. Animação do fundo escuro (Overlay) para esmaecer suavemente */
+    @keyframes fadeOverlay {
+        0% { opacity: 0; }
+        100% { opacity: 1; }
     }
-    div[data-baseweb="modal"] > div:first-child {
-        animation: fadeInModal 0.2s ease-out forwards;
+
+    /* Seletores ATUALIZADOS para o st.dialog das versões novas do Streamlit */
+    div[data-testid="stDialog"] {
+        animation: popModal 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
+    
+    div[data-testid="stModalScrim"] {
+        animation: fadeOverlay 0.25s ease-out forwards !important;
+    }
+
+    /* Estilos dos Botões e Layout */
     .stButton > button {
         background-color: #1a222d !important;
         color: #ffffff !important;
