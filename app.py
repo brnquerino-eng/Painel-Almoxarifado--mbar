@@ -19,31 +19,42 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance: Busca das colunas financeiras + colunas de filtro
-# Ajuste os nomes "unidade_almoxarifado", "mes_referencia" e "ano_referencia" conforme seu banco
+# 2. Performance com Paginação: Busca em blocos de 1000 para contornar o limite do Supabase e trazer todas as unidades
 @st.cache_data(ttl=300)
 def carregar_dados():
     try:
-        response = supabase.table(table_name).select(
-            "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia"
-        ).execute()
-        if response.data:
-            return pd.DataFrame(response.data)
-        return pd.DataFrame()
-    except Exception:
+        all_data = []
+        batch_size = 1000
+        start = 0
+        
+        while True:
+            response = supabase.table(table_name).select(
+                "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia"
+            ).range(start, start + batch_size - 1).execute()
+            
+            if not response.data:
+                break
+                
+            all_data.extend(response.data)
+            
+            if len(response.data) < batch_size:
+                break
+                
+            start += batch_size
+            
+        return pd.DataFrame(all_data) if all_data else pd.DataFrame()
+    except Exception as e:
+        st.error(f"Erro ao carregar dados do Supabase: {e}")
         return pd.DataFrame()
 
 df_completo = carregar_dados()
 
-# 3. Estilização CSS (Design fiel + customização do botão do Streamlit)
+# 3. Estilização CSS (Design idêntico ao painel executivo original)
 st.markdown("""
 <style>
-    /* Fundo geral escuro */
     .stApp {
         background-color: #0f141c;
     }
-    
-    /* Customização dos botões nativos do Streamlit para combinar com o tema */
     .stButton > button {
         background-color: #1a222d !important;
         color: #ffffff !important;
@@ -55,8 +66,6 @@ st.markdown("""
         border-color: #d85c27 !important;
         color: #d85c27 !important;
     }
-
-    /* Container de Filtros */
     .filter-panel {
         background-color: #161c24;
         border: 1px solid #232b36;
@@ -64,8 +73,6 @@ st.markdown("""
         padding: 20px;
         margin-bottom: 25px;
     }
-    
-    /* Topo: Logo e Título */
     .header-container {
         display: flex;
         align-items: center;
@@ -109,8 +116,6 @@ st.markdown("""
         font-size: 12px;
         margin: 0;
     }
-    
-    /* Estilo dos Cards Escuros */
     .card-box {
         background-color: #161c24;
         border: 1px solid #232b36;
@@ -135,11 +140,9 @@ st.markdown("""
         justify-content: center;
         font-size: 14px;
     }
-    
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
     .icon-compras { background-color: #2a2211; color: #f39c12; }
     .icon-consumo { background-color: #2a1515; color: #e74c3c; }
-    
     .card-title {
         color: #8c9ba5;
         font-size: 12px;
@@ -174,11 +177,11 @@ with col_header:
     """, unsafe_allow_html=True)
 
 with col_btn:
-    st.markdown("<br>", unsafe_allow_html=True) # Alinhamento vertical
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("⚙️ Filtros", use_container_width=True):
         st.session_state.show_filters = not st.session_state.show_filters
 
-# 5. Lógica e UI do Painel Retrátil de Filtros
+# 5. Painel Retrátil de Filtros
 df_filtrado = df_completo.copy()
 
 if st.session_state.show_filters:
@@ -188,7 +191,6 @@ if st.session_state.show_filters:
         
         f_col1, f_col2, f_col3, f_col4 = st.columns([2, 1, 1, 1])
         
-        # Puxando dinamicamente as opções (com validação caso o df esteja vazio)
         unidades_opcoes = ["Todas"] + sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else ["Todas"]
         mes_opcoes = ["Todos"] + sorted(df_completo["mes_referencia"].dropna().unique().tolist()) if not df_completo.empty else ["Todos"]
         ano_opcoes = ["Todos"] + sorted(df_completo["ano_referencia"].dropna().unique().tolist()) if not df_completo.empty else ["Todos"]
@@ -202,12 +204,11 @@ if st.session_state.show_filters:
         with f_col4:
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("Aplicar", use_container_width=True):
-                st.session_state.show_filters = False # Fecha o painel após aplicar
+                st.session_state.show_filters = False
                 st.rerun()
                 
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Aplicação dos filtros no DataFrame
         if unidade_selecionada != "Todas":
             df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"] == unidade_selecionada]
         if mes_selecionado != "Todos":
@@ -215,7 +216,7 @@ if st.session_state.show_filters:
         if ano_selecionado != "Todos":
             df_filtrado = df_filtrado[df_filtrado["ano_referencia"] == ano_selecionado]
 
-# 6. Tratamento de Dados e Somas Dinâmicas
+# 6. Somas Dinâmicas
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
@@ -228,7 +229,7 @@ val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-# 7. Renderização dos Cards na Grade
+# 7. Cards Executivos
 c1, c2 = st.columns(2)
 
 with c1:
