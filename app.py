@@ -2,6 +2,8 @@ from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import streamlit as st
 from supabase import create_client
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
@@ -24,7 +26,7 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance Máxima e Normalização Rigorosa de Dados (Unidades, Meses e Anos)
+# 2. Performance Máxima e Normalização Rigorosa de Dados
 @st.cache_data()
 def carregar_dados():
     try:
@@ -126,7 +128,6 @@ def modal_filtros():
 # 4. Estilização CSS com Animações Fluidas e Glassmorphism
 st.markdown("""
 <style>
-    /* 1. Efeito suave ao atualizar a página (O "respirar" do painel) */
     @keyframes smoothPageLoad {
         0% { opacity: 0.2; transform: scale(0.98); }
         100% { opacity: 1; transform: scale(1); }
@@ -135,31 +136,22 @@ st.markdown("""
         background-color: #0f141c;
         animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
-
-    /* 2. Animação de entrada LENTA e ELEGANTE para a Modal (Crescendo do centro) */
     @keyframes scaleInModal {
         0% { opacity: 0; transform: scale(0.8) translateY(-20px); }
         100% { opacity: 1; transform: scale(1) translateY(0); }
     }
-    
-    /* 3. Fundo esmaecido com desfoque tipo vidro (Glassmorphism) */
     @keyframes fadeInScrim {
         0% { opacity: 0; backdrop-filter: blur(0px); }
         100% { opacity: 1; backdrop-filter: blur(5px); }
     }
-
-    /* Atingindo todos os possíveis nomes que o Streamlit usa para a janela */
     div[role="dialog"], div[data-testid="stDialog"] {
         animation: scaleInModal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
         transform-origin: center center;
     }
-    
     div[data-testid="stModalScrim"] {
-        background-color: rgba(15, 20, 28, 0.7) !important; /* Cor com transparência */
+        background-color: rgba(15, 20, 28, 0.7) !important;
         animation: fadeInScrim 0.6s ease-out forwards !important;
     }
-
-    /* Estilos dos Botões e Layout */
     .stButton > button {
         background-color: #1a222d !important;
         color: #ffffff !important;
@@ -214,8 +206,6 @@ st.markdown("""
         font-size: 12px;
         margin: 0;
     }
-
-    /* CARTÕES COM EFEITO DE FLUTUAÇÃO (SOMBRAS) */
     .card-box {
         background-color: #161c24;
         border: 1px solid #232b36;
@@ -225,19 +215,14 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        
-        /* Sombra permanente */
         box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
-
-    /* Efeito ao passar o mouse (Hover) */
     .card-box:hover {
         transform: translateY(-5px);
         box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
         border-color: #333d4d;
     }
-
     .card-header {
         display: flex;
         align-items: center;
@@ -377,3 +362,63 @@ with c3:
         <div class="card-value">{fmt_brl(val_consumo)}</div>
     </div>
     """, unsafe_allow_html=True)
+
+# 9. GRÁFICOS INTERATIVOS (PLOTLY)
+st.markdown("<br><br>", unsafe_allow_html=True)
+
+if not df_filtrado.empty:
+    # Configuração de layout limpo para os gráficos mesclarem com o fundo do painel
+    layout_transparente = dict(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#8c9ba5'),
+        margin=dict(l=10, r=10, t=30, b=10)
+    )
+
+    col_g1, col_g2 = st.columns([6, 4], gap="large")
+    
+    with col_g1:
+        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
+        
+        # Preparação dos dados temporais com conversão segura para ordenação correta
+        df_trend = df_filtrado.copy()
+        df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
+        df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
+        
+        df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
+        df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
+        df_tempo['Periodo'] = df_tempo['mes_referencia'].astype(str) + '/' + df_tempo['ano_referencia'].astype(str)
+        
+        fig_linha = go.Figure()
+        # Linha de Compras (Amarelo/Laranja)
+        fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], 
+                                      name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
+        # Linha de Consumo (Vermelho)
+        fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], 
+                                      name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+        
+        fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
+        fig_linha.update_xaxes(showgrid=False, zeroline=False)
+        fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
+        
+        st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
+
+    with col_g2:
+        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #2ecc71; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
+        
+        # Agrupa, limpa zerados e pega os 10 maiores
+        df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+        df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
+        df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
+        
+        # Gráfico de barras horizontais
+        fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h', 
+                         color_discrete_sequence=['#2ecc71'])
+        
+        fig_bar.update_layout(**layout_transparente, hovermode="y unified")
+        fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
+        fig_bar.update_yaxes(title="", showgrid=False)
+        
+        st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+else:
+    st.info("Nenhum dado encontrado para os filtros selecionados.")
