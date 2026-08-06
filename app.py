@@ -84,6 +84,11 @@ df_completo = carregar_dados()
 
 # Opções dinâmicas limpas e ordenadas
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
+
+# SEPARAÇÃO AUTOMÁTICA: Cria duas listas distintas
+unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
+unidades_ativas = [u for u in unidades_opcoes if "GERENCIAL" not in u]
+
 mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
 
@@ -92,7 +97,21 @@ ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), ke
 def modal_filtros():
     st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione uma ou mais opções para consolidar os dados (deixe em branco para considerar todas):</p>", unsafe_allow_html=True)
     
-    f_unidades_sel = st.multiselect("Unidades de Almoxarifado:", unidades_opcoes, default=st.session_state.f_unidades)
+    # Criamos duas colunas para deixar os filtros lado a lado
+    col_u1, col_u2 = st.columns(2)
+    
+    with col_u1:
+        default_ativas = [u for u in st.session_state.f_unidades if u in unidades_ativas]
+        f_ativas_sel = st.multiselect("🏢 Unidades Ativas:", unidades_ativas, default=default_ativas)
+        
+    with col_u2:
+        default_gerenciais = [u for u in st.session_state.f_unidades if u in unidades_gerenciais]
+        f_gerenciais_sel = st.multiselect("📊 Unidades Gerenciais:", unidades_gerenciais, default=default_gerenciais)
+    
+    # Junta as duas listas selecionadas para o sistema aplicar o filtro geral
+    f_unidades_sel = f_ativas_sel + f_gerenciais_sel
+    
+    # Continua com os meses e anos normalmente
     f_meses_sel = st.multiselect("Meses de Referência:", mes_opcoes, default=st.session_state.f_meses)
     f_anos_sel = st.multiselect("Anos de Referência:", ano_opcoes, default=st.session_state.f_anos)
     
