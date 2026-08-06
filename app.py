@@ -41,9 +41,10 @@ def carregar_dados():
             all_data = []
             
             def fetch_range(start_r, end_r):
+                # CORREÇÃO APLICADA: Inclusão do .order("id") para garantir a consistência da paginação
                 res = supabase.table(table_name).select(
                     "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia"
-                ).range(start_r, end_r).execute()
+                ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
             
             with ThreadPoolExecutor(max_workers=15) as executor:
@@ -58,9 +59,9 @@ def carregar_dados():
                 
             df = pd.DataFrame(all_data)
             
-            # Higienização rigorosa da Unidade
+            # CORREÇÃO APLICADA: Higienização rigorosa da Unidade com .upper() para evitar divergência de maiúsculas/minúsculas
             if "unidade_almoxarifado" in df.columns:
-                df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip()
+                df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
             
             # Higienização rigorosa de Meses e Anos (eliminando conflitos de tipos int/float/string/.0)
             for col in ["mes_referencia", "ano_referencia"]:
