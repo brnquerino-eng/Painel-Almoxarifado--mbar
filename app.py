@@ -5,10 +5,10 @@ from supabase import create_client
 import plotly.express as px
 import plotly.graph_objects as go
 
-# Configuração da página
+# Configuração da página[cite: 1]
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Inicialização dos estados para os filtros múltiplos
+# Inicialização dos estados para os filtros múltiplos[cite: 1]
 if 'f_unidades' not in st.session_state:
     st.session_state.f_unidades = []
 if 'f_meses' not in st.session_state:
@@ -16,7 +16,7 @@ if 'f_meses' not in st.session_state:
 if 'f_anos' not in st.session_state:
     st.session_state.f_anos = []
 
-# 1. Conexão direta e segura com o Supabase
+# 1. Conexão direta e segura com o Supabase[cite: 1]
 @st.cache_resource
 def conectar_supabase():
     url = st.secrets["SUPABASE_URL"]
@@ -26,7 +26,7 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance Máxima e Normalização Rigorosa de Dados
+# 2. Performance Máxima e Normalização Rigorosa de Dados[cite: 1]
 @st.cache_data()
 def carregar_dados():
     try:
@@ -35,7 +35,7 @@ def carregar_dados():
             total_rows = getattr(count_res, 'count', None)
             
             if not total_rows or total_rows == 0:
-                total_rows = 460000  # Fallback de segurança
+                total_rows = 460000  # Fallback de segurança[cite: 1]
                 
             batch_size = 1000
             ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
@@ -81,7 +81,7 @@ def carregar_dados():
 
 df_completo = carregar_dados()
 
-# Opções dinâmicas limpas e ordenadas
+# Opções dinâmicas limpas e ordenadas[cite: 1]
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
 
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
@@ -90,7 +90,7 @@ unidades_ativas = [u for u in unidades_opcoes if "GERENCIAL" not in u]
 mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
 
-# 3. Definição da Modal com Seleção Múltipla
+# 3. Definição da Modal com Seleção Múltipla[cite: 1]
 @st.dialog("Filtros de Análise - Visão Executiva", width="large")
 def modal_filtros():
     st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione uma ou mais opções para consolidar os dados (deixe em branco para considerar todas):</p>", unsafe_allow_html=True)
@@ -125,7 +125,7 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS com Animações Fluidas e Glassmorphism
+# 4. Estilização CSS com Animações Fluidas, Glassmorphism e Elevação de Gráficos[cite: 1]
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -223,6 +223,22 @@ st.markdown("""
         box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
         border-color: #333d4d;
     }
+    
+    /* ESTILO DE ELEVAÇÃO PARA OS GRÁFICOS (IGUAL AOS CARTÕES) */
+    .chart-container {
+        background-color: #161c24;
+        border: 1px solid #232b36;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    .chart-container:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
+        border-color: #333d4d;
+    }
+
     .card-header {
         display: flex;
         align-items: center;
@@ -256,7 +272,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 5. Renderização do Cabeçalho com o Botão de Filtro
+# 5. Renderização do Cabeçalho com o Botão de Filtro[cite: 1]
 col_header, col_btn = st.columns([5, 1])
 
 with col_header:
@@ -281,7 +297,7 @@ with col_btn:
     if st.button(label_botao, use_container_width=True):
         modal_filtros()
 
-# 5.1 Renderização do Resumo Inteligente de Quantidades
+# 5.1 Renderização do Resumo Inteligente de Quantidades[cite: 1]
 f_unidades_atuais = st.session_state.get('f_unidades', [])
 
 if not f_unidades_atuais:
@@ -300,7 +316,7 @@ else:
 
 st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
-# 6. Filtragem Rigorosa e Precisa com base nas listas selecionadas
+# 6. Filtragem Rigorosa e Precisa com base nas listas selecionadas[cite: 1]
 df_filtrado = df_completo.copy()
 
 if st.session_state.f_unidades:
@@ -310,7 +326,7 @@ if st.session_state.f_meses:
 if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
-# 7. Somas Dinâmicas
+# 7. Somas Dinâmicas[cite: 1]
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
@@ -323,7 +339,7 @@ val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-# 8. Cards Executivos
+# 8. Cards Executivos[cite: 1]
 c1, c2 = st.columns(2)
 
 with c1:
@@ -363,24 +379,23 @@ with c3:
     </div>
     """, unsafe_allow_html=True)
 
-# 9. GRÁFICOS INTERATIVOS (PLOTLY)
+# 9. GRÁFICOS INTERATIVOS (PLOTLY) COM EFEITO DE CARTÃO FLUTUANTE
 st.markdown("<br><br>", unsafe_allow_html=True)
 
 if not df_filtrado.empty:
-    # Configuração de layout limpo para os gráficos mesclarem com o fundo do painel
     layout_transparente = dict(
         plot_bgcolor='rgba(0,0,0,0)',
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#8c9ba5'),
-        margin=dict(l=10, r=10, t=30, b=10)
+        margin=dict(l=10, r=10, t=10, b=10)
     )
 
     col_g1, col_g2 = st.columns([6, 4], gap="large")
     
     with col_g1:
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
         
-        # Preparação dos dados temporais com conversão segura para ordenação correta
         df_trend = df_filtrado.copy()
         df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
         df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
@@ -389,11 +404,12 @@ if not df_filtrado.empty:
         df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
         df_tempo['Periodo'] = df_tempo['mes_referencia'].astype(str) + '/' + df_tempo['ano_referencia'].astype(str)
         
+        # Converte o consumo para valor absoluto positivo
+        df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
+        
         fig_linha = go.Figure()
-        # Linha de Compras (Amarelo/Laranja)
         fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], 
                                       name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
-        # Linha de Consumo (Vermelho)
         fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], 
                                       name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
         
@@ -402,23 +418,28 @@ if not df_filtrado.empty:
         fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
         
         st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_g2:
-        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #2ecc71; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
         
-        # Agrupa, limpa zerados e pega os 10 maiores
         df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
         df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
         df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
         
-        # Gráfico de barras horizontais
+        df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
+        
+        # Cor das barras ajustada para a cor da linha de consumo (#e74c3c)
         fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h', 
-                         color_discrete_sequence=['#2ecc71'])
+                         color_discrete_sequence=['#e74c3c'], text='texto_formatado')
         
         fig_bar.update_layout(**layout_transparente, hovermode="y unified")
+        fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
         fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
         fig_bar.update_yaxes(title="", showgrid=False)
         
         st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+        st.markdown('</div>', unsafe_allow_html=True)
 else:
     st.info("Nenhum dado encontrado para os filtros selecionados.")
