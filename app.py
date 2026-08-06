@@ -41,7 +41,6 @@ def carregar_dados():
             all_data = []
             
             def fetch_range(start_r, end_r):
-                # CORREÇÃO APLICADA: Inclusão do .order("id") para garantir a consistência da paginação
                 res = supabase.table(table_name).select(
                     "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia"
                 ).order("id").range(start_r, end_r).execute()
@@ -59,11 +58,9 @@ def carregar_dados():
                 
             df = pd.DataFrame(all_data)
             
-            # CORREÇÃO APLICADA: Higienização rigorosa da Unidade com .upper() para evitar divergência de maiúsculas/minúsculas
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
             
-            # Higienização rigorosa de Meses e Anos (eliminando conflitos de tipos int/float/string/.0)
             for col in ["mes_referencia", "ano_referencia"]:
                 if col in df.columns:
                     def limpar_valor(val):
@@ -85,7 +82,6 @@ df_completo = carregar_dados()
 # Opções dinâmicas limpas e ordenadas
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
 
-# SEPARAÇÃO AUTOMÁTICA: Cria duas listas distintas
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
 unidades_ativas = [u for u in unidades_opcoes if "GERENCIAL" not in u]
 
@@ -97,7 +93,6 @@ ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), ke
 def modal_filtros():
     st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione uma ou mais opções para consolidar os dados (deixe em branco para considerar todas):</p>", unsafe_allow_html=True)
     
-    # Criamos duas colunas para deixar os filtros lado a lado
     col_u1, col_u2 = st.columns(2)
     
     with col_u1:
@@ -108,10 +103,8 @@ def modal_filtros():
         default_gerenciais = [u for u in st.session_state.f_unidades if u in unidades_gerenciais]
         f_gerenciais_sel = st.multiselect("📊 Unidades Gerenciais:", unidades_gerenciais, default=default_gerenciais)
     
-    # Junta as duas listas selecionadas para o sistema aplicar o filtro geral
     f_unidades_sel = f_ativas_sel + f_gerenciais_sel
     
-    # Continua com os meses e anos normalmente
     f_meses_sel = st.multiselect("Meses de Referência:", mes_opcoes, default=st.session_state.f_meses)
     f_anos_sel = st.multiselect("Anos de Referência:", ano_opcoes, default=st.session_state.f_anos)
     
@@ -130,11 +123,38 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS
+# 4. Estilização CSS com Animações Fluidas
 st.markdown("""
 <style>
+    @keyframes fadeInPage {
+        from {
+            opacity: 0.2;
+            transform: translateY(4px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
     .stApp {
         background-color: #0f141c;
+        animation: fadeInPage 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes fadeInModal {
+        from {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1);
+        }
+    }
+    div[data-baseweb="modal"] {
+        animation: fadeInModal 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    div[data-baseweb="modal"] > div:first-child {
+        animation: fadeInModal 0.2s ease-out forwards;
     }
     .stButton > button {
         background-color: #1a222d !important;
@@ -258,7 +278,7 @@ with col_btn:
     if st.button(label_botao, use_container_width=True):
         modal_filtros()
 
-# 5.1 Renderização do Resumo Inteligente de Quantidades (Adicionado aqui)
+# 5.1 Renderização do Resumo Inteligente de Quantidades
 f_unidades_atuais = st.session_state.get('f_unidades', [])
 
 if not f_unidades_atuais:
