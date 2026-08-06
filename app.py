@@ -25,7 +25,7 @@ supabase = conectar_supabase()
 table_name = "painel_estoque"
 
 # 2. Performance Máxima e Normalização Rigorosa de Dados (Unidades, Meses e Anos)
-@st.cache_data(ttl=300)
+@st.cache_data()
 def carregar_dados():
     try:
         with st.spinner("Carregando e normalizando base de dados em alta performance..."):
