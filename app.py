@@ -123,40 +123,44 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS com Animações Fluidas e Glassmorphism
+# 4. Estilização CSS com Animações Fluidas de Entrada ("Ataque Total" no CSS)
 st.markdown("""
 <style>
-    /* 1. Efeito suave ao atualizar a página (O "respirar" do painel) */
+    /* Animação suave para a página inteira carregar */
     @keyframes smoothPageLoad {
-        0% { opacity: 0.2; transform: scale(0.98); }
-        100% { opacity: 1; transform: scale(1); }
+        0% { opacity: 0; }
+        100% { opacity: 1; }
     }
     .stApp {
-        background-color: #0f141c;
-        animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        animation: smoothPageLoad 0.5s ease-out forwards !important;
     }
 
-    /* 2. Animação de entrada LENTA e ELEGANTE para a Modal (Crescendo do centro) */
-    @keyframes scaleInModal {
-        0% { opacity: 0; transform: scale(0.8) translateY(-20px); }
-        100% { opacity: 1; transform: scale(1) translateY(0); }
+    /* Animação de entrada LENTA e ELEGANTE para a Modal (Crescendo do centro) */
+    @keyframes popIn {
+        0% { opacity: 0; transform: scale(0.85); }
+        100% { opacity: 1; transform: scale(1); }
     }
     
-    /* 3. Fundo esmaecido com desfoque tipo vidro (Glassmorphism) */
-    @keyframes fadeInScrim {
-        0% { opacity: 0; backdrop-filter: blur(0px); }
-        100% { opacity: 1; backdrop-filter: blur(5px); }
+    /* Animação do fundo escuro */
+    @keyframes fadeInOverlay {
+        0% { background-color: rgba(0, 0, 0, 0); }
+        100% { background-color: rgba(15, 20, 28, 0.85); }
     }
 
-    /* Atingindo todos os possíveis nomes que o Streamlit usa para a janela */
-    div[role="dialog"], div[data-testid="stDialog"] {
-        animation: scaleInModal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-        transform-origin: center center;
-    }
-    
+    /* FORÇANDO A BARRA: Selecionando todos os tipos possíveis de fundo de modal do Streamlit */
+    div[data-testid="stModal"], 
+    div[data-baseweb="modal"],
     div[data-testid="stModalScrim"] {
-        background-color: rgba(15, 20, 28, 0.7) !important; /* Cor com transparência */
-        animation: fadeInScrim 0.6s ease-out forwards !important;
+        animation: fadeInOverlay 0.5s ease-out forwards !important;
+    }
+
+    /* FORÇANDO A BARRA: Selecionando todos os tipos possíveis de janela do Streamlit */
+    div[data-testid="stModal"] > div,
+    div[data-testid="stDialog"],
+    div[role="dialog"],
+    .stDialog {
+        animation: popIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        transform-origin: center;
     }
 
     /* Estilos dos Botões e Layout */
