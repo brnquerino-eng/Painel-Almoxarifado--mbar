@@ -6,13 +6,13 @@ from supabase import create_client
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Inicialização dos estados para os filtros
-if 'f_unidade' not in st.session_state:
-    st.session_state.f_unidade = "Todas"
-if 'f_mes' not in st.session_state:
-    st.session_state.f_mes = "Todos"
-if 'f_ano' not in st.session_state:
-    st.session_state.f_ano = "Todos"
+# Inicialização dos estados para os filtros múltiplos
+if 'f_unidades' not in st.session_state:
+    st.session_state.f_unidades = []
+if 'f_meses' not in st.session_state:
+    st.session_state.f_meses = []
+if 'f_anos' not in st.session_state:
+    st.session_state.f_anos = []
 
 # 1. Conexão direta e segura com o Supabase
 @st.cache_resource
@@ -29,12 +29,11 @@ table_name = "painel_estoque"
 def carregar_dados():
     try:
         with st.spinner("Carregando base de dados em alta performance (paralelo)..."):
-            # Pega o total exato de registros da tabela instantaneamente
             count_res = supabase.table(table_name).select("*", count="exact", head=True).execute()
             total_rows = getattr(count_res, 'count', None)
             
             if not total_rows or total_rows == 0:
-                total_rows = 460000  # Fallback de segurança caso o count retorne vazio
+                total_rows = 460000  # Fallback de segurança
                 
             batch_size = 1000
             ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
@@ -47,7 +46,6 @@ def carregar_dados():
                 ).range(start_r, end_r).execute()
                 return res.data if res.data else []
             
-            # Dispara 15 requisições simultâneas para zerar o tempo de espera
             with ThreadPoolExecutor(max_workers=15) as executor:
                 futures = [executor.submit(fetch_range, s, e) for s, e in ranges]
                 for future in futures:
@@ -62,37 +60,33 @@ def carregar_dados():
 
 df_completo = carregar_dados()
 
-# Opções dinâmicas para os selects baseadas na base completa
-unidades_opcoes = ["Todas"] + sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else ["Todas"]
-mes_opcoes = ["Todos"] + sorted(df_completo["mes_referencia"].dropna().unique().tolist()) if not df_completo.empty else ["Todos"]
-ano_opcoes = ["Todos"] + sorted(df_completo["ano_referencia"].dropna().unique().tolist()) if not df_completo.empty else ["Todos"]
+# Opções dinâmicas para as listas de seleção múltipla
+unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
+mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist()) if not df_completo.empty else []
+ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist()) if not df_completo.empty else []
 
-# 3. Definição da Modal (Tela a parte para os Filtros)
+# 3. Definição da Modal com Seleção Múltipla
 @st.dialog("Filtros de Análise - Visão Executiva", width="large")
 def modal_filtros():
-    st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione os parâmetros desejados para refinar a consolidação dos dados:</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione uma ou mais opções para consolidar os dados (deixe em branco para considerar todas):</p>", unsafe_allow_html=True)
     
-    idx_unidade = unidades_opcoes.index(st.session_state.f_unidade) if st.session_state.f_unidade in unidades_opcoes else 0
-    idx_mes = mes_opcoes.index(st.session_state.f_mes) if st.session_state.f_mes in mes_opcoes else 0
-    idx_ano = ano_opcoes.index(st.session_state.f_ano) if st.session_state.f_ano in ano_opcoes else 0
-
-    f_unidade_sel = st.selectbox("Unidade de Almoxarifado:", unidades_opcoes, index=idx_unidade)
-    f_mes_sel = st.selectbox("Mês de Referência:", mes_opcoes, index=idx_mes)
-    f_ano_sel = st.selectbox("Ano de Referência:", ano_opcoes, index=idx_ano)
+    f_unidades_sel = st.multiselect("Unidades de Almoxarifado:", unidades_opcoes, default=st.session_state.f_unidades)
+    f_meses_sel = st.multiselect("Meses de Referência:", mes_opcoes, default=st.session_state.f_meses)
+    f_anos_sel = st.multiselect("Anos de Referência:", ano_opcoes, default=st.session_state.f_anos)
     
     st.markdown("<br>", unsafe_allow_html=True)
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if st.button("Limpar Filtros", use_container_width=True):
-            st.session_state.f_unidade = "Todas"
-            st.session_state.f_mes = "Todos"
-            st.session_state.f_ano = "Todos"
+            st.session_state.f_unidades = []
+            st.session_state.f_meses = []
+            st.session_state.f_anos = []
             st.rerun()
     with col_btn2:
         if st.button("Aplicar Filtros", use_container_width=True, type="primary"):
-            st.session_state.f_unidade = f_unidade_sel
-            st.session_state.f_mes = f_mes_sel
-            st.session_state.f_ano = f_ano_sel
+            st.session_state.f_unidades = f_unidades_sel
+            st.session_state.f_meses = f_meses_sel
+            st.session_state.f_anos = f_anos_sel
             st.rerun()
 
 # 4. Estilização CSS (Design idêntico ao painel executivo original)
@@ -217,21 +211,21 @@ with col_header:
 
 with col_btn:
     st.markdown("<br>", unsafe_allow_html=True)
-    filtro_ativo = (st.session_state.f_unidade != "Todas") or (st.session_state.f_mes != "Todos") or (st.session_state.f_ano != "Todos")
+    filtro_ativo = bool(st.session_state.f_unidades or st.session_state.f_meses or st.session_state.f_anos)
     label_botao = "⚙️ Filtros (Ativo)" if filtro_ativo else "⚙️ Filtros"
     
     if st.button(label_botao, use_container_width=True):
         modal_filtros()
 
-# 6. Filtragem do DataFrame com base nos estados salvos
+# 6. Filtragem Dinâmica com base nas listas selecionadas
 df_filtrado = df_completo.copy()
 
-if st.session_state.f_unidade != "Todas":
-    df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"] == st.session_state.f_unidade]
-if st.session_state.f_mes != "Todos":
-    df_filtrado = df_filtrado[df_filtrado["mes_referencia"] == st.session_state.f_mes]
-if st.session_state.f_ano != "Todos":
-    df_filtrado = df_filtrado[df_filtrado["ano_referencia"] == st.session_state.f_ano]
+if st.session_state.f_unidades:
+    df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"].isin(st.session_state.f_unidades)]
+if st.session_state.f_meses:
+    df_filtrado = df_filtrado[df_filtrado["mes_referencia"].isin(st.session_state.f_meses)]
+if st.session_state.f_anos:
+    df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
 # 7. Somas Dinâmicas
 def somar_coluna(dataframe, coluna):
