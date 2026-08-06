@@ -24,11 +24,11 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance Máxima: Carregamento Paralelo (Multithreading)
+# 2. Performance Máxima e Normalização Rigorosa de Dados (Unidades, Meses e Anos)
 @st.cache_data(ttl=300)
 def carregar_dados():
     try:
-        with st.spinner("Carregando base de dados em alta performance (paralelo)..."):
+        with st.spinner("Carregando e normalizando base de dados em alta performance..."):
             count_res = supabase.table(table_name).select("*", count="exact", head=True).execute()
             total_rows = getattr(count_res, 'count', None)
             
@@ -52,18 +52,39 @@ def carregar_dados():
                     data = future.result()
                     if data:
                         all_data.extend(data)
-                        
-            return pd.DataFrame(all_data) if all_data else pd.DataFrame()
+            
+            if not all_data:
+                return pd.DataFrame()
+                
+            df = pd.DataFrame(all_data)
+            
+            # Higienização rigorosa da Unidade
+            if "unidade_almoxarifado" in df.columns:
+                df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip()
+            
+            # Higienização rigorosa de Meses e Anos (eliminando conflitos de tipos int/float/string/.0)
+            for col in ["mes_referencia", "ano_referencia"]:
+                if col in df.columns:
+                    def limpar_valor(val):
+                        if pd.isna(val) or val is None:
+                            return ""
+                        s_val = str(val).strip()
+                        if s_val.endswith('.0'):
+                            s_val = s_val[:-2]
+                        return s_val
+                    df[col] = df[col].apply(limpar_valor)
+                
+            return df
     except Exception as e:
         st.error(f"Erro ao carregar dados do Supabase: {e}")
         return pd.DataFrame()
 
 df_completo = carregar_dados()
 
-# Opções dinâmicas para as listas de seleção múltipla
+# Opções dinâmicas limpas e ordenadas
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
-mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist()) if not df_completo.empty else []
-ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist()) if not df_completo.empty else []
+mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
+ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
 
 # 3. Definição da Modal com Seleção Múltipla
 @st.dialog("Filtros de Análise - Visão Executiva", width="large")
@@ -89,7 +110,7 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS (Design idêntico ao painel executivo original)
+# 4. Estilização CSS
 st.markdown("""
 <style>
     .stApp {
@@ -217,7 +238,7 @@ with col_btn:
     if st.button(label_botao, use_container_width=True):
         modal_filtros()
 
-# 6. Filtragem Dinâmica com base nas listas selecionadas
+# 6. Filtragem Rigorosa e Precisa com base nas listas selecionadas
 df_filtrado = df_completo.copy()
 
 if st.session_state.f_unidades:
