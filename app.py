@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import streamlit as st
 from supabase import create_client
@@ -23,31 +24,38 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance com Paginação: Busca em blocos de 1000 para contornar o limite do Supabase
+# 2. Performance Máxima: Carregamento Paralelo (Multithreading)
 @st.cache_data(ttl=300)
 def carregar_dados():
     try:
-        all_data = []
-        batch_size = 1000
-        start = 0
-        
-        with st.spinner("Carregando base de dados completa do Supabase..."):
-            while True:
-                response = supabase.table(table_name).select(
+        with st.spinner("Carregando base de dados em alta performance (paralelo)..."):
+            # Pega o total exato de registros da tabela instantaneamente
+            count_res = supabase.table(table_name).select("*", count="exact", head=True).execute()
+            total_rows = getattr(count_res, 'count', None)
+            
+            if not total_rows or total_rows == 0:
+                total_rows = 460000  # Fallback de segurança caso o count retorne vazio
+                
+            batch_size = 1000
+            ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
+            
+            all_data = []
+            
+            def fetch_range(start_r, end_r):
+                res = supabase.table(table_name).select(
                     "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia"
-                ).range(start, start + batch_size - 1).execute()
-                
-                if not response.data:
-                    break
-                    
-                all_data.extend(response.data)
-                
-                if len(response.data) < batch_size:
-                    break
-                    
-                start += batch_size
-                
-        return pd.DataFrame(all_data) if all_data else pd.DataFrame()
+                ).range(start_r, end_r).execute()
+                return res.data if res.data else []
+            
+            # Dispara 15 requisições simultâneas para zerar o tempo de espera
+            with ThreadPoolExecutor(max_workers=15) as executor:
+                futures = [executor.submit(fetch_range, s, e) for s, e in ranges]
+                for future in futures:
+                    data = future.result()
+                    if data:
+                        all_data.extend(data)
+                        
+            return pd.DataFrame(all_data) if all_data else pd.DataFrame()
     except Exception as e:
         st.error(f"Erro ao carregar dados do Supabase: {e}")
         return pd.DataFrame()
