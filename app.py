@@ -123,44 +123,40 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS com Animações Fluidas de Entrada ("Ataque Total" no CSS)
+# 4. Estilização CSS com Animações Fluidas e Glassmorphism
 st.markdown("""
 <style>
-    /* Animação suave para a página inteira carregar */
+    /* 1. Efeito suave ao atualizar a página (O "respirar" do painel) */
     @keyframes smoothPageLoad {
-        0% { opacity: 0; }
-        100% { opacity: 1; }
-    }
-    .stApp {
-        animation: smoothPageLoad 0.5s ease-out forwards !important;
-    }
-
-    /* Animação de entrada LENTA e ELEGANTE para a Modal (Crescendo do centro) */
-    @keyframes popIn {
-        0% { opacity: 0; transform: scale(0.85); }
+        0% { opacity: 0.2; transform: scale(0.98); }
         100% { opacity: 1; transform: scale(1); }
     }
+    .stApp {
+        background-color: #0f141c;
+        animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    }
+
+    /* 2. Animação de entrada LENTA e ELEGANTE para a Modal (Crescendo do centro) */
+    @keyframes scaleInModal {
+        0% { opacity: 0; transform: scale(0.8) translateY(-20px); }
+        100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
     
-    /* Animação do fundo escuro */
-    @keyframes fadeInOverlay {
-        0% { background-color: rgba(0, 0, 0, 0); }
-        100% { background-color: rgba(15, 20, 28, 0.85); }
+    /* 3. Fundo esmaecido com desfoque tipo vidro (Glassmorphism) */
+    @keyframes fadeInScrim {
+        0% { opacity: 0; backdrop-filter: blur(0px); }
+        100% { opacity: 1; backdrop-filter: blur(5px); }
     }
 
-    /* FORÇANDO A BARRA: Selecionando todos os tipos possíveis de fundo de modal do Streamlit */
-    div[data-testid="stModal"], 
-    div[data-baseweb="modal"],
+    /* Atingindo todos os possíveis nomes que o Streamlit usa para a janela */
+    div[role="dialog"], div[data-testid="stDialog"] {
+        animation: scaleInModal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        transform-origin: center center;
+    }
+    
     div[data-testid="stModalScrim"] {
-        animation: fadeInOverlay 0.5s ease-out forwards !important;
-    }
-
-    /* FORÇANDO A BARRA: Selecionando todos os tipos possíveis de janela do Streamlit */
-    div[data-testid="stModal"] > div,
-    div[data-testid="stDialog"],
-    div[role="dialog"],
-    .stDialog {
-        animation: popIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
-        transform-origin: center;
+        background-color: rgba(15, 20, 28, 0.7) !important; /* Cor com transparência */
+        animation: fadeInScrim 0.6s ease-out forwards !important;
     }
 
     /* Estilos dos Botões e Layout */
@@ -218,6 +214,8 @@ st.markdown("""
         font-size: 12px;
         margin: 0;
     }
+
+    /* CARTÕES COM EFEITO DE FLUTUAÇÃO (SOMBRAS) */
     .card-box {
         background-color: #161c24;
         border: 1px solid #232b36;
@@ -227,7 +225,19 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        
+        /* Sombra permanente */
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
+
+    /* Efeito ao passar o mouse (Hover) */
+    .card-box:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
+        border-color: #333d4d;
+    }
+
     .card-header {
         display: flex;
         align-items: center;
