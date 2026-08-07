@@ -26,7 +26,7 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance Máxima e Normalização Rigorosa de Dados
+# 2. Performance Otimizada e Estável (Conexões Controladas)
 @st.cache_data()
 def carregar_dados():
     try:
@@ -48,7 +48,8 @@ def carregar_dados():
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
-            with ThreadPoolExecutor(max_workers=15) as executor:
+            # Reduzido para max_workers=4 para evitar o ConnectionTerminated no Supabase
+            with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = [executor.submit(fetch_range, s, e) for s, e in ranges]
                 for future in futures:
                     data = future.result()
@@ -470,7 +471,7 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Formatado, com margens e hover limpo)
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -485,10 +486,8 @@ if not df_filtrado.empty:
         df_sku_tempo = df_sku_tempo.sort_values(['ano_num', 'mes_num'])
         df_sku_tempo['Periodo'] = df_sku_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
 
-        # Formatação dos textos com pontos de milhar
         textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
 
-        # Layout específico com margens laterais seguras para não cortar os rótulos extremos
         layout_sku = dict(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
