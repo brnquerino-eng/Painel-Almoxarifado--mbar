@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Inicialização dos estados para os filtros múltiplos[cite: 1]
+# Inicialização dos estados para os filtros múltiplos
 if 'f_unidades' not in st.session_state:
     st.session_state.f_unidades = []
 if 'f_meses' not in st.session_state:
@@ -16,7 +16,7 @@ if 'f_meses' not in st.session_state:
 if 'f_anos' not in st.session_state:
     st.session_state.f_anos = []
 
-# 1. Conexão direta e segura com o Supabase[cite: 1]
+# 1. Conexão direta e segura com o Supabase
 @st.cache_resource
 def conectar_supabase():
     url = st.secrets["SUPABASE_URL"]
@@ -26,7 +26,7 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance Máxima e Normalização Rigorosa de Dados[cite: 1]
+# 2. Performance Máxima e Normalização Rigorosa de Dados
 @st.cache_data()
 def carregar_dados():
     try:
@@ -35,7 +35,7 @@ def carregar_dados():
             total_rows = getattr(count_res, 'count', None)
 
             if not total_rows or total_rows == 0:
-                total_rows = 460000  # Fallback de segurança[cite: 1]
+                total_rows = 460000  # Fallback de segurança
 
             batch_size = 1000
             ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
@@ -43,9 +43,9 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
-                # Adicionamos 'codigo_produto' na seleção para rastreamento dos SKUs[cite: 1]
+                # Inclui codigo_produto e qtde_saldo_atual para o card de SKUs ativos
                 res = supabase.table(table_name).select(
-                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto"
+                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual"
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
@@ -64,21 +64,24 @@ def carregar_dados():
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
 
-            if "codigo_produto" in df.columns:
-                df["codigo_produto"] = df["codigo_produto"].astype(str).str.strip()
+            # Função de limpeza reaproveitada para qualquer coluna que possa vir
+            # com tipos mistos do Supabase (int, float ou string para o mesmo
+            # valor), removendo o ".0" que aparece quando o valor chega como
+            # float — evita contar/agrupar o mesmo código ou período duas vezes.
+            def limpar_valor(val):
+                if pd.isna(val) or val is None:
+                    return ""
+                s_val = str(val).strip()
+                if s_val.endswith('.0'):
+                    s_val = s_val[:-2]
+                return s_val
 
-            for col in ["mes_referencia", "ano_referencia"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto"]:
                 if col in df.columns:
-                    def limpar_valor(val):
-                        if pd.isna(val) or val is None:
-                            return ""
-                        s_val = str(val).strip()
-                        if s_val.endswith('.0'):
-                            s_val = s_val[:-2]
-                        return s_val
                     df[col] = df[col].apply(limpar_valor)
 
-            for col in ["valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno"]:
+            # Conversão rigorosa de valores e quantidades para numérico
+            for col in ["valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno", "qtde_saldo_atual"]:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
@@ -89,7 +92,7 @@ def carregar_dados():
 
 df_completo = carregar_dados()
 
-# Opções dinâmicas limpas e ordenadas[cite: 1]
+# Opções dinâmicas limpas e ordenadas
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
 
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
@@ -104,7 +107,7 @@ def _chave_numerica(val):
 mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Definição da Modal com Seleção Múltipla[cite: 1]
+# 3. Definição da Modal com Seleção Múltipla
 @st.dialog("Filtros de Análise - Visão Executiva", width="large")
 def modal_filtros():
     st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione uma ou mais opções para consolidar os dados (deixe em branco para considerar todas):</p>", unsafe_allow_html=True)
@@ -139,7 +142,7 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS[cite: 1]
+# 4. Estilização CSS
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -286,7 +289,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 5. Renderização do Cabeçalho com o Botão de Filtro[cite: 1]
+# 5. Renderização do Cabeçalho com o Botão de Filtro
 col_header, col_btn = st.columns([5, 1])
 
 with col_header:
@@ -311,7 +314,7 @@ with col_btn:
     if st.button(label_botao, use_container_width=True):
         modal_filtros()
 
-# 5.1 Renderização do Resumo Inteligente de Quantidades[cite: 1]
+# 5.1 Renderização do Resumo Inteligente de Quantidades
 f_unidades_atuais = st.session_state.get('f_unidades', [])
 
 if not f_unidades_atuais:
@@ -330,7 +333,7 @@ else:
 
 st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
-# 6. Filtragem Rigorosa e Precisa[cite: 1]
+# 6. Filtragem Rigorosa e Precisa
 df_filtrado = df_completo.copy()
 
 if st.session_state.f_unidades:
@@ -340,7 +343,7 @@ if st.session_state.f_meses:
 if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
-# 7. Somas e Contagens Dinâmicas[cite: 1]
+# 7. Somas e Contagens Dinâmicas baseadas na quantidade física
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
@@ -350,8 +353,14 @@ val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
 val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
 
-# Contagem de SKUs únicos (.nunique) com base na coluna codigo_produto
-val_skus = df_filtrado["codigo_produto"].dropna().nunique() if "codigo_produto" in df_filtrado.columns else 0
+# CORREÇÃO: protegido contra df_filtrado vazio/sem as colunas (ex: falha de
+# conexão com o Supabase) — evita o KeyError que derrubaria o app depois do
+# st.error já exibido em carregar_dados().
+if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
+    df_skus_ativos = df_filtrado[df_filtrado["qtde_saldo_atual"] > 0]
+    val_skus = df_skus_ativos["codigo_produto"].dropna().nunique()
+else:
+    val_skus = 0
 
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -359,7 +368,7 @@ def fmt_brl(val):
 def fmt_int(val):
     return f"{val:,}".replace(',', '.')
 
-# 8. Cards Executivos (Estrutura 2x2 perfeitamente simétrica)[cite: 1]
+# 8. Cards Executivos (Estrutura 2x2 perfeitamente simétrica)
 c1, c2 = st.columns(2)
 
 with c1:
@@ -410,7 +419,7 @@ with c4:
     </div>
     """, unsafe_allow_html=True)
 
-# 9. GRÁFICOS INTERATIVOS[cite: 1]
+# 9. GRÁFICOS INTERATIVOS
 st.markdown("<br><br>", unsafe_allow_html=True)
 
 if not df_filtrado.empty:
