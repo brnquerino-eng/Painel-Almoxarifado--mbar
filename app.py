@@ -125,7 +125,7 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS com Animações Fluidas, Glassmorphism e Estilo de Cartão Nativo
+# 4. Estilização CSS com Animações Fluidas, Glassmorphism e Sombra Profunda nos Gráficos
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -224,18 +224,18 @@ st.markdown("""
         border-color: #333d4d;
     }
     
-    /* ESTILIZANDO O CONTAINER NATIVO DO STREAMLIT PARA VIRAR UM CARTÃO DE GRÁFICO */
+    /* ELEVAÇÃO PROFUNDA E IDÊNTICA PARA OS CONTAINERS DOS GRÁFICOS */
     div[data-testid="stContainer"] {
         background-color: #161c24 !important;
         border: 1px solid #232b36 !important;
         border-radius: 8px !important;
-        padding: 15px !important;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3) !important;
+        padding: 20px !important;
+        box-shadow: 0 12px 25px rgba(0, 0, 0, 0.6), 0 5px 10px rgba(0, 0, 0, 0.4) !important;
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
     div[data-testid="stContainer"]:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15) !important;
+        transform: translateY(-4px);
+        box-shadow: 0 18px 35px rgba(0, 0, 0, 0.85), 0 6px 18px rgba(216, 92, 39, 0.2) !important;
         border-color: #333d4d !important;
     }
 
@@ -379,7 +379,7 @@ with c3:
     </div>
     """, unsafe_allow_html=True)
 
-# 9. GRÁFICOS INTERATIVOS DENTRO DE CONTAINERS NATIVOS (CARTÕES)
+# 9. GRÁFICOS INTERATIVOS DENTRO DOS CONTAINERS COM ELEVAÇÃO REAL
 st.markdown("<br><br>", unsafe_allow_html=True)
 
 if not df_filtrado.empty:
@@ -393,7 +393,6 @@ if not df_filtrado.empty:
     col_g1, col_g2 = st.columns([6, 4], gap="large")
     
     with col_g1:
-        # Contêiner nativo abraça o título e o gráfico de forma limpa e estruturada
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
             
