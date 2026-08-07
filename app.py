@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Inicialização dos estados para os filtros múltiplos
+# Inicialização dos estados para os filtros múltiplos[cite: 1]
 if 'f_unidades' not in st.session_state:
     st.session_state.f_unidades = []
 if 'f_meses' not in st.session_state:
@@ -16,7 +16,7 @@ if 'f_meses' not in st.session_state:
 if 'f_anos' not in st.session_state:
     st.session_state.f_anos = []
 
-# 1. Conexão direta e segura com o Supabase
+# 1. Conexão direta e segura com o Supabase[cite: 1]
 @st.cache_resource
 def conectar_supabase():
     url = st.secrets["SUPABASE_URL"]
@@ -26,7 +26,7 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance Máxima e Normalização Rigorosa de Dados
+# 2. Performance Máxima e Normalização Rigorosa de Dados[cite: 1]
 @st.cache_data()
 def carregar_dados():
     try:
@@ -35,7 +35,7 @@ def carregar_dados():
             total_rows = getattr(count_res, 'count', None)
 
             if not total_rows or total_rows == 0:
-                total_rows = 460000  # Fallback de segurança
+                total_rows = 460000  # Fallback de segurança[cite: 1]
 
             batch_size = 1000
             ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
@@ -43,8 +43,9 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
+                # Adicionamos 'codigo_produto' na seleção para rastreamento dos SKUs[cite: 1]
                 res = supabase.table(table_name).select(
-                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia"
+                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto"
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
@@ -63,6 +64,9 @@ def carregar_dados():
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
 
+            if "codigo_produto" in df.columns:
+                df["codigo_produto"] = df["codigo_produto"].astype(str).str.strip()
+
             for col in ["mes_referencia", "ano_referencia"]:
                 if col in df.columns:
                     def limpar_valor(val):
@@ -74,10 +78,6 @@ def carregar_dados():
                         return s_val
                     df[col] = df[col].apply(limpar_valor)
 
-            # CORREÇÃO: as colunas de valor costumam vir como texto (string) do
-            # Supabase para colunas numeric/decimal. Convertendo aqui, uma única
-            # vez, garante que tanto os cards quanto os gráficos somem números
-            # de verdade, e não concatenem texto.
             for col in ["valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno"]:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
@@ -89,16 +89,13 @@ def carregar_dados():
 
 df_completo = carregar_dados()
 
-# Opções dinâmicas limpas e ordenadas
+# Opções dinâmicas limpas e ordenadas[cite: 1]
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
 
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
 unidades_ativas = [u for u in unidades_opcoes if "GERENCIAL" not in u]
 
 def _chave_numerica(val):
-    # CORREÇÃO: ordena meses/anos numericamente (1, 2, ..., 12) em vez de
-    # alfabeticamente como string (1, 10, 11, 12, 2, ...). Se não for
-    # conversível para número, joga pro final da lista.
     try:
         return (0, int(val))
     except (ValueError, TypeError):
@@ -107,7 +104,7 @@ def _chave_numerica(val):
 mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Definição da Modal com Seleção Múltipla
+# 3. Definição da Modal com Seleção Múltipla[cite: 1]
 @st.dialog("Filtros de Análise - Visão Executiva", width="large")
 def modal_filtros():
     st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione uma ou mais opções para consolidar os dados (deixe em branco para considerar todas):</p>", unsafe_allow_html=True)
@@ -142,7 +139,7 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS e Elevação Forçada nos Containers
+# 4. Estilização CSS[cite: 1]
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -240,8 +237,6 @@ st.markdown("""
         box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
         border-color: #333d4d;
     }
-
-    /* ESTILIZAÇÃO DOS CONTAINERS DOS GRÁFICOS (ver observação no chat sobre escopo global) */
     div[data-testid="stContainer"] {
         background-color: #161c24 !important;
         border: 1px solid #232b36 !important;
@@ -274,6 +269,7 @@ st.markdown("""
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
     .icon-compras { background-color: #2a2211; color: #f39c12; }
     .icon-consumo { background-color: #2a1515; color: #e74c3c; }
+    .icon-skus { background-color: #1a222d; color: #3498db; }
     .card-title {
         color: #8c9ba5;
         font-size: 12px;
@@ -290,7 +286,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 5. Renderização do Cabeçalho com o Botão de Filtro
+# 5. Renderização do Cabeçalho com o Botão de Filtro[cite: 1]
 col_header, col_btn = st.columns([5, 1])
 
 with col_header:
@@ -315,7 +311,7 @@ with col_btn:
     if st.button(label_botao, use_container_width=True):
         modal_filtros()
 
-# 5.1 Renderização do Resumo Inteligente de Quantidades
+# 5.1 Renderização do Resumo Inteligente de Quantidades[cite: 1]
 f_unidades_atuais = st.session_state.get('f_unidades', [])
 
 if not f_unidades_atuais:
@@ -334,7 +330,7 @@ else:
 
 st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
-# 6. Filtragem Rigorosa e Precisa com base nas listas selecionadas
+# 6. Filtragem Rigorosa e Precisa[cite: 1]
 df_filtrado = df_completo.copy()
 
 if st.session_state.f_unidades:
@@ -344,7 +340,7 @@ if st.session_state.f_meses:
 if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
-# 7. Somas Dinâmicas
+# 7. Somas e Contagens Dinâmicas[cite: 1]
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
@@ -354,10 +350,16 @@ val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
 val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
 
+# Contagem de SKUs únicos (.nunique) com base na coluna codigo_produto
+val_skus = df_filtrado["codigo_produto"].dropna().nunique() if "codigo_produto" in df_filtrado.columns else 0
+
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-# 8. Cards Executivos
+def fmt_int(val):
+    return f"{val:,}".replace(',', '.')
+
+# 8. Cards Executivos (Estrutura 2x2 perfeitamente simétrica)[cite: 1]
 c1, c2 = st.columns(2)
 
 with c1:
@@ -384,7 +386,7 @@ with c2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-c3, _ = st.columns(2)
+c3, c4 = st.columns(2)
 
 with c3:
     st.markdown(f"""
@@ -397,7 +399,18 @@ with c3:
     </div>
     """, unsafe_allow_html=True)
 
-# 9. GRÁFICOS INTERATIVOS DENTRO DOS CONTAINERS NATIVOS COM ELEVAÇÃO
+with c4:
+    st.markdown(f"""
+    <div class="card-box">
+        <div class="card-header">
+            <div class="icon-box icon-skus">🏷️</div>
+            <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
+        </div>
+        <div class="card-value">{fmt_int(val_skus)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# 9. GRÁFICOS INTERATIVOS[cite: 1]
 st.markdown("<br><br>", unsafe_allow_html=True)
 
 if not df_filtrado.empty:
@@ -414,17 +427,12 @@ if not df_filtrado.empty:
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
 
-            # As colunas de valor já vêm numéricas de carregar_dados() (conversão
-            # centralizada lá), então o groupby().sum() abaixo soma de verdade
-            # em vez de concatenar texto.
             df_trend = df_filtrado.copy()
             df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
             df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
 
             df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
             df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
-            # CORREÇÃO: mês com zero-padding (01, 02, ... 12) para manter a
-            # ordem visual correta e consistente no eixo X.
             df_tempo['Periodo'] = df_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
 
             df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
