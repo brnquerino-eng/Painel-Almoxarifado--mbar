@@ -64,10 +64,6 @@ def carregar_dados():
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
 
-            # Função de limpeza reaproveitada para qualquer coluna que possa vir
-            # com tipos mistos do Supabase (int, float ou string para o mesmo
-            # valor), removendo o ".0" que aparece quando o valor chega como
-            # float — evita contar/agrupar o mesmo código ou período duas vezes.
             def limpar_valor(val):
                 if pd.isna(val) or val is None:
                     return ""
@@ -353,9 +349,6 @@ val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
 val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
 
-# CORREÇÃO: protegido contra df_filtrado vazio/sem as colunas (ex: falha de
-# conexão com o Supabase) — evita o KeyError que derrubaria o app depois do
-# st.error já exibido em carregar_dados().
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
     df_skus_ativos = df_filtrado[df_filtrado["qtde_saldo_atual"] > 0]
     val_skus = df_skus_ativos["codigo_produto"].dropna().nunique()
@@ -477,5 +470,30 @@ if not df_filtrado.empty:
             fig_bar.update_yaxes(title="", showgrid=False)
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #3498db; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
+
+        df_sku_trend = df_filtrado[df_filtrado["qtde_saldo_atual"] > 0].copy()
+        df_sku_trend['ano_num'] = pd.to_numeric(df_sku_trend['ano_referencia'], errors='coerce').fillna(0)
+        df_sku_trend['mes_num'] = pd.to_numeric(df_sku_trend['mes_referencia'], errors='coerce').fillna(0)
+
+        df_sku_tempo = df_sku_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['codigo_produto'].nunique().reset_index()
+        df_sku_tempo = df_sku_tempo.sort_values(['ano_num', 'mes_num'])
+        df_sku_tempo['Periodo'] = df_sku_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
+
+        fig_sku_linha = go.Figure()
+        fig_sku_linha.add_trace(go.Scatter(x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'],
+                                          name='SKUs Ativos', mode='lines+markers', line=dict(color='#3498db', width=3),
+                                          fill='tozeroy', fillcolor='rgba(52, 152, 219, 0.1)'))
+
+        fig_sku_linha.update_layout(**layout_transparente, hovermode="x unified", showlegend=False)
+        fig_sku_linha.update_xaxes(showgrid=False, zeroline=False)
+        fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False)
+
+        st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False})
+
 else:
     st.info("Nenhum dado encontrado para os filtros selecionados.")
