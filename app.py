@@ -470,7 +470,7 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com grades mantidas, mas sem os números no eixo Y)
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com padding inteligente no eixo X para evitar cortes nas pontas)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -522,12 +522,13 @@ if not df_filtrado.empty:
         ))
 
         fig_sku_linha.update_layout(**layout_sku, hovermode="x unified", showlegend=False)
-        fig_sku_linha.update_xaxes(showgrid=False, zeroline=False)
         
-        # Mantém a grade de fundo, mas oculta apenas os números do eixo Y
+        # Adicionado range com folga nas extremidades (-0.8 até n_pontos - 0.2) para as bolinhas e textos das pontas não cortarem
+        fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos - 0.2])
+        
         fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
 
         st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False})
-    
+
 else:
     st.info("Nenhum dado encontrado para os filtros selecionados.")
