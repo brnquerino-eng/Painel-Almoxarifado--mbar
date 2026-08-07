@@ -33,36 +33,36 @@ def carregar_dados():
         with st.spinner("Carregando e normalizando base de dados em alta performance..."):
             count_res = supabase.table(table_name).select("*", count="exact", head=True).execute()
             total_rows = getattr(count_res, 'count', None)
-            
+
             if not total_rows or total_rows == 0:
                 total_rows = 460000  # Fallback de segurança
-                
+
             batch_size = 1000
             ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
-            
+
             all_data = []
-            
+
             def fetch_range(start_r, end_r):
                 res = supabase.table(table_name).select(
                     "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia"
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
-            
+
             with ThreadPoolExecutor(max_workers=15) as executor:
                 futures = [executor.submit(fetch_range, s, e) for s, e in ranges]
                 for future in futures:
                     data = future.result()
                     if data:
                         all_data.extend(data)
-            
+
             if not all_data:
                 return pd.DataFrame()
-                
+
             df = pd.DataFrame(all_data)
-            
+
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
-            
+
             for col in ["mes_referencia", "ano_referencia"]:
                 if col in df.columns:
                     def limpar_valor(val):
@@ -73,7 +73,15 @@ def carregar_dados():
                             s_val = s_val[:-2]
                         return s_val
                     df[col] = df[col].apply(limpar_valor)
-                
+
+            # CORREÇÃO: as colunas de valor costumam vir como texto (string) do
+            # Supabase para colunas numeric/decimal. Convertendo aqui, uma única
+            # vez, garante que tanto os cards quanto os gráficos somem números
+            # de verdade, e não concatenem texto.
+            for col in ["valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+
             return df
     except Exception as e:
         st.error(f"Erro ao carregar dados do Supabase: {e}")
@@ -87,29 +95,38 @@ unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().t
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
 unidades_ativas = [u for u in unidades_opcoes if "GERENCIAL" not in u]
 
-mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
-ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
+def _chave_numerica(val):
+    # CORREÇÃO: ordena meses/anos numericamente (1, 2, ..., 12) em vez de
+    # alfabeticamente como string (1, 10, 11, 12, 2, ...). Se não for
+    # conversível para número, joga pro final da lista.
+    try:
+        return (0, int(val))
+    except (ValueError, TypeError):
+        return (1, str(val))
+
+mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
+ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
 # 3. Definição da Modal com Seleção Múltipla
 @st.dialog("Filtros de Análise - Visão Executiva", width="large")
 def modal_filtros():
     st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione uma ou mais opções para consolidar os dados (deixe em branco para considerar todas):</p>", unsafe_allow_html=True)
-    
+
     col_u1, col_u2 = st.columns(2)
-    
+
     with col_u1:
         default_ativas = [u for u in st.session_state.f_unidades if u in unidades_ativas]
         f_ativas_sel = st.multiselect("🏢 Unidades Ativas:", unidades_ativas, default=default_ativas)
-        
+
     with col_u2:
         default_gerenciais = [u for u in st.session_state.f_unidades if u in unidades_gerenciais]
         f_gerenciais_sel = st.multiselect("📊 Unidades Gerenciais:", unidades_gerenciais, default=default_gerenciais)
-    
+
     f_unidades_sel = f_ativas_sel + f_gerenciais_sel
-    
+
     f_meses_sel = st.multiselect("Meses de Referência:", mes_opcoes, default=st.session_state.f_meses)
     f_anos_sel = st.multiselect("Anos de Referência:", ano_opcoes, default=st.session_state.f_anos)
-    
+
     st.markdown("<br>", unsafe_allow_html=True)
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
@@ -223,8 +240,8 @@ st.markdown("""
         box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
         border-color: #333d4d;
     }
-    
-    /* ESTILIZAÇÃO AGRESSIVA DOS CONTAINERS DOS GRÁFICOS */
+
+    /* ESTILIZAÇÃO DOS CONTAINERS DOS GRÁFICOS (ver observação no chat sobre escopo global) */
     div[data-testid="stContainer"] {
         background-color: #161c24 !important;
         border: 1px solid #232b36 !important;
@@ -294,7 +311,7 @@ with col_btn:
     st.markdown("<br>", unsafe_allow_html=True)
     filtro_ativo = bool(st.session_state.f_unidades or st.session_state.f_meses or st.session_state.f_anos)
     label_botao = "⚙️ Filtros (Ativo)" if filtro_ativo else "⚙️ Filtros"
-    
+
     if st.button(label_botao, use_container_width=True):
         modal_filtros()
 
@@ -306,13 +323,13 @@ if not f_unidades_atuais:
 else:
     sel_ativas = [u for u in f_unidades_atuais if u in unidades_ativas]
     sel_gerenciais = [u for u in f_unidades_atuais if u in unidades_gerenciais]
-    
+
     partes = []
     if sel_ativas:
         partes.append(f"**{len(sel_ativas)} unidade(s) ativa(s)**")
     if sel_gerenciais:
         partes.append(f"**{len(sel_gerenciais)} gerencial(is)**")
-        
+
     texto_informativo = "Exibindo dados de " + " e ".join(partes) + "."
 
 st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
@@ -392,51 +409,56 @@ if not df_filtrado.empty:
     )
 
     col_g1, col_g2 = st.columns([6, 4], gap="large")
-    
+
     with col_g1:
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
-            
+
+            # As colunas de valor já vêm numéricas de carregar_dados() (conversão
+            # centralizada lá), então o groupby().sum() abaixo soma de verdade
+            # em vez de concatenar texto.
             df_trend = df_filtrado.copy()
             df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
             df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
-            
+
             df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
             df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
-            df_tempo['Periodo'] = df_tempo['mes_referencia'].astype(str) + '/' + df_tempo['ano_referencia'].astype(str)
-            
+            # CORREÇÃO: mês com zero-padding (01, 02, ... 12) para manter a
+            # ordem visual correta e consistente no eixo X.
+            df_tempo['Periodo'] = df_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
+
             df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
-            
+
             fig_linha = go.Figure()
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], 
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'],
                                           name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], 
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
                                           name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
-            
+
             fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
             fig_linha.update_xaxes(showgrid=False, zeroline=False)
             fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
-            
+
             st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
 
     with col_g2:
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
-            
+
             df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
             df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
             df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
-            
+
             df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
-            
-            fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h', 
+
+            fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h',
                              color_discrete_sequence=['#e74c3c'], text='texto_formatado')
-            
+
             fig_bar.update_layout(**layout_transparente, hovermode="y unified")
             fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
             fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
             fig_bar.update_yaxes(title="", showgrid=False)
-            
+
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 else:
     st.info("Nenhum dado encontrado para os filtros selecionados.")
