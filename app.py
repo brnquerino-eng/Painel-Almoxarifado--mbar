@@ -63,11 +63,6 @@ def carregar_dados():
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
 
-            # Função de limpeza reaproveitada para qualquer coluna que possa vir
-            # com tipos mistos do Supabase (int, float ou string para o mesmo
-            # valor). Valores ausentes viram string vazia "" (não NaN) — por
-            # isso, sempre que for filtrar "códigos válidos" mais adiante,
-            # compare com != "" em vez de usar .dropna().
             def limpar_valor(val):
                 if pd.isna(val) or val is None:
                     return ""
@@ -351,9 +346,6 @@ val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
 val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
 
-# CORREÇÃO: codigo_produto ausente vira "" (string vazia) em limpar_valor, não
-# NaN — por isso .dropna() sozinho não filtra os ausentes. Aqui excluímos
-# explicitamente "" para não contar isso como um SKU "fantasma".
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
     df_skus_ativos = df_filtrado[
         (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
@@ -478,13 +470,11 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com cor igual ao Top 10 e rótulos de dados)
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Formatado, com margens e hover limpo)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
 
-        # CORREÇÃO: mesmo ajuste da seção 7 — exclui codigo_produto == "" para
-        # não contar linhas com código ausente como um SKU válido.
         df_sku_trend = df_filtrado[
             (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
         ].copy()
@@ -495,21 +485,33 @@ if not df_filtrado.empty:
         df_sku_tempo = df_sku_tempo.sort_values(['ano_num', 'mes_num'])
         df_sku_tempo['Periodo'] = df_sku_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
 
+        # Formatação dos textos com pontos de milhar
+        textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
+
+        # Layout específico com margens laterais seguras para não cortar os rótulos extremos
+        layout_sku = dict(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#8c9ba5'),
+            margin=dict(l=40, r=40, t=30, b=10)
+        )
+
         fig_sku_linha = go.Figure()
         fig_sku_linha.add_trace(go.Scatter(
             x=df_sku_tempo['Periodo'],
             y=df_sku_tempo['codigo_produto'],
             name='SKUs Ativos',
             mode='lines+markers+text',
-            text=df_sku_tempo['codigo_produto'],
+            text=textos_skus,
             textposition='top center',
             textfont=dict(color='white', size=11),
             line=dict(color='#e74c3c', width=3),
             fill='tozeroy',
-            fillcolor='rgba(231, 76, 60, 0.1)'
+            fillcolor='rgba(231, 76, 60, 0.1)',
+            hovertemplate='<b>Período:</b> %{x}<br><b>SKUs Ativos:</b> %{y:,.0f}<extra></extra>'
         ))
 
-        fig_sku_linha.update_layout(**layout_transparente, hovermode="x unified", showlegend=False)
+        fig_sku_linha.update_layout(**layout_sku, hovermode="x unified", showlegend=False)
         fig_sku_linha.update_xaxes(showgrid=False, zeroline=False)
         fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False)
 
