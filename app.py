@@ -470,7 +470,7 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com padding no eixo X e rótulos uniformes em top center)
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com Indicador Consolidado Flutuante no Canto Superior Direito)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -489,11 +489,32 @@ if not df_filtrado.empty:
         max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
         n_pontos = len(df_sku_tempo)
 
+        # Cálculo do valor consolidado exclusivo do gráfico (ex: Total de SKUs únicos da seleção atual)
+        total_skus_grafico = df_sku_trend['codigo_produto'].nunique()
+        total_formatado = f"{total_skus_grafico:,}".replace(',', '.')
+
         layout_sku = dict(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#8c9ba5'),
-            margin=dict(l=40, r=40, t=40, b=10)
+            margin=dict(l=40, r=40, t=50, b=10),
+            # Inserção da anotação flutuante estilo BI corporativo no canto superior direito
+            annotations=[
+                dict(
+                    x=1.0,
+                    y=1.12,
+                    xref="paper",
+                    yref="paper",
+                    text=f"<b>Total Período:</b> {total_formatado}",
+                    showarrow=False,
+                    font=dict(color="#ffffff", size=12, family="monospace"),
+                    bgcolor="#1a222d",
+                    bordercolor="#333d4d",
+                    borderwidth=1,
+                    borderpad=6,
+                    align="right"
+                )
+            ]
         )
 
         fig_sku_linha = go.Figure()
@@ -504,7 +525,7 @@ if not df_filtrado.empty:
             name='SKUs Ativos',
             mode='lines+markers+text',
             text=textos_skus,
-            textposition='top center',  # Uniformizado para todos centralizados graças ao respiro lateral do eixo X
+            textposition='top center',
             textfont=dict(color='white', size=11),
             line=dict(color='#e74c3c', width=3),
             fill='tozeroy',
