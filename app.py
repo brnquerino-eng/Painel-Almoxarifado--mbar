@@ -43,7 +43,6 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
-                # Inclui codigo_produto e qtde_saldo_atual para o card de SKUs ativos
                 res = supabase.table(table_name).select(
                     "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual"
                 ).order("id").range(start_r, end_r).execute()
@@ -64,6 +63,11 @@ def carregar_dados():
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
 
+            # Função de limpeza reaproveitada para qualquer coluna que possa vir
+            # com tipos mistos do Supabase (int, float ou string para o mesmo
+            # valor). Valores ausentes viram string vazia "" (não NaN) — por
+            # isso, sempre que for filtrar "códigos válidos" mais adiante,
+            # compare com != "" em vez de usar .dropna().
             def limpar_valor(val):
                 if pd.isna(val) or val is None:
                     return ""
@@ -76,7 +80,6 @@ def carregar_dados():
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
-            # Conversão rigorosa de valores e quantidades para numérico
             for col in ["valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno", "qtde_saldo_atual"]:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
@@ -88,7 +91,6 @@ def carregar_dados():
 
 df_completo = carregar_dados()
 
-# Opções dinâmicas limpas e ordenadas
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
 
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
@@ -349,9 +351,14 @@ val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
 val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
 
+# CORREÇÃO: codigo_produto ausente vira "" (string vazia) em limpar_valor, não
+# NaN — por isso .dropna() sozinho não filtra os ausentes. Aqui excluímos
+# explicitamente "" para não contar isso como um SKU "fantasma".
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
-    df_skus_ativos = df_filtrado[df_filtrado["qtde_saldo_atual"] > 0]
-    val_skus = df_skus_ativos["codigo_produto"].dropna().nunique()
+    df_skus_ativos = df_filtrado[
+        (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
+    ]
+    val_skus = df_skus_ativos["codigo_produto"].nunique()
 else:
     val_skus = 0
 
@@ -471,12 +478,16 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com cor igual ao Top 10 e rótulos de dados)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
-        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #3498db; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
+        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
 
-        df_sku_trend = df_filtrado[df_filtrado["qtde_saldo_atual"] > 0].copy()
+        # CORREÇÃO: mesmo ajuste da seção 7 — exclui codigo_produto == "" para
+        # não contar linhas com código ausente como um SKU válido.
+        df_sku_trend = df_filtrado[
+            (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
+        ].copy()
         df_sku_trend['ano_num'] = pd.to_numeric(df_sku_trend['ano_referencia'], errors='coerce').fillna(0)
         df_sku_trend['mes_num'] = pd.to_numeric(df_sku_trend['mes_referencia'], errors='coerce').fillna(0)
 
@@ -485,9 +496,18 @@ if not df_filtrado.empty:
         df_sku_tempo['Periodo'] = df_sku_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
 
         fig_sku_linha = go.Figure()
-        fig_sku_linha.add_trace(go.Scatter(x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'],
-                                          name='SKUs Ativos', mode='lines+markers', line=dict(color='#3498db', width=3),
-                                          fill='tozeroy', fillcolor='rgba(52, 152, 219, 0.1)'))
+        fig_sku_linha.add_trace(go.Scatter(
+            x=df_sku_tempo['Periodo'],
+            y=df_sku_tempo['codigo_produto'],
+            name='SKUs Ativos',
+            mode='lines+markers+text',
+            text=df_sku_tempo['codigo_produto'],
+            textposition='top center',
+            textfont=dict(color='white', size=11),
+            line=dict(color='#e74c3c', width=3),
+            fill='tozeroy',
+            fillcolor='rgba(231, 76, 60, 0.1)'
+        ))
 
         fig_sku_linha.update_layout(**layout_transparente, hovermode="x unified", showlegend=False)
         fig_sku_linha.update_xaxes(showgrid=False, zeroline=False)
