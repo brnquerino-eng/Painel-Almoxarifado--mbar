@@ -470,7 +470,7 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com padding inteligente no eixo X para evitar cortes nas pontas)
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com padding no eixo X e rótulos uniformes em top center)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -487,16 +487,7 @@ if not df_filtrado.empty:
 
         textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
         max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
-
         n_pontos = len(df_sku_tempo)
-        posicoes_texto = []
-        for i in range(n_pontos):
-            if i == 0:
-                posicoes_texto.append('top right')
-            elif i == n_pontos - 1:
-                posicoes_texto.append('top left')
-            else:
-                posicoes_texto.append('top center')
 
         layout_sku = dict(
             plot_bgcolor='rgba(0,0,0,0)',
@@ -513,7 +504,7 @@ if not df_filtrado.empty:
             name='SKUs Ativos',
             mode='lines+markers+text',
             text=textos_skus,
-            textposition=posicoes_texto,
+            textposition='top center',  # Uniformizado para todos centralizados graças ao respiro lateral do eixo X
             textfont=dict(color='white', size=11),
             line=dict(color='#e74c3c', width=3),
             fill='tozeroy',
@@ -522,10 +513,7 @@ if not df_filtrado.empty:
         ))
 
         fig_sku_linha.update_layout(**layout_sku, hovermode="x unified", showlegend=False)
-        
-        # Adicionado range com folga nas extremidades (-0.8 até n_pontos - 0.2) para as bolinhas e textos das pontas não cortarem
         fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos - 0.2])
-        
         fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
 
         st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False})
