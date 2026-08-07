@@ -470,7 +470,7 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Margens ampliadas, topo com respiro e hover em PT-BR)
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com rótulos visíveis e posicionamento dinâmico anti-corte nas pontas)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -488,12 +488,22 @@ if not df_filtrado.empty:
         textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
         max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
 
-        # Margens maiores (l=70, r=70, t=50) para evitar qualquer corte nas pontas e no topo
+        # Lógica inteligente: alinha as âncoras do texto para dentro nas extremidades
+        n_pontos = len(df_sku_tempo)
+        posicoes_texto = []
+        for i in range(n_pontos):
+            if i == 0:
+                posicoes_texto.append('top right')
+            elif i == n_pontos - 1:
+                posicoes_texto.append('top left')
+            else:
+                posicoes_texto.append('top center')
+
         layout_sku = dict(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#8c9ba5'),
-            margin=dict(l=70, r=70, t=50, b=10)
+            margin=dict(l=40, r=40, t=40, b=10)
         )
 
         fig_sku_linha = go.Figure()
@@ -504,7 +514,7 @@ if not df_filtrado.empty:
             name='SKUs Ativos',
             mode='lines+markers+text',
             text=textos_skus,
-            textposition='top center',
+            textposition=posicoes_texto,
             textfont=dict(color='white', size=11),
             line=dict(color='#e74c3c', width=3),
             fill='tozeroy',
