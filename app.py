@@ -470,7 +470,7 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com rótulos visíveis e posicionamento dinâmico anti-corte nas pontas)
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com grades mantidas, mas sem os números no eixo Y)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -488,7 +488,6 @@ if not df_filtrado.empty:
         textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
         max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
 
-        # Lógica inteligente: alinha as âncoras do texto para dentro nas extremidades
         n_pontos = len(df_sku_tempo)
         posicoes_texto = []
         for i in range(n_pontos):
@@ -524,9 +523,11 @@ if not df_filtrado.empty:
 
         fig_sku_linha.update_layout(**layout_sku, hovermode="x unified", showlegend=False)
         fig_sku_linha.update_xaxes(showgrid=False, zeroline=False)
-        fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15])
+        
+        # Mantém a grade de fundo, mas oculta apenas os números do eixo Y
+        fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
 
         st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False})
-
+    
 else:
     st.info("Nenhum dado encontrado para os filtros selecionados.")
