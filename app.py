@@ -125,7 +125,7 @@ def modal_filtros():
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS com Animações Fluidas, Glassmorphism e Sombra Profunda nos Gráficos
+# 4. Estilização CSS com Animações Fluidas, Glassmorphism e Sombra Real nos Gráficos e Cartões
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -206,36 +206,28 @@ st.markdown("""
         font-size: 12px;
         margin: 0;
     }
-    .card-box {
-        background-color: #161c24;
-        border: 1px solid #232b36;
-        border-radius: 8px;
-        padding: 20px;
-        height: 120px;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    }
-    .card-box:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
-        border-color: #333d4d;
-    }
     
-    /* ELEVAÇÃO PROFUNDA E IDÊNTICA PARA OS CONTAINERS DOS GRÁFICOS */
-    div[data-testid="stContainer"] {
+    /* CARTÕES E GRÁFICOS COMPARTILHANDO A MESMA ELEVAÇÃO E SOMBRA PESADA */
+    .card-box, .chart-container {
         background-color: #161c24 !important;
         border: 1px solid #232b36 !important;
         border-radius: 8px !important;
         padding: 20px !important;
-        box-shadow: 0 12px 25px rgba(0, 0, 0, 0.6), 0 5px 10px rgba(0, 0, 0, 0.4) !important;
+        box-shadow: 0 14px 28px rgba(0, 0, 0, 0.65), 0 6px 12px rgba(0, 0, 0, 0.45) !important;
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        overflow: visible !important;
     }
-    div[data-testid="stContainer"]:hover {
+    
+    .card-box {
+        height: 120px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .card-box:hover, .chart-container:hover {
         transform: translateY(-4px);
-        box-shadow: 0 18px 35px rgba(0, 0, 0, 0.85), 0 6px 18px rgba(216, 92, 39, 0.2) !important;
+        box-shadow: 0 20px 35px rgba(0, 0, 0, 0.85), 0 8px 20px rgba(216, 92, 39, 0.2) !important;
         border-color: #333d4d !important;
     }
 
@@ -379,7 +371,7 @@ with c3:
     </div>
     """, unsafe_allow_html=True)
 
-# 9. GRÁFICOS INTERATIVOS DENTRO DOS CONTAINERS COM ELEVAÇÃO REAL
+# 9. GRÁFICOS INTERATIVOS DENTRO DOS CONTAINERS HTML PERSONALIZADOS (.chart-container)
 st.markdown("<br><br>", unsafe_allow_html=True)
 
 if not df_filtrado.empty:
@@ -393,49 +385,51 @@ if not df_filtrado.empty:
     col_g1, col_g2 = st.columns([6, 4], gap="large")
     
     with col_g1:
-        with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
-            
-            df_trend = df_filtrado.copy()
-            df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
-            df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
-            
-            df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
-            df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
-            df_tempo['Periodo'] = df_tempo['mes_referencia'].astype(str) + '/' + df_tempo['ano_referencia'].astype(str)
-            
-            df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
-            
-            fig_linha = go.Figure()
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], 
-                                          name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], 
-                                          name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
-            
-            fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
-            fig_linha.update_xaxes(showgrid=False, zeroline=False)
-            fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
-            
-            st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
+        
+        df_trend = df_filtrado.copy()
+        df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
+        df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
+        
+        df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
+        df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
+        df_tempo['Periodo'] = df_tempo['mes_referencia'].astype(str) + '/' + df_tempo['ano_referencia'].astype(str)
+        
+        df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
+        
+        fig_linha = go.Figure()
+        fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], 
+                                      name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
+        fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], 
+                                      name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+        
+        fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
+        fig_linha.update_xaxes(showgrid=False, zeroline=False)
+        fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
+        
+        st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
+        st.markdown('</div>', unsafe_allow_html=True)
 
     with col_g2:
-        with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
-            
-            df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
-            df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
-            df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
-            
-            df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
-            
-            fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h', 
-                             color_discrete_sequence=['#e74c3c'], text='texto_formatado')
-            
-            fig_bar.update_layout(**layout_transparente, hovermode="y unified")
-            fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
-            fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
-            fig_bar.update_yaxes(title="", showgrid=False)
-            
-            st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+        st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
+        
+        df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+        df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
+        df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
+        
+        df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
+        
+        fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h', 
+                         color_discrete_sequence=['#e74c3c'], text='texto_formatado')
+        
+        fig_bar.update_layout(**layout_transparente, hovermode="y unified")
+        fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
+        fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
+        fig_bar.update_yaxes(title="", showgrid=False)
+        
+        st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+        st.markdown('</div>', unsafe_allow_html=True)
 else:
     st.info("Nenhum dado encontrado para os filtros selecionados.")
