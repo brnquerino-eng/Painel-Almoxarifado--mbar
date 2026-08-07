@@ -48,7 +48,6 @@ def carregar_dados():
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
-            # Reduzido para max_workers=4 para evitar o ConnectionTerminated no Supabase
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = [executor.submit(fetch_range, s, e) for s, e in ranges]
                 for future in futures:
@@ -471,7 +470,7 @@ if not df_filtrado.empty:
 
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
 
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
+    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Margens ampliadas, topo com respiro e hover em PT-BR)
     st.markdown("<br>", unsafe_allow_html=True)
     with st.container(border=True):
         st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -487,18 +486,21 @@ if not df_filtrado.empty:
         df_sku_tempo['Periodo'] = df_sku_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
 
         textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
+        max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
 
+        # Margens maiores (l=70, r=70, t=50) para evitar qualquer corte nas pontas e no topo
         layout_sku = dict(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#8c9ba5'),
-            margin=dict(l=40, r=40, t=30, b=10)
+            margin=dict(l=70, r=70, t=50, b=10)
         )
 
         fig_sku_linha = go.Figure()
         fig_sku_linha.add_trace(go.Scatter(
             x=df_sku_tempo['Periodo'],
             y=df_sku_tempo['codigo_produto'],
+            customdata=textos_skus,
             name='SKUs Ativos',
             mode='lines+markers+text',
             text=textos_skus,
@@ -507,12 +509,12 @@ if not df_filtrado.empty:
             line=dict(color='#e74c3c', width=3),
             fill='tozeroy',
             fillcolor='rgba(231, 76, 60, 0.1)',
-            hovertemplate='<b>Período:</b> %{x}<br><b>SKUs Ativos:</b> %{y:,.0f}<extra></extra>'
+            hovertemplate='<b>Período:</b> %{x}<br><b>SKUs Ativos:</b> %{customdata}<extra></extra>'
         ))
 
         fig_sku_linha.update_layout(**layout_sku, hovermode="x unified", showlegend=False)
         fig_sku_linha.update_xaxes(showgrid=False, zeroline=False)
-        fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False)
+        fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15])
 
         st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False})
 
