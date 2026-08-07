@@ -8,11 +8,15 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Inicialização dos estados
-if 'f_unidades' not in st.session_state: st.session_state.f_unidades = []
-if 'f_meses' not in st.session_state: st.session_state.f_meses = []
-if 'f_anos' not in st.session_state: st.session_state.f_anos = []
+# Inicialização dos estados para os filtros múltiplos
+if 'f_unidades' not in st.session_state:
+    st.session_state.f_unidades = []
+if 'f_meses' not in st.session_state:
+    st.session_state.f_meses = []
+if 'f_anos' not in st.session_state:
+    st.session_state.f_anos = []
 
+# 1. Conexão direta e segura com o Supabase
 @st.cache_resource
 def conectar_supabase():
     url = st.secrets["SUPABASE_URL"]
@@ -22,84 +26,417 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
+# 2. Performance Máxima e Normalização Rigorosa de Dados
 @st.cache_data()
 def carregar_dados():
-    # ... (Lógica de dados permanece idêntica)
     try:
-        res = supabase.table(table_name).select("*").execute()
-        return pd.DataFrame(res.data)
-    except: return pd.DataFrame()
+        with st.spinner("Carregando e normalizando base de dados em alta performance..."):
+            count_res = supabase.table(table_name).select("*", count="exact", head=True).execute()
+            total_rows = getattr(count_res, 'count', None)
+            
+            if not total_rows or total_rows == 0:
+                total_rows = 460000  # Fallback de segurança
+                
+            batch_size = 1000
+            ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
+            
+            all_data = []
+            
+            def fetch_range(start_r, end_r):
+                res = supabase.table(table_name).select(
+                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia"
+                ).order("id").range(start_r, end_r).execute()
+                return res.data if res.data else []
+            
+            with ThreadPoolExecutor(max_workers=15) as executor:
+                futures = [executor.submit(fetch_range, s, e) for s, e in ranges]
+                for future in futures:
+                    data = future.result()
+                    if data:
+                        all_data.extend(data)
+            
+            if not all_data:
+                return pd.DataFrame()
+                
+            df = pd.DataFrame(all_data)
+            
+            if "unidade_almoxarifado" in df.columns:
+                df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
+            
+            for col in ["mes_referencia", "ano_referencia"]:
+                if col in df.columns:
+                    def limpar_valor(val):
+                        if pd.isna(val) or val is None:
+                            return ""
+                        s_val = str(val).strip()
+                        if s_val.endswith('.0'):
+                            s_val = s_val[:-2]
+                        return s_val
+                    df[col] = df[col].apply(limpar_valor)
+                
+            return df
+    except Exception as e:
+        st.error(f"Erro ao carregar dados do Supabase: {e}")
+        return pd.DataFrame()
 
 df_completo = carregar_dados()
+
+# Opções dinâmicas limpas e ordenadas
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
+
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
 unidades_ativas = [u for u in unidades_opcoes if "GERENCIAL" not in u]
+
 mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=lambda x: str(x)) if not df_completo.empty else []
 
-@st.dialog("Filtros de Análise", width="large")
+# 3. Definição da Modal com Seleção Múltipla
+@st.dialog("Filtros de Análise - Visão Executiva", width="large")
 def modal_filtros():
-    # ... (Modal permanece igual)
-    f_ativas_sel = st.multiselect("🏢 Unidades Ativas:", unidades_ativas, default=[u for u in st.session_state.f_unidades if u in unidades_ativas])
-    f_gerenciais_sel = st.multiselect("📊 Unidades Gerenciais:", unidades_gerenciais, default=[u for u in st.session_state.f_unidades if u in unidades_gerenciais])
-    f_meses_sel = st.multiselect("Meses:", mes_opcoes, default=st.session_state.f_meses)
-    f_anos_sel = st.multiselect("Anos:", ano_opcoes, default=st.session_state.f_anos)
-    if st.button("Aplicar Filtros", type="primary"):
-        st.session_state.f_unidades = f_ativas_sel + f_gerenciais_sel
-        st.session_state.f_meses = f_meses_sel
-        st.session_state.f_anos = f_anos_sel
-        st.rerun()
+    st.markdown("<p style='color: #8c9ba5; font-size: 13px; margin-bottom: 20px;'>Selecione uma ou mais opções para consolidar os dados (deixe em branco para considerar todas):</p>", unsafe_allow_html=True)
+    
+    col_u1, col_u2 = st.columns(2)
+    
+    with col_u1:
+        default_ativas = [u for u in st.session_state.f_unidades if u in unidades_ativas]
+        f_ativas_sel = st.multiselect("🏢 Unidades Ativas:", unidades_ativas, default=default_ativas)
+        
+    with col_u2:
+        default_gerenciais = [u for u in st.session_state.f_unidades if u in unidades_gerenciais]
+        f_gerenciais_sel = st.multiselect("📊 Unidades Gerenciais:", unidades_gerenciais, default=default_gerenciais)
+    
+    f_unidades_sel = f_ativas_sel + f_gerenciais_sel
+    
+    f_meses_sel = st.multiselect("Meses de Referência:", mes_opcoes, default=st.session_state.f_meses)
+    f_anos_sel = st.multiselect("Anos de Referência:", ano_opcoes, default=st.session_state.f_anos)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("Limpar Filtros", use_container_width=True):
+            st.session_state.f_unidades = []
+            st.session_state.f_meses = []
+            st.session_state.f_anos = []
+            st.rerun()
+    with col_btn2:
+        if st.button("Aplicar Filtros", use_container_width=True, type="primary"):
+            st.session_state.f_unidades = f_unidades_sel
+            st.session_state.f_meses = f_meses_sel
+            st.session_state.f_anos = f_anos_sel
+            st.rerun()
 
-# 4. CSS FORÇADO (O PULO DO GATO)
+# 4. Estilização CSS e Elevação Forçada nos Containers
 st.markdown("""
 <style>
-    /* Estilo para os cards */
+    @keyframes smoothPageLoad {
+        0% { opacity: 0.2; transform: scale(0.98); }
+        100% { opacity: 1; transform: scale(1); }
+    }
+    .stApp {
+        background-color: #0f141c;
+        animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+    }
+    @keyframes scaleInModal {
+        0% { opacity: 0; transform: scale(0.8) translateY(-20px); }
+        100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes fadeInScrim {
+        0% { opacity: 0; backdrop-filter: blur(0px); }
+        100% { opacity: 1; backdrop-filter: blur(5px); }
+    }
+    div[role="dialog"], div[data-testid="stDialog"] {
+        animation: scaleInModal 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+        transform-origin: center center;
+    }
+    div[data-testid="stModalScrim"] {
+        background-color: rgba(15, 20, 28, 0.7) !important;
+        animation: fadeInScrim 0.6s ease-out forwards !important;
+    }
+    .stButton > button {
+        background-color: #1a222d !important;
+        color: #ffffff !important;
+        border: 1px solid #333d4d !important;
+        border-radius: 6px !important;
+        transition: all 0.3s ease;
+    }
+    .stButton > button:hover {
+        border-color: #d85c27 !important;
+        color: #d85c27 !important;
+    }
+    .header-container {
+        display: flex;
+        align-items: center;
+        border-bottom: 2px solid #d85c27;
+        padding-bottom: 12px;
+        margin-bottom: 20px;
+        gap: 20px;
+    }
+    .logo-container {
+        background-color: #ffffff;
+        padding: 6px 16px;
+        border-radius: 4px;
+        text-align: center;
+        font-family: Arial, sans-serif;
+    }
+    .logo-main {
+        color: #12161f;
+        font-weight: 900;
+        font-size: 18px;
+        line-height: 1;
+    }
+    .logo-sub {
+        color: #d85c27;
+        font-size: 9px;
+        font-weight: bold;
+        letter-spacing: 1px;
+    }
+    .title-container {
+        border-left: 1px solid #333d4d;
+        padding-left: 15px;
+    }
+    .title-main {
+        color: #ffffff;
+        font-size: 18px;
+        font-weight: bold;
+        letter-spacing: 1px;
+        margin: 0;
+    }
+    .title-sub {
+        color: #8c9ba5;
+        font-size: 12px;
+        margin: 0;
+    }
     .card-box {
         background-color: #161c24;
         border: 1px solid #232b36;
         border-radius: 8px;
         padding: 20px;
         height: 120px;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    .card-box:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
+        border-color: #333d4d;
     }
     
-    /* CSS FORÇADO PARA OS CONTAINERS COM BORDER=TRUE */
+    /* ESTILIZAÇÃO AGRESSIVA DOS CONTAINERS DOS GRÁFICOS */
     div[data-testid="stContainer"] {
         background-color: #161c24 !important;
         border: 1px solid #232b36 !important;
         border-radius: 8px !important;
         padding: 20px !important;
-        /* Sombra pesada para criar elevação */
         box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8) !important;
-        /* Libera a sombra que estava sendo cortada */
         overflow: visible !important;
-        margin-bottom: 20px !important;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    }
+    div[data-testid="stContainer"]:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 20px 35px rgba(0, 0, 0, 0.85), 0 8px 20px rgba(216, 92, 39, 0.2) !important;
+        border-color: #333d4d !important;
+    }
+
+    .card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .icon-box {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+    }
+    .icon-estoque { background-color: #132a24; color: #2ecc71; }
+    .icon-compras { background-color: #2a2211; color: #f39c12; }
+    .icon-consumo { background-color: #2a1515; color: #e74c3c; }
+    .card-title {
+        color: #8c9ba5;
+        font-size: 12px;
+        font-weight: bold;
+        letter-spacing: 0.5px;
+    }
+    .card-value {
+        color: #ffffff;
+        font-size: 26px;
+        font-weight: bold;
+        text-align: center;
+        font-family: monospace;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ... (Renderização Cabeçalho e Cards permanece igual)
-st.markdown("### Visão Geral")
+# 5. Renderização do Cabeçalho com o Botão de Filtro
 col_header, col_btn = st.columns([5, 1])
-if col_btn.button("⚙️ Filtros"): modal_filtros()
 
-# 9. GRÁFICOS (USANDO CONTAINER NATIVO FORÇADO)
+with col_header:
+    st.markdown(f"""
+    <div class="header-container">
+        <div class="logo-container">
+            <div class="logo-main">Âmbar</div>
+            <div class="logo-sub">ENERGIA</div>
+        </div>
+        <div class="title-container">
+            <div class="title-main">VISÃO EXECUTIVA DE ESTOQUE</div>
+            <div class="title-sub">Valores Consolidados</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col_btn:
+    st.markdown("<br>", unsafe_allow_html=True)
+    filtro_ativo = bool(st.session_state.f_unidades or st.session_state.f_meses or st.session_state.f_anos)
+    label_botao = "⚙️ Filtros (Ativo)" if filtro_ativo else "⚙️ Filtros"
+    
+    if st.button(label_botao, use_container_width=True):
+        modal_filtros()
+
+# 5.1 Renderização do Resumo Inteligente de Quantidades
+f_unidades_atuais = st.session_state.get('f_unidades', [])
+
+if not f_unidades_atuais:
+    texto_informativo = "Exibindo dados consolidados de **todas as unidades** (Ativas e Gerenciais)."
+else:
+    sel_ativas = [u for u in f_unidades_atuais if u in unidades_ativas]
+    sel_gerenciais = [u for u in f_unidades_atuais if u in unidades_gerenciais]
+    
+    partes = []
+    if sel_ativas:
+        partes.append(f"**{len(sel_ativas)} unidade(s) ativa(s)**")
+    if sel_gerenciais:
+        partes.append(f"**{len(sel_gerenciais)} gerencial(is)**")
+        
+    texto_informativo = "Exibindo dados de " + " e ".join(partes) + "."
+
+st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
+
+# 6. Filtragem Rigorosa e Precisa com base nas listas selecionadas
+df_filtrado = df_completo.copy()
+
+if st.session_state.f_unidades:
+    df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"].isin(st.session_state.f_unidades)]
+if st.session_state.f_meses:
+    df_filtrado = df_filtrado[df_filtrado["mes_referencia"].isin(st.session_state.f_meses)]
+if st.session_state.f_anos:
+    df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
+
+# 7. Somas Dinâmicas
+def somar_coluna(dataframe, coluna):
+    if coluna not in dataframe.columns or dataframe.empty:
+        return 0.0
+    return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
+
+val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
+val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
+val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
+
+def fmt_brl(val):
+    return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+# 8. Cards Executivos
+c1, c2 = st.columns(2)
+
+with c1:
+    st.markdown(f"""
+    <div class="card-box">
+        <div class="card-header">
+            <div class="icon-box icon-estoque">📦</div>
+            <div class="card-title">VALOR TOTAL EM ESTOQUE</div>
+        </div>
+        <div class="card-value">{fmt_brl(val_estoque)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with c2:
+    st.markdown(f"""
+    <div class="card-box">
+        <div class="card-header">
+            <div class="icon-box icon-compras">🛒</div>
+            <div class="card-title">VALOR TOTAL DE COMPRA</div>
+        </div>
+        <div class="card-value">{fmt_brl(val_compras)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
 st.markdown("<br>", unsafe_allow_html=True)
-if not df_completo.empty:
+
+c3, _ = st.columns(2)
+
+with c3:
+    st.markdown(f"""
+    <div class="card-box">
+        <div class="card-header">
+            <div class="icon-box icon-consumo">📉</div>
+            <div class="card-title">VALOR TOTAL DE CONSUMO</div>
+        </div>
+        <div class="card-value">{fmt_brl(val_consumo)}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+# 9. GRÁFICOS INTERATIVOS DENTRO DOS CONTAINERS NATIVOS COM ELEVAÇÃO
+st.markdown("<br><br>", unsafe_allow_html=True)
+
+if not df_filtrado.empty:
+    layout_transparente = dict(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#8c9ba5'),
+        margin=dict(l=10, r=10, t=10, b=10)
+    )
+
     col_g1, col_g2 = st.columns([6, 4], gap="large")
     
     with col_g1:
-        # Usamos o container nativo, mas o CSS acima vai "hackear" a aparência dele
         with st.container(border=True):
-            st.markdown("📈 EVOLUÇÃO: COMPRAS VS CONSUMO")
-            # ... (Lógica do gráfico permanece igual)
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
+            
+            df_trend = df_filtrado.copy()
+            df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
+            df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
+            
+            df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
+            df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
+            df_tempo['Periodo'] = df_tempo['mes_referencia'].astype(str) + '/' + df_tempo['ano_referencia'].astype(str)
+            
+            df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
+            
             fig_linha = go.Figure()
-            # [Lógica do Plotly]
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], 
+                                          name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], 
+                                          name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+            
+            fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
+            fig_linha.update_xaxes(showgrid=False, zeroline=False)
+            fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
+            
             st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
 
     with col_g2:
         with st.container(border=True):
-            st.markdown("🏆 TOP 10: MAIOR VALOR EM ESTOQUE")
-            # ... (Lógica do gráfico permanece igual)
-            fig_bar = px.bar(...)
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
+            
+            df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+            df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
+            df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
+            
+            df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
+            
+            fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h', 
+                             color_discrete_sequence=['#e74c3c'], text='texto_formatado')
+            
+            fig_bar.update_layout(**layout_transparente, hovermode="y unified")
+            fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
+            fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
+            fig_bar.update_yaxes(title="", showgrid=False)
+            
             st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+else:
+    st.info("Nenhum dado encontrado para os filtros selecionados.")
