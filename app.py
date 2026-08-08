@@ -571,7 +571,7 @@ with aba_detalhada:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 20px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
     
     if not df_filtrado.empty:
-        # Gráfico de Barras: Valor Total em Estoque por Mês/Ano
+        # Gráfico de Barras: Valor Total em Estoque por Mês/Ano (Padronizado igual ao Top 10)
         df_estoque_trend = df_filtrado.copy()
         df_estoque_trend['ano_num'] = pd.to_numeric(df_estoque_trend['ano_referencia'], errors='coerce').fillna(0)
         df_estoque_trend['mes_num'] = pd.to_numeric(df_estoque_trend['mes_referencia'], errors='coerce').fillna(0)
@@ -580,7 +580,6 @@ with aba_detalhada:
         df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
         df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
 
-        # Formatação das barras em Milhões ou Bilhões para leitura limpa
         def fmt_valor_milhoes(val):
             if val >= 1e9:
                 return f"R$ {val/1e9:.2f}B".replace('.', ',')
@@ -603,10 +602,15 @@ with aba_detalhada:
             x='Periodo',
             y='valor_saldo_atual',
             text='texto_barra',
-            color_discrete_sequence=['#2ecc71']
+            color_discrete_sequence=['#e74c3c']
+        )
+        # Adicionando contorno/borda nas barras igualzinho ao Top 10
+        fig_bar_estoque.update_traces(
+            textposition='auto', 
+            textfont=dict(color='white'),
+            marker=dict(line=dict(color='#ff6b5b', width=1.5))
         )
         fig_bar_estoque.update_layout(**layout_barra_estoque, hovermode="x unified", showlegend=False)
-        fig_bar_estoque.update_traces(textposition='auto', textfont=dict(color='white'))
         fig_bar_estoque.update_xaxes(showgrid=False, zeroline=False)
         fig_bar_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
 
