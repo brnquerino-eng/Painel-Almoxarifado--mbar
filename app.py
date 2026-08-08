@@ -571,7 +571,7 @@ with aba_detalhada:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 20px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
     
     if not df_filtrado.empty:
-        # Gráfico de Barras: Valor Total em Estoque por Mês/Ano (Padronizado igual ao Top 10)
+        # Gráfico de Barras: Valor Total em Estoque por Mês/Ano (Com colunas mais finas, bordas e sem títulos/números poluindo)
         df_estoque_trend = df_filtrado.copy()
         df_estoque_trend['ano_num'] = pd.to_numeric(df_estoque_trend['ano_referencia'], errors='coerce').fillna(0)
         df_estoque_trend['mes_num'] = pd.to_numeric(df_estoque_trend['mes_referencia'], errors='coerce').fillna(0)
@@ -580,15 +580,11 @@ with aba_detalhada:
         df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
         df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
 
-        def fmt_valor_milhoes(val):
-            if val >= 1e9:
-                return f"R$ {val/1e9:.2f}B".replace('.', ',')
-            elif val >= 1e6:
-                return f"R$ {val/1e6:.1f}M".replace('.', ',')
-            else:
-                return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        # Customdata para exibir o valor formatado bonitinho no hover
+        def fmt_hover_brl(val):
+            return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-        df_estoque_mes['texto_barra'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+        df_estoque_mes['hover_valor'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
         layout_barra_estoque = dict(
             plot_bgcolor='rgba(0,0,0,0)',
@@ -597,22 +593,21 @@ with aba_detalhada:
             margin=dict(l=40, r=40, t=40, b=10)
         )
 
-        fig_bar_estoque = px.bar(
-            df_estoque_mes,
-            x='Periodo',
-            y='valor_saldo_atual',
-            text='texto_barra',
-            color_discrete_sequence=['#e74c3c']
-        )
-        # Adicionando contorno/borda nas barras igualzinho ao Top 10
-        fig_bar_estoque.update_traces(
-            textposition='auto', 
-            textfont=dict(color='white'),
-            marker=dict(line=dict(color='#ff6b5b', width=1.5))
-        )
+        fig_bar_estoque = go.Figure(go.Bar(
+            x=df_estoque_mes['Periodo'],
+            y=df_estoque_mes['valor_saldo_atual'],
+            customdata=df_estoque_mes['hover_valor'],
+            marker=dict(
+                color='#e74c3c',
+                line=dict(color='#ff6b5b', width=2)  # Borda clara e elegante nas barras
+            ),
+            width=0.45,  # Colunas mais finas e elegantes
+            hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
+        ))
+
         fig_bar_estoque.update_layout(**layout_barra_estoque, hovermode="x unified", showlegend=False)
-        fig_bar_estoque.update_xaxes(showgrid=False, zeroline=False)
-        fig_bar_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
+        fig_bar_estoque.update_xaxes(title="", showgrid=False, zeroline=False)  # Remove o nome "Periodo"
+        fig_bar_estoque.update_yaxes(title="", showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")  # Remove o nome "valor_saldo_atual"
 
         st.plotly_chart(fig_bar_estoque, use_container_width=True, config={'displayModeBar': False})
 
