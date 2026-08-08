@@ -97,7 +97,27 @@ def _chave_numerica(val):
     except (ValueError, TypeError):
         return (1, str(val))
 
-mes_opcoes = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
+# Dicionário de Mapeamento de Meses para Exibição Executiva
+dict_meses_nome = {
+    "1": "01 - Janeiro", "01": "01 - Janeiro",
+    "2": "02 - Fevereiro", "02": "02 - Fevereiro",
+    "3": "03 - Março", "03": "03 - Março",
+    "4": "04 - Abril", "04": "04 - Abril",
+    "5": "05 - Maio", "05": "05 - Maio",
+    "6": "06 - Junho", "06": "06 - Junho",
+    "7": "07 - Julho", "07": "07 - Julho",
+    "8": "08 - Agosto", "08": "08 - Agosto",
+    "9": "09 - Setembro", "09": "09 - Setembro",
+    "10": "10 - Outubro", "10": "10 - Outubro",
+    "11": "11 - Novembro", "11": "11 - Novembro",
+    "12": "12 - Dezembro", "12": "12 - Dezembro"
+}
+
+raw_meses = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
+map_raw_para_fmt = {m: dict_meses_nome.get(str(m).strip(), f"{str(m).strip().zfill(2)} - Mês {m}") for m in raw_meses}
+map_fmt_para_raw = {v: k for k, v in map_raw_para_fmt.items()}
+meses_opcoes_formatadas = list(map_raw_para_fmt.values())
+
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
 # 3. Definição da Modal com Seleção Múltipla
@@ -117,7 +137,10 @@ def modal_filtros():
 
     f_unidades_sel = f_ativas_sel + f_gerenciais_sel
 
-    f_meses_sel = st.multiselect("Meses de Referência:", mes_opcoes, default=st.session_state.f_meses)
+    # Conversão dos meses salvos no state para o formato legível na modal
+    default_meses_fmt = [map_raw_para_fmt[m] for m in st.session_state.f_meses if m in map_raw_para_fmt]
+    f_meses_sel_fmt = st.multiselect("Meses de Referência:", meses_opcoes_formatadas, default=default_meses_fmt)
+
     f_anos_sel = st.multiselect("Anos de Referência:", ano_opcoes, default=st.session_state.f_anos)
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -131,7 +154,8 @@ def modal_filtros():
     with col_btn2:
         if st.button("Aplicar Filtros", use_container_width=True, type="primary"):
             st.session_state.f_unidades = f_unidades_sel
-            st.session_state.f_meses = f_meses_sel
+            # Converte os meses formatados selecionados de volta para os códigos brutos do banco
+            st.session_state.f_meses = [map_fmt_para_raw[f] for f in f_meses_sel_fmt]
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
@@ -489,7 +513,6 @@ if not df_filtrado.empty:
         max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
         n_pontos = len(df_sku_tempo)
 
-        # Cálculo do valor consolidado exclusivo do gráfico (ex: Total de SKUs únicos da seleção atual)
         total_skus_grafico = df_sku_trend['codigo_produto'].nunique()
         total_formatado = f"{total_skus_grafico:,}".replace(',', '.')
 
@@ -498,7 +521,6 @@ if not df_filtrado.empty:
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#8c9ba5'),
             margin=dict(l=40, r=40, t=50, b=10),
-            # Inserção da anotação flutuante estilo BI corporativo no canto superior direito
             annotations=[
                 dict(
                     x=1.0,
