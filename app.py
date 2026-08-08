@@ -384,10 +384,10 @@ def fmt_int(val):
 # ==========================================
 # 8. SISTEMA DE ABAS NATIVO
 # ==========================================
-aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas (Tabela Dinâmica)"])
+aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # 8.1 Cards Executivos (Estrutura 2x2 perfeitamente simétrica)
+    # 8.1 Cards Executivos
     c1, c2 = st.columns(2)
 
     with c1:
@@ -568,10 +568,54 @@ with aba_geral:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
 
 with aba_detalhada:
-    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
+    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 20px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
     
     if not df_filtrado.empty:
-        # Tabela dinâmica agrupada por unidade com base nos filtros atuais
+        # Gráfico de Barras: Valor Total em Estoque por Mês/Ano
+        df_estoque_trend = df_filtrado.copy()
+        df_estoque_trend['ano_num'] = pd.to_numeric(df_estoque_trend['ano_referencia'], errors='coerce').fillna(0)
+        df_estoque_trend['mes_num'] = pd.to_numeric(df_estoque_trend['mes_referencia'], errors='coerce').fillna(0)
+
+        df_estoque_mes = df_estoque_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
+        df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
+        df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
+
+        # Formatação das barras em Milhões ou Bilhões para leitura limpa
+        def fmt_valor_milhoes(val):
+            if val >= 1e9:
+                return f"R$ {val/1e9:.2f}B".replace('.', ',')
+            elif val >= 1e6:
+                return f"R$ {val/1e6:.1f}M".replace('.', ',')
+            else:
+                return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+        df_estoque_mes['texto_barra'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+
+        layout_barra_estoque = dict(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#8c9ba5'),
+            margin=dict(l=40, r=40, t=40, b=10)
+        )
+
+        fig_bar_estoque = px.bar(
+            df_estoque_mes,
+            x='Periodo',
+            y='valor_saldo_atual',
+            text='texto_barra',
+            color_discrete_sequence=['#2ecc71']
+        )
+        fig_bar_estoque.update_layout(**layout_barra_estoque, hovermode="x unified", showlegend=False)
+        fig_bar_estoque.update_traces(textposition='auto', textfont=dict(color='white'))
+        fig_bar_estoque.update_xaxes(showgrid=False, zeroline=False)
+        fig_bar_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
+
+        st.plotly_chart(fig_bar_estoque, use_container_width=True, config={'displayModeBar': False})
+
+        st.markdown("<br><hr style='border-color: #232b36;'><br>", unsafe_allow_html=True)
+        st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
+        
+        # Tabela Dinâmica por Unidade
         df_tabela = df_filtrado.groupby('unidade_almoxarifado').agg(
             Valor_Estoque=('valor_saldo_atual', 'sum'),
             Valor_Compras=('valor_entrada_compras', 'sum'),
@@ -581,7 +625,6 @@ with aba_detalhada:
 
         df_tabela = df_tabela.sort_values(by='Valor_Estoque', ascending=False)
 
-        # Formatando as colunas para padrão monetário e numérico limpo
         df_exibicao = pd.DataFrame()
         df_exibicao['Unidade de Almoxarifado'] = df_tabela['unidade_almoxarifado']
         df_exibicao['Valor em Estoque'] = df_tabela['Valor_Estoque'].apply(fmt_brl)
