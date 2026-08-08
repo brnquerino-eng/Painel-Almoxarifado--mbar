@@ -137,7 +137,6 @@ def modal_filtros():
 
     f_unidades_sel = f_ativas_sel + f_gerenciais_sel
 
-    # Conversão dos meses salvos no state para o formato legível na modal
     default_meses_fmt = [map_raw_para_fmt[m] for m in st.session_state.f_meses if m in map_raw_para_fmt]
     f_meses_sel_fmt = st.multiselect("Meses de Referência:", meses_opcoes_formatadas, default=default_meses_fmt)
 
@@ -154,12 +153,11 @@ def modal_filtros():
     with col_btn2:
         if st.button("Aplicar Filtros", use_container_width=True, type="primary"):
             st.session_state.f_unidades = f_unidades_sel
-            # Converte os meses formatados selecionados de volta para os códigos brutos do banco
             st.session_state.f_meses = [map_fmt_para_raw[f] for f in f_meses_sel_fmt]
             st.session_state.f_anos = f_anos_sel
             st.rerun()
 
-# 4. Estilização CSS
+# 4. Estilização CSS Avançada
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -271,7 +269,6 @@ st.markdown("""
         box-shadow: 0 20px 35px rgba(0, 0, 0, 0.85), 0 8px 20px rgba(216, 92, 39, 0.2) !important;
         border-color: #333d4d !important;
     }
-
     .card-header {
         display: flex;
         align-items: center;
@@ -384,182 +381,192 @@ def fmt_brl(val):
 def fmt_int(val):
     return f"{val:,}".replace(',', '.')
 
-# 8. Cards Executivos (Estrutura 2x2 perfeitamente simétrica)
-c1, c2 = st.columns(2)
+# ==========================================
+# 8. SISTEMA DE ABAS NATIVO (Escalabilidade)
+# ==========================================
+aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas (Em Breve)"])
 
-with c1:
-    st.markdown(f"""
-    <div class="card-box">
-        <div class="card-header">
-            <div class="icon-box icon-estoque">📦</div>
-            <div class="card-title">VALOR TOTAL EM ESTOQUE</div>
+with aba_geral:
+    # 8.1 Cards Executivos (Estrutura 2x2 perfeitamente simétrica)
+    c1, c2 = st.columns(2)
+
+    with c1:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-estoque">📦</div>
+                <div class="card-title">VALOR TOTAL EM ESTOQUE</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_estoque)}</div>
         </div>
-        <div class="card-value">{fmt_brl(val_estoque)}</div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-with c2:
-    st.markdown(f"""
-    <div class="card-box">
-        <div class="card-header">
-            <div class="icon-box icon-compras">🛒</div>
-            <div class="card-title">VALOR TOTAL DE COMPRA</div>
+    with c2:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-compras">🛒</div>
+                <div class="card-title">VALOR TOTAL DE COMPRA</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_compras)}</div>
         </div>
-        <div class="card-value">{fmt_brl(val_compras)}</div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-st.markdown("<br>", unsafe_allow_html=True)
-
-c3, c4 = st.columns(2)
-
-with c3:
-    st.markdown(f"""
-    <div class="card-box">
-        <div class="card-header">
-            <div class="icon-box icon-consumo">📉</div>
-            <div class="card-title">VALOR TOTAL DE CONSUMO</div>
-        </div>
-        <div class="card-value">{fmt_brl(val_consumo)}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-with c4:
-    st.markdown(f"""
-    <div class="card-box">
-        <div class="card-header">
-            <div class="icon-box icon-skus">🏷️</div>
-            <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
-        </div>
-        <div class="card-value">{fmt_int(val_skus)}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-# 9. GRÁFICOS INTERATIVOS
-st.markdown("<br><br>", unsafe_allow_html=True)
-
-if not df_filtrado.empty:
-    layout_transparente = dict(
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color='#8c9ba5'),
-        margin=dict(l=10, r=10, t=10, b=10)
-    )
-
-    col_g1, col_g2 = st.columns([6, 4], gap="large")
-
-    with col_g1:
-        with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
-
-            df_trend = df_filtrado.copy()
-            df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
-            df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
-
-            df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
-            df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
-            df_tempo['Periodo'] = df_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
-
-            df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
-
-            fig_linha = go.Figure()
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'],
-                                          name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
-                                          name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
-
-            fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
-            fig_linha.update_xaxes(showgrid=False, zeroline=False)
-            fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
-
-            st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
-
-    with col_g2:
-        with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
-
-            df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
-            df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
-            df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
-
-            df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
-
-            fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h',
-                             color_discrete_sequence=['#e74c3c'], text='texto_formatado')
-
-            fig_bar.update_layout(**layout_transparente, hovermode="y unified")
-            fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
-            fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
-            fig_bar.update_yaxes(title="", showgrid=False)
-
-            st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
-
-    # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (Com Indicador Consolidado Flutuante no Canto Superior Direito)
     st.markdown("<br>", unsafe_allow_html=True)
-    with st.container(border=True):
-        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
 
-        df_sku_trend = df_filtrado[
-            (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
-        ].copy()
-        df_sku_trend['ano_num'] = pd.to_numeric(df_sku_trend['ano_referencia'], errors='coerce').fillna(0)
-        df_sku_trend['mes_num'] = pd.to_numeric(df_sku_trend['mes_referencia'], errors='coerce').fillna(0)
+    c3, c4 = st.columns(2)
 
-        df_sku_tempo = df_sku_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['codigo_produto'].nunique().reset_index()
-        df_sku_tempo = df_sku_tempo.sort_values(['ano_num', 'mes_num'])
-        df_sku_tempo['Periodo'] = df_sku_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
+    with c3:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-consumo">📉</div>
+                <div class="card-title">VALOR TOTAL DE CONSUMO</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_consumo)}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
-        max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
-        n_pontos = len(df_sku_tempo)
+    with c4:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-skus">🏷️</div>
+                <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
+            </div>
+            <div class="card-value">{fmt_int(val_skus)}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-        total_skus_grafico = df_sku_trend['codigo_produto'].nunique()
-        total_formatado = f"{total_skus_grafico:,}".replace(',', '.')
+    # 9. GRÁFICOS INTERATIVOS
+    st.markdown("<br><br>", unsafe_allow_html=True)
 
-        layout_sku = dict(
+    if not df_filtrado.empty:
+        layout_transparente = dict(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#8c9ba5'),
-            margin=dict(l=40, r=40, t=50, b=10),
-            annotations=[
-                dict(
-                    x=1.0,
-                    y=1.12,
-                    xref="paper",
-                    yref="paper",
-                    text=f"<b>Total Período:</b> {total_formatado}",
-                    showarrow=False,
-                    font=dict(color="#ffffff", size=12, family="monospace"),
-                    bgcolor="#1a222d",
-                    bordercolor="#333d4d",
-                    borderwidth=1,
-                    borderpad=6,
-                    align="right"
-                )
-            ]
+            margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        fig_sku_linha = go.Figure()
-        fig_sku_linha.add_trace(go.Scatter(
-            x=df_sku_tempo['Periodo'],
-            y=df_sku_tempo['codigo_produto'],
-            customdata=textos_skus,
-            name='SKUs Ativos',
-            mode='lines+markers+text',
-            text=textos_skus,
-            textposition='top center',
-            textfont=dict(color='white', size=11),
-            line=dict(color='#e74c3c', width=3),
-            fill='tozeroy',
-            fillcolor='rgba(231, 76, 60, 0.1)',
-            hovertemplate='<b>Período:</b> %{x}<br><b>SKUs Ativos:</b> %{customdata}<extra></extra>'
-        ))
+        col_g1, col_g2 = st.columns([6, 4], gap="large")
 
-        fig_sku_linha.update_layout(**layout_sku, hovermode="x unified", showlegend=False)
-        fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos - 0.2])
-        fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
+        with col_g1:
+            with st.container(border=True):
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
 
-        st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False})
+                df_trend = df_filtrado.copy()
+                df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
+                df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
 
-else:
-    st.info("Nenhum dado encontrado para os filtros selecionados.")
+                df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
+                df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
+                df_tempo['Periodo'] = df_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
+
+                df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
+
+                fig_linha = go.Figure()
+                fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'],
+                                              name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
+                fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
+                                              name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+
+                fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
+                fig_linha.update_xaxes(showgrid=False, zeroline=False)
+                fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
+
+                st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
+
+        with col_g2:
+            with st.container(border=True):
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
+
+                df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+                df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
+                df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
+
+                df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
+
+                fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h',
+                                 color_discrete_sequence=['#e74c3c'], text='texto_formatado')
+
+                fig_bar.update_layout(**layout_transparente, hovermode="y unified")
+                fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
+                fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
+                fig_bar.update_yaxes(title="", showgrid=False)
+
+                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+
+        # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
+
+            df_sku_trend = df_filtrado[
+                (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
+            ].copy()
+            df_sku_trend['ano_num'] = pd.to_numeric(df_sku_trend['ano_referencia'], errors='coerce').fillna(0)
+            df_sku_trend['mes_num'] = pd.to_numeric(df_sku_trend['mes_referencia'], errors='coerce').fillna(0)
+
+            df_sku_tempo = df_sku_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['codigo_produto'].nunique().reset_index()
+            df_sku_tempo = df_sku_tempo.sort_values(['ano_num', 'mes_num'])
+            df_sku_tempo['Periodo'] = df_sku_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
+
+            textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
+            max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
+            n_pontos = len(df_sku_tempo)
+
+            total_skus_grafico = df_sku_trend['codigo_produto'].nunique()
+            total_formatado = f"{total_skus_grafico:,}".replace(',', '.')
+
+            layout_sku = dict(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#8c9ba5'),
+                margin=dict(l=40, r=40, t=50, b=10),
+                annotations=[
+                    dict(
+                        x=1.0,
+                        y=1.12,
+                        xref="paper",
+                        yref="paper",
+                        text=f"<b>Total Período:</b> {total_formatado}",
+                        showarrow=False,
+                        font=dict(color="#ffffff", size=12, family="monospace"),
+                        bgcolor="#1a222d",
+                        bordercolor="#333d4d",
+                        borderwidth=1,
+                        borderpad=6,
+                        align="right"
+                    )
+                ]
+            )
+
+            fig_sku_linha = go.Figure()
+            fig_sku_linha.add_trace(go.Scatter(
+                x=df_sku_tempo['Periodo'],
+                y=df_sku_tempo['codigo_produto'],
+                customdata=textos_skus,
+                name='SKUs Ativos',
+                mode='lines+markers+text',
+                text=textos_skus,
+                textposition='top center',
+                textfont=dict(color='white', size=11),
+                line=dict(color='#e74c3c', width=3),
+                fill='tozeroy',
+                fillcolor='rgba(231, 76, 60, 0.1)',
+                hovertemplate='<b>Período:</b> %{x}<br><b>SKUs Ativos:</b> %{customdata}<extra></extra>'
+            ))
+
+            fig_sku_linha.update_layout(**layout_sku, hovermode="x unified", showlegend=False)
+            fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos - 0.2])
+            fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
+
+            st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False})
+
+    else:
+        st.info("Nenhum dado encontrado para os filtros selecionados.")
+
+with aba_detalhada:
+    st.markdown("### 🔍 Área Reservada para Futuras Análises")
+    st.info("Esta aba está pronta e aguardando as novas métricas e visões detalhadas que vamos criar juntos conforme o projeto avançar!")
