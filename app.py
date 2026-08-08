@@ -382,9 +382,9 @@ def fmt_int(val):
     return f"{val:,}".replace(',', '.')
 
 # ==========================================
-# 8. SISTEMA DE ABAS NATIVO (Escalabilidade)
+# 8. SISTEMA DE ABAS NATIVO
 # ==========================================
-aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas (Em Breve)"])
+aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas (Tabela Dinâmica)"])
 
 with aba_geral:
     # 8.1 Cards Executivos (Estrutura 2x2 perfeitamente simétrica)
@@ -568,5 +568,31 @@ with aba_geral:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
 
 with aba_detalhada:
-    st.markdown("### 🔍 Área Reservada para Futuras Análises")
-    st.info("Esta aba está pronta e aguardando as novas métricas e visões detalhadas que vamos criar juntos conforme o projeto avançar!")
+    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
+    
+    if not df_filtrado.empty:
+        # Tabela dinâmica agrupada por unidade com base nos filtros atuais
+        df_tabela = df_filtrado.groupby('unidade_almoxarifado').agg(
+            Valor_Estoque=('valor_saldo_atual', 'sum'),
+            Valor_Compras=('valor_entrada_compras', 'sum'),
+            Valor_Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum()),
+            SKUs_Ativos=('codigo_produto', lambda x: x[df_filtrado.loc[x.index, 'qtde_saldo_atual'] > 0].nunique())
+        ).reset_index()
+
+        df_tabela = df_tabela.sort_values(by='Valor_Estoque', ascending=False)
+
+        # Formatando as colunas para padrão monetário e numérico limpo
+        df_exibicao = pd.DataFrame()
+        df_exibicao['Unidade de Almoxarifado'] = df_tabela['unidade_almoxarifado']
+        df_exibicao['Valor em Estoque'] = df_tabela['Valor_Estoque'].apply(fmt_brl)
+        df_exibicao['Valor de Compras'] = df_tabela['Valor_Compras'].apply(fmt_brl)
+        df_exibicao['Valor de Consumo'] = df_tabela['Valor_Consumo'].apply(fmt_brl)
+        df_exibicao['SKUs Ativos'] = df_tabela['SKUs_Ativos'].apply(fmt_int)
+
+        st.dataframe(
+            df_exibicao,
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("Nenhum dado encontrado para os filtros selecionados.")
