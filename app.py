@@ -568,70 +568,71 @@ with aba_geral:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
 
 with aba_detalhada:
-    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 20px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
-    
     if not df_filtrado.empty:
-        # Tendência de Estoque em Gráfico de Linha com Rótulos e Bordas nas Bolinhas
-        df_estoque_trend = df_filtrado.copy()
-        df_estoque_trend['ano_num'] = pd.to_numeric(df_estoque_trend['ano_referencia'], errors='coerce').fillna(0)
-        df_estoque_trend['mes_num'] = pd.to_numeric(df_estoque_trend['mes_referencia'], errors='coerce').fillna(0)
+        # Gráfico de Tendência de Estoque envelopado em container com efeito de relevo/cartão
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
 
-        df_estoque_mes = df_estoque_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
-        df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
-        df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
+            df_estoque_trend = df_filtrado.copy()
+            df_estoque_trend['ano_num'] = pd.to_numeric(df_estoque_trend['ano_referencia'], errors='coerce').fillna(0)
+            df_estoque_trend['mes_num'] = pd.to_numeric(df_estoque_trend['mes_referencia'], errors='coerce').fillna(0)
 
-        def fmt_valor_milhoes(val):
-            if val >= 1e9:
-                return f"R$ {val/1e9:.1f}B".replace('.', ',')
-            elif val >= 1e6:
-                return f"R$ {val/1e6:.1f}M".replace('.', ',')
-            else:
+            df_estoque_mes = df_estoque_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
+            df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
+            df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
+
+            def fmt_valor_milhoes(val):
+                if val >= 1e9:
+                    return f"R$ {val/1e9:.1f}B".replace('.', ',')
+                elif val >= 1e6:
+                    return f"R$ {val/1e6:.1f}M".replace('.', ',')
+                else:
+                    return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+            df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+
+            def fmt_hover_brl(val):
                 return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-        df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+            df_estoque_mes['hover_valor'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+            max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
+            n_pontos_est = len(df_estoque_mes)
 
-        def fmt_hover_brl(val):
-            return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            layout_linha_estoque = dict(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#8c9ba5'),
+                margin=dict(l=10, r=10, t=10, b=10)
+            )
 
-        df_estoque_mes['hover_valor'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_hover_brl)
-        max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
-        n_pontos_est = len(df_estoque_mes)
+            fig_linha_estoque = go.Figure()
+            fig_linha_estoque.add_trace(go.Scatter(
+                x=df_estoque_mes['Periodo'],
+                y=df_estoque_mes['valor_saldo_atual'],
+                customdata=df_estoque_mes['hover_valor'],
+                name='Estoque Total',
+                mode='lines+markers+text',
+                text=df_estoque_mes['texto_labels'],
+                textposition='top center',
+                textfont=dict(color='white', size=11),
+                line=dict(color='#e74c3c', width=3),
+                marker=dict(
+                    size=8,
+                    color='#e74c3c',
+                    line=dict(color='#ffffff', width=2)
+                ),
+                fill='tozeroy',
+                fillcolor='rgba(231, 76, 60, 0.1)',
+                hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
+            ))
 
-        layout_linha_estoque = dict(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='#8c9ba5'),
-            margin=dict(l=40, r=40, t=30, b=10)
-        )
+            fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=False)
+            fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
+            fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
 
-        fig_linha_estoque = go.Figure()
-        fig_linha_estoque.add_trace(go.Scatter(
-            x=df_estoque_mes['Periodo'],
-            y=df_estoque_mes['valor_saldo_atual'],
-            customdata=df_estoque_mes['hover_valor'],
-            name='Estoque Total',
-            mode='lines+markers+text',
-            text=df_estoque_mes['texto_labels'],
-            textposition='top center',
-            textfont=dict(color='white', size=11),
-            line=dict(color='#e74c3c', width=3),
-            marker=dict(
-                size=8,
-                color='#e74c3c',
-                line=dict(color='#ffffff', width=2)  # Borda branca elegante nas bolinhas
-            ),
-            fill='tozeroy',
-            fillcolor='rgba(231, 76, 60, 0.1)',
-            hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
-        ))
+            st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False})
 
-        fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=False)
-        fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-        fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
-
-        st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False})
-
-        st.markdown("<br><hr style='border-color: #232b36;'><br>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
         
         # Tabela Dinâmica por Unidade
