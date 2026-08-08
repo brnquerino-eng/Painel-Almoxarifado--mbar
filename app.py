@@ -571,7 +571,7 @@ with aba_detalhada:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 20px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
     
     if not df_filtrado.empty:
-        # Tendência de Estoque em Gráfico de Linha com Área Preenchida (Padronizado idêntico ao gráfico de SKUs)
+        # Tendência de Estoque em Gráfico de Linha com Rótulos de Valores Acima das Bolinhas
         df_estoque_trend = df_filtrado.copy()
         df_estoque_trend['ano_num'] = pd.to_numeric(df_estoque_trend['ano_referencia'], errors='coerce').fillna(0)
         df_estoque_trend['mes_num'] = pd.to_numeric(df_estoque_trend['mes_referencia'], errors='coerce').fillna(0)
@@ -580,7 +580,18 @@ with aba_detalhada:
         df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
         df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
 
-        # Valores formatados para o hover em Reais (R$)
+        # Formatação abreviada para os rótulos acima das bolinhas (ex: R$ 506,5M)
+        def fmt_valor_milhoes(val):
+            if val >= 1e9:
+                return f"R$ {val/1e9:.1f}B".replace('.', ',')
+            elif val >= 1e6:
+                return f"R$ {val/1e6:.1f}M".replace('.', ',')
+            else:
+                return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+        df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+
+        # Formatação completa para o hover em Reais (R$)
         def fmt_hover_brl(val):
             return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
@@ -621,7 +632,10 @@ with aba_detalhada:
             y=df_estoque_mes['valor_saldo_atual'],
             customdata=df_estoque_mes['hover_valor'],
             name='Estoque Total',
-            mode='lines+markers',  # Limpo, sem poluição de números fixos
+            mode='lines+markers+text',  # Adiciona os rótulos de texto acima das bolinhas
+            text=df_estoque_mes['texto_labels'],
+            textposition='top center',
+            textfont=dict(color='white', size=11),
             line=dict(color='#e74c3c', width=3),
             fill='tozeroy',
             fillcolor='rgba(231, 76, 60, 0.1)',
@@ -630,7 +644,8 @@ with aba_detalhada:
 
         fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=False)
         fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-        fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.15], showticklabels=False)
+        # Margem superior aumentada (1.25) para acomodar os rótulos sem cortar
+        fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
 
         st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False})
 
