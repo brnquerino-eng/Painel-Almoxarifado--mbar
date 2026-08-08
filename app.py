@@ -571,7 +571,7 @@ with aba_detalhada:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 20px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
     
     if not df_filtrado.empty:
-        # Tendência de Estoque em Gráfico de Linha com Rótulos de Valores Acima das Bolinhas
+        # Tendência de Estoque em Gráfico de Linha com Rótulos e Bordas nas Bolinhas
         df_estoque_trend = df_filtrado.copy()
         df_estoque_trend['ano_num'] = pd.to_numeric(df_estoque_trend['ano_referencia'], errors='coerce').fillna(0)
         df_estoque_trend['mes_num'] = pd.to_numeric(df_estoque_trend['mes_referencia'], errors='coerce').fillna(0)
@@ -580,7 +580,6 @@ with aba_detalhada:
         df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
         df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
 
-        # Formatação abreviada para os rótulos acima das bolinhas (ex: R$ 506,5M)
         def fmt_valor_milhoes(val):
             if val >= 1e9:
                 return f"R$ {val/1e9:.1f}B".replace('.', ',')
@@ -591,7 +590,6 @@ with aba_detalhada:
 
         df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
 
-        # Formatação completa para o hover em Reais (R$)
         def fmt_hover_brl(val):
             return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
@@ -599,31 +597,11 @@ with aba_detalhada:
         max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
         n_pontos_est = len(df_estoque_mes)
 
-        # Cálculo do Valor Total Consolidado do Estoque para o badge no canto superior direito
-        total_estoque_geral = df_estoque_trend['valor_saldo_atual'].sum()
-        total_estoque_fmt = fmt_hover_brl(total_estoque_geral)
-
         layout_linha_estoque = dict(
             plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#8c9ba5'),
-            margin=dict(l=40, r=40, t=50, b=10),
-            annotations=[
-                dict(
-                    x=1.0,
-                    y=1.12,
-                    xref="paper",
-                    yref="paper",
-                    text=f"<b>Total Período:</b> {total_estoque_fmt}",
-                    showarrow=False,
-                    font=dict(color="#ffffff", size=12, family="monospace"),
-                    bgcolor="#1a222d",
-                    bordercolor="#333d4d",
-                    borderwidth=1,
-                    borderpad=6,
-                    align="right"
-                )
-            ]
+            margin=dict(l=40, r=40, t=30, b=10)
         )
 
         fig_linha_estoque = go.Figure()
@@ -632,11 +610,16 @@ with aba_detalhada:
             y=df_estoque_mes['valor_saldo_atual'],
             customdata=df_estoque_mes['hover_valor'],
             name='Estoque Total',
-            mode='lines+markers+text',  # Adiciona os rótulos de texto acima das bolinhas
+            mode='lines+markers+text',
             text=df_estoque_mes['texto_labels'],
             textposition='top center',
             textfont=dict(color='white', size=11),
             line=dict(color='#e74c3c', width=3),
+            marker=dict(
+                size=8,
+                color='#e74c3c',
+                line=dict(color='#ffffff', width=2)  # Borda branca elegante nas bolinhas
+            ),
             fill='tozeroy',
             fillcolor='rgba(231, 76, 60, 0.1)',
             hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
@@ -644,7 +627,6 @@ with aba_detalhada:
 
         fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=False)
         fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-        # Margem superior aumentada (1.25) para acomodar os rótulos sem cortar
         fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
 
         st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False})
