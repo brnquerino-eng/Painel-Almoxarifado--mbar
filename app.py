@@ -568,7 +568,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA COM VISIBILIDADE PADRÃO INTELIGENTE ---
+    # --- GRÁFICO DE TENDÊNCIA CORRIGIDO PARA RÓTULOS E MARGENS ---
     st.markdown("<br>", unsafe_allow_html=True)
     if not df_filtrado.empty:
         with st.container(border=True):
@@ -639,11 +639,12 @@ with aba_geral:
             max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
             n_pontos_est = len(df_estoque_mes)
 
+            # Margem superior (t=50) e inferior (b=30) ajustadas para legenda e rótulos não cortarem
             layout_linha_estoque = dict(
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='#8c9ba5'),
-                margin=dict(l=10, r=10, t=10, b=10),
+                margin=dict(l=10, r=10, t=50, b=30),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
 
@@ -666,7 +667,7 @@ with aba_geral:
                 hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
             ))
 
-            # Traço 2: Estoque Crítico (Inicia oculto na legenda, clique ativa)
+            # Traço 2: Estoque Crítico
             if not df_critico_mes.empty:
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_critico_mes['Periodo'],
@@ -683,7 +684,7 @@ with aba_geral:
                     hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Crítico:</b> %{customdata}<extra></extra>'
                 ))
 
-            # Traço 3: Estoque Obsoleto (Inicia oculto na legenda, clique ativa)
+            # Traço 3: Estoque Obsoleto
             if not df_obsoleto_mes.empty:
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_obsoleto_mes['Periodo'],
@@ -700,7 +701,7 @@ with aba_geral:
                     hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obsoleto:</b> %{customdata}<extra></extra>'
                 ))
 
-            # Traço 4: Estoque Obra (Inicia oculto na legenda, clique ativa)
+            # Traço 4: Estoque Obra
             if not df_obra_mes.empty:
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_obra_mes['Periodo'],
@@ -719,7 +720,8 @@ with aba_geral:
 
             fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-            fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.3], showticklabels=False)
+            # Eixo Y com margem negativa no inicio [-max_y * 0.08] para que os rótulos bottom center nunca cortem
+            fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
 
             st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, key="tendencia_geral")
 
