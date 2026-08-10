@@ -511,7 +511,7 @@ with aba_geral:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- LINHA OPERACIONAL (Agora com 3 colunas simétricas) ---
+    # --- LINHA OPERACIONAL ---
     st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
     c5, c6, c7 = st.columns(3)
 
@@ -568,19 +568,38 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO (VISÃO GERAL) ---
+    # --- GRÁFICO DE TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO (COM LINHA DE CRÍTICO E FILTRO LOCAL) ---
     st.markdown("<br>", unsafe_allow_html=True)
     if not df_filtrado.empty:
         with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
+            # Cabeçalho e Filtro exclusivo do gráfico na mesma linha
+            col_tg_title, col_tg_filter = st.columns([3, 2])
+            with col_tg_title:
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA: ESTOQUE TOTAL VS ESTOQUE CRÍTICO</div>", unsafe_allow_html=True)
+            
+            with col_tg_filter:
+                # Filtro local opcional para refinar este gráfico específico
+                unidades_disponiveis_grafico = sorted(df_filtrado["unidade_almoxarifado"].dropna().unique().tolist())
+                filtro_unidade_chart = st.multiselect("Filtrar Unidades no Gráfico:", unidades_disponiveis_grafico, default=[], key="local_chart_filter", placeholder="Todas as unidades filtradas")
 
-            df_estoque_trend = df_filtrado.copy()
-            df_estoque_trend['ano_num'] = pd.to_numeric(df_estoque_trend['ano_referencia'], errors='coerce').fillna(0)
-            df_estoque_trend['mes_num'] = pd.to_numeric(df_estoque_trend['mes_referencia'], errors='coerce').fillna(0)
+            # Aplica o filtro local do gráfico se houver seleção
+            df_chart_base = df_filtrado.copy()
+            if filtro_unidade_chart:
+                df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(filtro_unidade_chart)]
 
-            df_estoque_mes = df_estoque_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
+            df_chart_base['ano_num'] = pd.to_numeric(df_chart_base['ano_referencia'], errors='coerce').fillna(0)
+            df_chart_base['mes_num'] = pd.to_numeric(df_chart_base['mes_referencia'], errors='coerce').fillna(0)
+
+            # Série 1: Estoque Total
+            df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
             df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
             df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
+
+            # Série 2: Estoque Crítico
+            df_critico_trend = df_chart_base[df_chart_base['item_critico'] == '1-Sim']
+            df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
+            df_critico_mes = df_critico_mes.sort_values(['ano_num', 'mes_num'])
+            df_critico_mes['Periodo'] = df_critico_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
 
             def fmt_valor_milhoes(val):
                 if val >= 1e9:
@@ -590,12 +609,16 @@ with aba_geral:
                 else:
                     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-            df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-
             def fmt_hover_brl(val):
                 return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
+            df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
             df_estoque_mes['hover_valor'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+            
+            if not df_critico_mes.empty:
+                df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+                df_critico_mes['hover_valor'] = df_critico_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+
             max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
             n_pontos_est = len(df_estoque_mes)
 
@@ -603,10 +626,13 @@ with aba_geral:
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='#8c9ba5'),
-                margin=dict(l=10, r=10, t=10, b=10)
+                margin=dict(l=10, r=10, t=10, b=10),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
 
             fig_linha_estoque = go.Figure()
+            
+            # Traço 1: Estoque Total
             fig_linha_estoque.add_trace(go.Scatter(
                 x=df_estoque_mes['Periodo'],
                 y=df_estoque_mes['valor_saldo_atual'],
@@ -617,19 +643,31 @@ with aba_geral:
                 textposition='top center',
                 textfont=dict(color='white', size=11),
                 line=dict(color='#e74c3c', width=3),
-                marker=dict(
-                    size=8,
-                    color='#e74c3c',
-                    line=dict(color='#ffffff', width=2)
-                ),
+                marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
                 fill='tozeroy',
-                fillcolor='rgba(231, 76, 60, 0.1)',
+                fillcolor='rgba(231, 76, 60, 0.08)',
                 hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
             ))
 
-            fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=False)
+            # Traço 2: Estoque Crítico
+            if not df_critico_mes.empty:
+                fig_linha_estoque.add_trace(go.Scatter(
+                    x=df_critico_mes['Periodo'],
+                    y=df_critico_mes['valor_saldo_atual'],
+                    customdata=df_critico_mes['hover_valor'],
+                    name='Estoque Crítico',
+                    mode='lines+markers+text',
+                    text=df_critico_mes['texto_labels'],
+                    textposition='bottom center',
+                    textfont=dict(color='#f39c12', size=11),
+                    line=dict(color='#f39c12', width=2.5, dash='dash'),
+                    marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
+                    hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Crítico:</b> %{customdata}<extra></extra>'
+                ))
+
+            fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-            fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
+            fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.3], showticklabels=False)
 
             st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, key="tendencia_geral")
 
@@ -674,7 +712,7 @@ with aba_geral:
 
         with col_g2:
             with st.container(border=True):
-                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
 
                 df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
                 df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
@@ -841,7 +879,7 @@ with aba_detalhada:
 
         df_exibicao = pd.DataFrame()
         df_exibicao['Unidade de Almoxarifado'] = df_tabela['unidade_almoxarifado']
-        df_exibicao['Valor em Estoque'] = df_tabela['Valor_Estoque'].apply(fmt_brl)
+        df_exibicao['Valor em Estocada'] = df_tabela['Valor_Estoque'].apply(fmt_brl)
         df_exibicao['Valor de Compras'] = df_tabela['Valor_Compras'].apply(fmt_brl)
         df_exibicao['Valor de Consumo'] = df_tabela['Valor_Consumo'].apply(fmt_brl)
         df_exibicao['SKUs Ativos'] = df_tabela['SKUs_Ativos'].apply(fmt_int)
