@@ -284,12 +284,10 @@ st.markdown("""
         font-size: 14px;
     }
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
-    .icon-compras { background-color: #2a2211; color: #f39c12; }
-    .icon-consumo { background-color: #2a1515; color: #e74c3c; }
-    .icon-skus { background-color: #1a222d; color: #3498db; }
     .icon-critico { background-color: #2a1515; color: #e74c3c; }
     .icon-obsoleto { background-color: #2a2a2a; color: #9b59b6; }
     .icon-obra { background-color: #1a2a2a; color: #1abc9c; }
+    .icon-skus { background-color: #1a222d; color: #3498db; }
     .card-title {
         color: #8c9ba5;
         font-size: 12px;
@@ -302,6 +300,15 @@ st.markdown("""
         font-weight: bold;
         text-align: center;
         font-family: monospace;
+    }
+    .section-title {
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: bold;
+        margin-bottom: 12px;
+        letter-spacing: 0.5px;
+        border-left: 3px solid #d85c27;
+        padding-left: 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -411,8 +418,9 @@ def fmt_int(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # 8.1 Cards Executivos (Linha 1)
-    c1, c2, c3 = st.columns(3)
+    # --- LINHA FINANCEIRA ---
+    st.markdown("<div class='section-title'>💼 LINHA FINANCEIRA</div>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
 
     with c1:
         st.markdown(f"""
@@ -429,44 +437,6 @@ with aba_geral:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
-                <div class="icon-box icon-compras">🛒</div>
-                <div class="card-title">VALOR TOTAL DE COMPRA</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_compras)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c3:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-consumo">📉</div>
-                <div class="card-title">VALOR TOTAL DE CONSUMO</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_consumo)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # 2ª Linha de Cards (SKUs, Crítico, Obsoleto)
-    c4, c5, c6 = st.columns(3)
-
-    with c4:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-skus">🏷️</div>
-                <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
-            </div>
-            <div class="card-value">{fmt_int(val_skus)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c5:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
                 <div class="icon-box icon-critico">⚠️</div>
                 <div class="card-title">ESTOQUE CRÍTICO (1-SIM)</div>
             </div>
@@ -474,7 +444,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    with c6:
+    with c3:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
@@ -485,12 +455,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # 3ª Linha de Cards (Estoque Obra)
-    c7, c8, c9 = st.columns(3)
-
-    with c7:
+    with c4:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
@@ -498,6 +463,23 @@ with aba_geral:
                 <div class="card-title">ESTOQUE OBRA</div>
             </div>
             <div class="card-value">{fmt_brl(val_obra)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- LINHA OPERACIONAL ---
+    st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
+    c5, c_vazio1, c_vazio2, c_vazio3 = st.columns(4)
+
+    with c5:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-skus">🏷️</div>
+                <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
+            </div>
+            <div class="card-value">{fmt_int(val_skus)}</div>
         </div>
         """, unsafe_allow_html=True)
 
