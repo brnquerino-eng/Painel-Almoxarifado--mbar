@@ -568,7 +568,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA AJUSTADO (SEM SOBREPOSIÇÃO DE TEXTO) ---
+    # --- GRÁFICO DE TENDÊNCIA COM VISIBILIDADE PADRÃO INTELIGENTE ---
     st.markdown("<br>", unsafe_allow_html=True)
     if not df_filtrado.empty:
         with st.container(border=True):
@@ -625,12 +625,15 @@ with aba_geral:
             df_estoque_mes['hover_valor'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_hover_brl)
             
             if not df_critico_mes.empty:
+                df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
                 df_critico_mes['hover_valor'] = df_critico_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
             if not df_obsoleto_mes.empty:
+                df_obsoleto_mes['texto_labels'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
                 df_obsoleto_mes['hover_valor'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
             if not df_obra_mes.empty:
+                df_obra_mes['texto_labels'] = df_obra_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
                 df_obra_mes['hover_valor'] = df_obra_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
             max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
@@ -646,7 +649,7 @@ with aba_geral:
 
             fig_linha_estoque = go.Figure()
             
-            # Traço 1: Estoque Total (Mantém os textos fixos visíveis no topo)
+            # Traço 1: Estoque Total (Visível por padrão com seus rótulos)
             fig_linha_estoque.add_trace(go.Scatter(
                 x=df_estoque_mes['Periodo'],
                 y=df_estoque_mes['valor_saldo_atual'],
@@ -663,42 +666,54 @@ with aba_geral:
                 hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
             ))
 
-            # Traço 2: Estoque Crítico (Sem texto fixo poluindo a tela, apenas no Hover)
+            # Traço 2: Estoque Crítico (Inicia oculto na legenda, clique ativa)
             if not df_critico_mes.empty:
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_critico_mes['Periodo'],
                     y=df_critico_mes['valor_saldo_atual'],
                     customdata=df_critico_mes['hover_valor'],
                     name='Estoque Crítico',
-                    mode='lines+markers',
+                    mode='lines+markers+text',
+                    text=df_critico_mes['texto_labels'],
+                    textposition='bottom center',
+                    textfont=dict(color='#f39c12', size=11),
                     line=dict(color='#f39c12', width=2.5, dash='dash'),
                     marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
+                    visible='legendonly',
                     hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Crítico:</b> %{customdata}<extra></extra>'
                 ))
 
-            # Traço 3: Estoque Obsoleto (Sem texto fixo, apenas no Hover)
+            # Traço 3: Estoque Obsoleto (Inicia oculto na legenda, clique ativa)
             if not df_obsoleto_mes.empty:
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_obsoleto_mes['Periodo'],
                     y=df_obsoleto_mes['valor_saldo_atual'],
                     customdata=df_obsoleto_mes['hover_valor'],
                     name='Estoque Obsoleto',
-                    mode='lines+markers',
+                    mode='lines+markers+text',
+                    text=df_obsoleto_mes['texto_labels'],
+                    textposition='top center',
+                    textfont=dict(color='#9b59b6', size=11),
                     line=dict(color='#9b59b6', width=2.5, dash='dot'),
                     marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
+                    visible='legendonly',
                     hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obsoleto:</b> %{customdata}<extra></extra>'
                 ))
 
-            # Traço 4: Estoque Obra (Sem texto fixo, apenas no Hover)
+            # Traço 4: Estoque Obra (Inicia oculto na legenda, clique ativa)
             if not df_obra_mes.empty:
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_obra_mes['Periodo'],
                     y=df_obra_mes['valor_saldo_atual'],
                     customdata=df_obra_mes['hover_valor'],
                     name='Estoque Obra',
-                    mode='lines+markers',
+                    mode='lines+markers+text',
+                    text=df_obra_mes['texto_labels'],
+                    textposition='bottom center',
+                    textfont=dict(color='#1abc9c', size=11),
                     line=dict(color='#1abc9c', width=2.5, dash='longdash'),
                     marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
+                    visible='legendonly',
                     hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obra:</b> %{customdata}<extra></extra>'
                 ))
 
