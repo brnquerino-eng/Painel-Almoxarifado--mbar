@@ -79,12 +79,23 @@ def carregar_dados():
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
+            # Criação de colunas numéricas auxiliares para identificar o período mais recente
+            df['tmp_ano_num'] = pd.to_numeric(df['ano_referencia'], errors='coerce').fillna(0)
+            df['tmp_mes_num'] = pd.to_numeric(df['mes_referencia'], errors='coerce').fillna(0)
+
             return df
     except Exception as e:
         st.error(f"Erro ao carregar dados do Supabase: {e}")
         return pd.DataFrame()
 
 df_completo = carregar_dados()
+
+# Identificação automática do último mês e ano disponíveis na base inteira
+if not df_completo.empty:
+    max_ano_base = df_completo['tmp_ano_num'].max()
+    max_mes_base = df_completo[df_completo['tmp_ano_num'] == max_ano_base]['tmp_mes_num'].max()
+else:
+    max_ano_base, max_mes_base = 2026, 7
 
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
 
@@ -361,7 +372,7 @@ else:
 
 st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
-# 6. Filtragem Rigorosa e Precisa
+# 6. Filtragem Rigorosa e Precisa (para gráficos de tendência e histórico)
 df_filtrado = df_completo.copy()
 
 if st.session_state.f_unidades:
@@ -371,44 +382,58 @@ if st.session_state.f_meses:
 if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
-# 7. Somas e Contagens Dinâmicas baseadas na quantidade física
+# 6.1 Criação do DataFrame de Snapshot (para os Cards e Top 10)
+# Se o usuário não escolheu um mês específico, o snapshot foca automaticamente no último mês/ano atualizado da base
+df_snapshot = df_filtrado.copy()
+if not st.session_state.f_meses:
+    if st.session_state.f_anos:
+        anos_sel_num = [int(a) for a in st.session_state.f_anos]
+        df_anos_sel = df_snapshot[df_snapshot['tmp_ano_num'].isin(anos_sel_num)]
+        if not df_anos_sel.empty:
+            m_ano = df_anos_sel['tmp_ano_num'].max()
+            m_mes = df_anos_sel[df_anos_sel['tmp_ano_num'] == m_ano]['tmp_mes_num'].max()
+            df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == m_ano) & (df_snapshot['tmp_mes_num'] == m_mes)]
+    else:
+        df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == max_ano_base) & (df_snapshot['tmp_mes_num'] == max_mes_base)]
+
+# 7. Somas e Contagens Dinâmicas baseadas no Snapshot (Posição Atual do Estoque)
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
     return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
 
-val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
+val_estoque = somar_coluna(df_snapshot, "valor_saldo_atual")
 
-if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
-    df_skus_ativos = df_filtrado[
-        (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
+if "qtde_saldo_atual" in df_snapshot.columns and "codigo_produto" in df_snapshot.columns:
+    df_skus_ativos = df_snapshot[
+        (df_snapshot["qtde_saldo_atual"] > 0) & (df_snapshot["codigo_produto"] != "")
     ]
     val_skus = df_skus_ativos["codigo_produto"].nunique()
 else:
     val_skus = 0
 
-# Cálculo para Estoque Crítico
-if "item_critico" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.columns:
-    df_criticos = df_filtrado[df_filtrado["item_critico"] == "1-Sim"]
+# Cálculo para Estoque Crítico no Snapshot
+if "item_critico" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
+    df_criticos = df_snapshot[df_snapshot["item_critico"] == "1-Sim"]
     val_critico = somar_coluna(df_criticos, "valor_saldo_atual")
 else:
     val_critico = 0.0
 
-# Cálculo para Estoque Obsoleto
-if "nome_local_estoque" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.columns:
-    df_obsoleto = df_filtrado[df_filtrado["nome_local_estoque"].astype(str).str.contains("Obsoleto", case=False, na=False)]
+# Cálculo para Estoque Obsoleto no Snapshot
+if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
+    df_obsoleto = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("Obsoleto", case=False, na=False)]
     val_obsoleto = somar_coluna(df_obsoleto, "valor_saldo_atual")
 else:
     val_obsoleto = 0.0
 
-# Cálculo para Estoque Obra
-if "nome_local_estoque" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.columns:
-    df_obra = df_filtrado[df_filtrado["nome_local_estoque"].astype(str).str.contains("obra", case=False, na=False)]
+# Cálculo para Estoque Obra no Snapshot
+if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
+    df_obra = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("obra", case=False, na=False)]
     val_obra = somar_coluna(df_obra, "valor_saldo_atual")
 else:
     val_obra = 0.0
 
-# --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE ---
+# --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (Usa o histórico filtrado para calcular médias operacionais) ---
 giro_mensal = 0.0
 giro_anual = 0.0
 cobertura_meses = 0.0
@@ -416,15 +441,13 @@ cobertura_anos = 0.0
 
 if not df_filtrado.empty:
     df_giro = df_filtrado.copy()
-    df_giro['ano_num'] = pd.to_numeric(df_giro['ano_referencia'], errors='coerce').fillna(0)
-    df_giro['mes_num'] = pd.to_numeric(df_giro['mes_referencia'], errors='coerce').fillna(0)
     df_giro['consumo_abs'] = pd.to_numeric(df_giro['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
     df_giro['val_estoque'] = pd.to_numeric(df_giro['valor_saldo_atual'], errors='coerce').fillna(0.0)
     
     df_giro['is_critico'] = df_giro['item_critico'] == '1-Sim'
     df_giro['is_obsoleto'] = df_giro['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)
     
-    monthly_groups = df_giro.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])
+    monthly_groups = df_giro.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])
     monthly_df = monthly_groups.apply(lambda g: pd.Series({
         'estoque_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'val_estoque'].sum(),
         'consumo_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'consumo_abs'].sum()
@@ -568,7 +591,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA CORRIGIDO PARA RÓTULOS E MARGENS ---
+    # --- GRÁFICO DE TENDÊNCIA (Usa df_filtrado para mostrar o histórico ao longo do tempo) ---
     st.markdown("<br>", unsafe_allow_html=True)
     if not df_filtrado.empty:
         with st.container(border=True):
@@ -584,31 +607,28 @@ with aba_geral:
             if filtro_unidade_chart:
                 df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(filtro_unidade_chart)]
 
-            df_chart_base['ano_num'] = pd.to_numeric(df_chart_base['ano_referencia'], errors='coerce').fillna(0)
-            df_chart_base['mes_num'] = pd.to_numeric(df_chart_base['mes_referencia'], errors='coerce').fillna(0)
-
             # Série 1: Estoque Total
-            df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_estoque_mes = df_estoque_mes.sort_values(['ano_num', 'mes_num'])
-            df_estoque_mes['Periodo'] = df_estoque_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
+            df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+            df_estoque_mes = df_estoque_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+            df_estoque_mes['Periodo'] = df_estoque_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
 
             # Série 2: Estoque Crítico
             df_critico_trend = df_chart_base[df_chart_base['item_critico'] == '1-Sim']
-            df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_critico_mes = df_critico_mes.sort_values(['ano_num', 'mes_num'])
-            df_critico_mes['Periodo'] = df_critico_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
+            df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+            df_critico_mes = df_critico_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+            df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
 
             # Série 3: Estoque Obsoleto
             df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
-            df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_obsoleto_mes = df_obsoleto_mes.sort_values(['ano_num', 'mes_num'])
-            df_obsoleto_mes['Periodo'] = df_obsoleto_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
+            df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+            df_obsoleto_mes = df_obsoleto_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+            df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
 
             # Série 4: Estoque Obra
             df_obra_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('obra', case=False, na=False)]
-            df_obra_mes = df_obra_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_obra_mes = df_obra_mes.sort_values(['ano_num', 'mes_num'])
-            df_obra_mes['Periodo'] = df_obra_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
+            df_obra_mes = df_obra_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+            df_obra_mes = df_obra_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+            df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
 
             def fmt_valor_milhoes(val):
                 if val >= 1e9:
@@ -639,7 +659,6 @@ with aba_geral:
             max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
             n_pontos_est = len(df_estoque_mes)
 
-            # Margem superior (t=50) e inferior (b=30) ajustadas para legenda e rótulos não cortarem
             layout_linha_estoque = dict(
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
@@ -650,7 +669,7 @@ with aba_geral:
 
             fig_linha_estoque = go.Figure()
             
-            # Traço 1: Estoque Total (Visível por padrão com seus rótulos)
+            # Traço 1: Estoque Total
             fig_linha_estoque.add_trace(go.Scatter(
                 x=df_estoque_mes['Periodo'],
                 y=df_estoque_mes['valor_saldo_atual'],
@@ -720,7 +739,6 @@ with aba_geral:
 
             fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-            # Eixo Y com margem negativa no inicio [-max_y * 0.08] para que os rótulos bottom center nunca cortem
             fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
 
             st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, key="tendencia_geral")
@@ -743,12 +761,9 @@ with aba_geral:
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
 
                 df_trend = df_filtrado.copy()
-                df_trend['ano_num'] = pd.to_numeric(df_trend['ano_referencia'], errors='coerce').fillna(0)
-                df_trend['mes_num'] = pd.to_numeric(df_trend['mes_referencia'], errors='coerce').fillna(0)
-
-                df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
-                df_tempo = df_tempo.sort_values(['ano_num', 'mes_num'])
-                df_tempo['Periodo'] = df_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
+                df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
+                df_tempo = df_tempo.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+                df_tempo['Periodo'] = df_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
 
                 df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
 
@@ -766,9 +781,10 @@ with aba_geral:
 
         with col_g2:
             with st.container(border=True):
+                # O Top 10 agora reflete o snapshot do mês atual / selecionado
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
 
-                df_rank = df_filtrado.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+                df_rank = df_snapshot.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
                 df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
                 df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
 
@@ -792,18 +808,16 @@ with aba_geral:
             df_sku_trend = df_filtrado[
                 (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
             ].copy()
-            df_sku_trend['ano_num'] = pd.to_numeric(df_sku_trend['ano_referencia'], errors='coerce').fillna(0)
-            df_sku_trend['mes_num'] = pd.to_numeric(df_sku_trend['mes_referencia'], errors='coerce').fillna(0)
 
-            df_sku_tempo = df_sku_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['codigo_produto'].nunique().reset_index()
-            df_sku_tempo = df_sku_tempo.sort_values(['ano_num', 'mes_num'])
-            df_sku_tempo['Periodo'] = df_sku_tempo['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
+            df_sku_tempo = df_sku_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['codigo_produto'].nunique().reset_index()
+            df_sku_tempo = df_sku_tempo.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+            df_sku_tempo['Periodo'] = df_sku_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
 
             textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
             max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
             n_pontos = len(df_sku_tempo)
 
-            total_skus_grafico = df_sku_trend['codigo_produto'].nunique()
+            total_skus_grafico = df_snapshot['codigo_produto'][df_snapshot['qtde_saldo_atual'] > 0].nunique()
             total_formatado = f"{total_skus_grafico:,}".replace(',', '.')
 
             layout_sku = dict(
@@ -855,15 +869,15 @@ with aba_geral:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
 
 with aba_detalhada:
-    if not df_filtrado.empty:
+    if not df_snapshot.empty:
         st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
         
-        # Tabela Dinâmica por Unidade
-        df_tabela = df_filtrado.groupby('unidade_almoxarifado').agg(
+        # Tabela Dinâmica por Unidade baseada no Snapshot
+        df_tabela = df_snapshot.groupby('unidade_almoxarifado').agg(
             Valor_Estoque=('valor_saldo_atual', 'sum'),
             Valor_Compras=('valor_entrada_compras', 'sum'),
             Valor_Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum()),
-            SKUs_Ativos=('codigo_produto', lambda x: x[df_filtrado.loc[x.index, 'qtde_saldo_atual'] > 0].nunique())
+            SKUs_Ativos=('codigo_produto', lambda x: x[df_snapshot.loc[x.index, 'qtde_saldo_atual'] > 0].nunique())
         ).reset_index()
 
         df_tabela = df_tabela.sort_values(by='Valor_Estoque', ascending=False)
