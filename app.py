@@ -43,7 +43,6 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
-                # Adicionado campo nome_local_estoque para a lógica de obsoleto
                 res = supabase.table(table_name).select(
                     "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
                 ).order("id").range(start_r, end_r).execute()
@@ -290,6 +289,7 @@ st.markdown("""
     .icon-skus { background-color: #1a222d; color: #3498db; }
     .icon-critico { background-color: #2a1515; color: #e74c3c; }
     .icon-obsoleto { background-color: #2a2a2a; color: #9b59b6; }
+    .icon-obra { background-color: #1a2a2a; color: #1abc9c; }
     .card-title {
         color: #8c9ba5;
         font-size: 12px;
@@ -385,12 +385,19 @@ if "item_critico" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.
 else:
     val_critico = 0.0
 
-# Cálculo para Estoque Obsoleto (nome_local_estoque contendo 'Obsoleto')
+# Cálculo para Estoque Obsoleto
 if "nome_local_estoque" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.columns:
     df_obsoleto = df_filtrado[df_filtrado["nome_local_estoque"].astype(str).str.contains("Obsoleto", case=False, na=False)]
     val_obsoleto = somar_coluna(df_obsoleto, "valor_saldo_atual")
 else:
     val_obsoleto = 0.0
+
+# Cálculo para Estoque Obra
+if "nome_local_estoque" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.columns:
+    df_obra = df_filtrado[df_filtrado["nome_local_estoque"].astype(str).str.contains("obra", case=False, na=False)]
+    val_obra = somar_coluna(df_obra, "valor_saldo_atual")
+else:
+    val_obra = 0.0
 
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -478,10 +485,25 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 3ª Linha de Cards (Estoque Obra)
+    c7, c8, c9 = st.columns(3)
+
+    with c7:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-obra">🏗️</div>
+                <div class="card-title">ESTOQUE OBRA</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_obra)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     # 9. GRÁFICOS INTERATIVOS
     st.markdown("<br><br>", unsafe_allow_html=True)
 
-    # (Restante do código de gráficos permanece o mesmo...)
     if not df_filtrado.empty:
         layout_transparente = dict(
             plot_bgcolor='rgba(0,0,0,0)',
