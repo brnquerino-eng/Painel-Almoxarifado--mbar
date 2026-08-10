@@ -8,11 +8,6 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# ==========================================
-# CONSTANTE DE REGRA DE NEGÓCIO (CRÍTICO)
-# ==========================================
-FLAG_ITEM_CRITICO = "1-sim"
-
 # Inicialização dos estados para os filtros múltiplos
 if 'f_unidades' not in st.session_state:
     st.session_state.f_unidades = []
@@ -48,10 +43,9 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
-                # Adicionado "item_critico" na seleção para o nosso primeiro card novo
                 res = supabase.table(table_name).select(
                     "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico"
-                ).range(start_r, end_r).execute()
+                ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
             with ThreadPoolExecutor(max_workers=4) as executor:
@@ -290,9 +284,10 @@ st.markdown("""
         font-size: 14px;
     }
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
-    .icon-critico { background-color: #2a1515; color: #ff4757; }
+    .icon-compras { background-color: #2a2211; color: #f39c12; }
     .icon-consumo { background-color: #2a1515; color: #e74c3c; }
     .icon-skus { background-color: #1a222d; color: #3498db; }
+    .icon-critico { background-color: #2a1515; color: #e74c3c; }
     .card-title {
         color: #8c9ba5;
         font-size: 12px;
@@ -301,9 +296,9 @@ st.markdown("""
     }
     .card-value {
         color: #ffffff;
-        font-size: 24px;
+        font-size: 26px;
         font-weight: bold;
-        text-align: left;
+        text-align: center;
         font-family: monospace;
     }
 </style>
@@ -363,27 +358,15 @@ if st.session_state.f_meses:
 if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
-# 7. Somas e Contagens Dinâmicas
+# 7. Somas e Contagens Dinâmicas baseadas na quantidade física
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
     return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
 
 val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
+val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
-
-# Máscara para garantir saldo físico positivo nas contas
-if "qtde_saldo_atual" in df_filtrado.columns:
-    mask_com_saldo = df_filtrado["qtde_saldo_atual"] > 0
-else:
-    mask_com_saldo = pd.Series(True, index=df_filtrado.index)
-
-# Lógica para o Valor Crítico (nosso primeiro card novo!)
-if "item_critico" in df_filtrado.columns:
-    mask_critico = df_filtrado["item_critico"].astype(str).str.contains(FLAG_ITEM_CRITICO, case=False, na=False)
-    val_critico = df_filtrado[mask_critico & mask_com_saldo]["valor_saldo_atual"].sum()
-else:
-    val_critico = 0.0
 
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
     df_skus_ativos = df_filtrado[
@@ -392,6 +375,13 @@ if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado
     val_skus = df_skus_ativos["codigo_produto"].nunique()
 else:
     val_skus = 0
+
+# Cálculo para o novo card de Estoque Crítico (item_critico == "1-Sim")
+if "item_critico" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.columns:
+    df_criticos = df_filtrado[df_filtrado["item_critico"] == "1-Sim"]
+    val_critico = pd.to_numeric(df_criticos["valor_saldo_atual"], errors='coerce').fillna(0.0).sum()
+else:
+    val_critico = 0.0
 
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -405,8 +395,8 @@ def fmt_int(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # 8.1 Cards Executivos (Incluindo o Card Crítico)
-    c1, c2 = st.columns(2)
+    # 8.1 Cards Executivos (3 colunas na primeira linha)
+    c1, c2, c3 = st.columns(3)
 
     with c1:
         st.markdown(f"""
@@ -423,16 +413,12 @@ with aba_geral:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
-                <div class="icon-box icon-critico">🚨</div>
-                <div class="card-title">VALOR CRÍTICO</div>
+                <div class="icon-box icon-compras">🛒</div>
+                <div class="card-title">VALOR TOTAL DE COMPRA</div>
             </div>
-            <div class="card-value">{fmt_brl(val_critico)}</div>
+            <div class="card-value">{fmt_brl(val_compras)}</div>
         </div>
         """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    c3, c4 = st.columns(2)
 
     with c3:
         st.markdown(f"""
@@ -445,6 +431,11 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 2ª Linha de Cards (2 colunas: SKUs Únicos e Estoque Crítico)
+    c4, c5 = st.columns(2)
+
     with c4:
         st.markdown(f"""
         <div class="card-box">
@@ -453,6 +444,17 @@ with aba_geral:
                 <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
             </div>
             <div class="card-value">{fmt_int(val_skus)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c5:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-critico">⚠️</div>
+                <div class="card-title">ESTOQUE CRÍTICO (1-SIM)</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_critico)}</div>
         </div>
         """, unsafe_allow_html=True)
 
