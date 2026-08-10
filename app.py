@@ -439,6 +439,12 @@ def fmt_brl(val):
 def fmt_int(val):
     return f"{val:,}".replace(',', '.')
 
+def fmt_pct(val):
+    return f"{val * 100:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "%"
+
+def fmt_dec(val):
+    return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
+
 # ==========================================
 # 8. SISTEMA DE ABAS NATIVO
 # ==========================================
@@ -495,9 +501,9 @@ with aba_geral:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- LINHA OPERACIONAL ---
+    # --- LINHA OPERACIONAL (Agora com 2 colunas equilibradas) ---
     st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
-    c5, c6, c_vazio1, c_vazio2 = st.columns(4)
+    c5, c6 = st.columns(2)
 
     with c5:
         st.markdown(f"""
@@ -517,14 +523,15 @@ with aba_geral:
                 <div class="icon-box icon-giro">🔄</div>
                 <div class="card-title">GIRO DE ESTOQUE</div>
             </div>
-            <div style="display: flex; justify-content: space-around; margin-top: 6px;">
-                <div style="text-align: center;">
-                    <span style="font-size: 10px; color: #8c9ba5;">MENSAL</span><br>
-                    <span style="font-size: 16px; font-weight: bold; color: #ffffff; font-family: monospace;">{giro_mensal*100:.2f}%'.replace('.', ',')</span>
+            <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
+                <div style="text-align: center; flex: 1;">
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL</span><br>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_pct(giro_mensal)}</span>
                 </div>
-                <div style="text-align: center; border-left: 1px solid #232b36; padding-left: 12px;">
-                    <span style="font-size: 10px; color: #8c9ba5;">ANUALIZADO</span><br>
-                    <span style="font-size: 16px; font-weight: bold; color: #ffffff; font-family: monospace;">{giro_anual:.2f}x'.replace('.', ',')</span>
+                <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
+                <div style="text-align: center; flex: 1;">
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO</span><br>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
                 </div>
             </div>
         </div>
