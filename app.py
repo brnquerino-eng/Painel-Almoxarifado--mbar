@@ -8,30 +8,6 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# ==========================================
-# CONSTANTES DE REGRA DE NEGÓCIO
-# (Correção 4: strings mágicas documentadas em um só lugar)
-# ==========================================
-# Valor exato do campo `item_critico` no Supabase que indica item crítico.
-# Se a origem dos dados mudar esse texto (ex: "1 - Sim" com espaços), o
-# KPI de "Valor Crítico" pode zerar silenciosamente — revise aqui primeiro.
-FLAG_ITEM_CRITICO = "1-sim"
-
-# Termos buscados dentro de `nome_local_estoque` para classificar
-# itens obsoletos / em obra. Também sensíveis a mudança de cadastro.
-TERMO_LOCAL_OBSOLETO = "OBSOLETO"
-TERMO_LOCAL_OBRA = "OBRA"
-
-# Abaixo deste valor de estoque (R$), Giro e Cobertura deixam de ser
-# exibidos como número — com base muito pequena o índice fica instável
-# e pode gerar valores enganosamente altos (Correção 7).
-LIMITE_MINIMO_ESTOQUE_PARA_INDICES = 100.0
-
-# Tamanho de cada página buscada no Supabase e quantas páginas buscar
-# em paralelo por "leva" (Correção 1: paginação sem total fixo).
-BATCH_SIZE = 1000
-PAGINAS_POR_LEVA = 8
-
 # Inicialização dos estados para os filtros múltiplos
 if 'f_unidades' not in st.session_state:
     st.session_state.f_unidades = []
@@ -51,46 +27,33 @@ supabase = conectar_supabase()
 table_name = "painel_estoque"
 
 # 2. Performance Otimizada e Estável (Conexões Controladas)
-# Correção 2: TTL adicionado — sem isso o cache nunca expirava e o app
-# nunca refletia dados novos até reiniciar o processo.
-@st.cache_data(ttl=3600)
+@st.cache_data()
 def carregar_dados():
     try:
         with st.spinner("Carregando e normalizando base de dados em alta performance..."):
+            count_res = supabase.table(table_name).select("*", count="exact", head=True).execute()
+            total_rows = getattr(count_res, 'count', None)
+
+            if not total_rows or total_rows == 0:
+                total_rows = 460000  # Fallback de segurança
+
+            batch_size = 1000
+            ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
+
+            all_data = []
 
             def fetch_range(start_r, end_r):
                 res = supabase.table(table_name).select(
-                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
+                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual"
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
-            # Correção 1: paginação por "levas" paralelas, sem depender de
-            # um total pré-calculado. Buscamos levas de PAGINAS_POR_LEVA
-            # páginas de uma vez; assim que qualquer página da leva vier
-            # incompleta (< BATCH_SIZE linhas), sabemos que chegamos ao
-            # fim da tabela e paramos. Isso elimina o fallback fixo
-            # (ex.: total_rows = 460000) que silenciosamente cortava ou
-            # desperdiçava requisições se a tabela mudasse de tamanho.
-            all_data = []
-            inicio_leva = 0
             with ThreadPoolExecutor(max_workers=4) as executor:
-                while True:
-                    ranges_leva = [
-                        (inicio_leva + i * BATCH_SIZE, inicio_leva + i * BATCH_SIZE + BATCH_SIZE - 1)
-                        for i in range(PAGINAS_POR_LEVA)
-                    ]
-                    futures = [executor.submit(fetch_range, s, e) for s, e in ranges_leva]
-                    resultados_leva = [f.result() for f in futures]
-
-                    for pagina in resultados_leva:
-                        if pagina:
-                            all_data.extend(pagina)
-
-                    chegou_ao_fim = any(len(pagina) < BATCH_SIZE for pagina in resultados_leva)
-                    if chegou_ao_fim:
-                        break
-
-                    inicio_leva += PAGINAS_POR_LEVA * BATCH_SIZE
+                futures = [executor.submit(fetch_range, s, e) for s, e in ranges]
+                for future in futures:
+                    data = future.result()
+                    if data:
+                        all_data.extend(data)
 
             if not all_data:
                 return pd.DataFrame()
@@ -108,7 +71,7 @@ def carregar_dados():
                     s_val = s_val[:-2]
                 return s_val
 
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "item_critico", "nome_local_estoque"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto"]:
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
@@ -135,7 +98,6 @@ def _chave_numerica(val):
         return (1, str(val))
 
 # Dicionário de Mapeamento de Meses para Exibição Executiva
-# Correção 5: removida a entrada duplicada de "10" (copy-paste antigo)
 dict_meses_nome = {
     "1": "01 - Janeiro", "01": "01 - Janeiro",
     "2": "02 - Fevereiro", "02": "02 - Fevereiro",
@@ -146,9 +108,9 @@ dict_meses_nome = {
     "7": "07 - Julho", "07": "07 - Julho",
     "8": "08 - Agosto", "08": "08 - Agosto",
     "9": "09 - Setembro", "09": "09 - Setembro",
-    "10": "10 - Outubro",
-    "11": "11 - Novembro",
-    "12": "12 - Dezembro"
+    "10": "10 - Outubro", "10": "10 - Outubro",
+    "11": "11 - Novembro", "11": "11 - Novembro",
+    "12": "12 - Dezembro", "12": "12 - Dezembro"
 }
 
 raw_meses = sorted(df_completo["mes_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
@@ -321,15 +283,10 @@ st.markdown("""
         justify-content: center;
         font-size: 14px;
     }
-    /* Cores dos ícones atualizadas para o novo layout */
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
-    .icon-critico { background-color: #2a1515; color: #ff4757; }
-    .icon-obsoleto { background-color: #1e2732; color: #747d8c; }
-    .icon-obra { background-color: #2a2211; color: #ffa502; }
+    .icon-compras { background-color: #2a2211; color: #f39c12; }
+    .icon-consumo { background-color: #2a1515; color: #e74c3c; }
     .icon-skus { background-color: #1a222d; color: #3498db; }
-    .icon-giro { background-color: #132a24; color: #2ed573; }
-    .icon-cobertura { background-color: #1a222d; color: #1e90ff; }
-    
     .card-title {
         color: #8c9ba5;
         font-size: 12px;
@@ -338,9 +295,9 @@ st.markdown("""
     }
     .card-value {
         color: #ffffff;
-        font-size: 24px;
+        font-size: 26px;
         font-weight: bold;
-        text-align: left;
+        text-align: center;
         font-family: monospace;
     }
 </style>
@@ -400,67 +357,24 @@ if st.session_state.f_meses:
 if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
-# 7. CÁLCULOS DOS KPIs (Financeiros e Operacionais)
+# 7. Somas e Contagens Dinâmicas baseadas na quantidade física
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
     return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
 
 val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
+val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
-val_consumo_abs = abs(val_consumo)
 
-# Máscara para garantir que apenas itens com saldo físico entrem nas contas financeiras
-if "qtde_saldo_atual" in df_filtrado.columns:
-    mask_com_saldo = df_filtrado["qtde_saldo_atual"] > 0
-else:
-    mask_com_saldo = pd.Series(True, index=df_filtrado.index)
-
-# Lógica Crítico
-if "item_critico" in df_filtrado.columns:
-    mask_critico = df_filtrado["item_critico"].astype(str).str.contains(FLAG_ITEM_CRITICO, case=False, na=False)
-    val_critico = df_filtrado[mask_critico & mask_com_saldo]["valor_saldo_atual"].sum()
-else:
-    val_critico = 0.0
-
-# Lógica Obsoleto
-if "nome_local_estoque" in df_filtrado.columns:
-    mask_obsoleto = df_filtrado["nome_local_estoque"].astype(str).str.contains(TERMO_LOCAL_OBSOLETO, case=False, na=False)
-    val_obsoleto = df_filtrado[mask_obsoleto & mask_com_saldo]["valor_saldo_atual"].sum()
-else:
-    val_obsoleto = 0.0
-
-# Lógica Obra
-if "nome_local_estoque" in df_filtrado.columns:
-    mask_obra = df_filtrado["nome_local_estoque"].astype(str).str.contains(TERMO_LOCAL_OBRA, case=False, na=False)
-    val_obra = df_filtrado[mask_obra & mask_com_saldo]["valor_saldo_atual"].sum()
-else:
-    val_obra = 0.0
-
-# Lógica Operacional
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
-    df_skus_ativos = df_filtrado[(df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")]
+    df_skus_ativos = df_filtrado[
+        (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
+    ]
     val_skus = df_skus_ativos["codigo_produto"].nunique()
 else:
     val_skus = 0
 
-# Giro de Estoque: Consumo / Estoque
-# Cobertura de Estoque: Estoque / Consumo médio diário (Base 30 dias)
-# Correção 7: com base de estoque muito pequena, esses índices explodem e
-# enganam mais do que informam — abaixo do limite, exibimos "N/D".
-indices_confiaveis = val_estoque > LIMITE_MINIMO_ESTOQUE_PARA_INDICES
-
-if indices_confiaveis:
-    giro_estoque = (val_consumo_abs / val_estoque) if val_estoque > 0 else 0.0
-    consumo_diario = val_consumo_abs / 30
-    cobertura_estoque = (val_estoque / consumo_diario) if consumo_diario > 0 else 0.0
-    texto_giro = f"{giro_estoque:,.2f}x"
-    texto_cobertura = f"{cobertura_estoque:,.1f}"
-else:
-    texto_giro = "N/D"
-    texto_cobertura = "N/D"
-
-# Formatadores
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
@@ -473,92 +387,54 @@ def fmt_int(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # ------------------------------------------
-    # LINHA 1: FINANCEIRO (4 Cards)
-    # ------------------------------------------
-    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+    # 8.1 Cards Executivos
+    c1, c2 = st.columns(2)
 
-    with col_f1:
+    with c1:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-estoque">📦</div>
-                <div class="card-title">VALOR TOTAL ESTOQUE</div>
+                <div class="card-title">VALOR TOTAL EM ESTOQUE</div>
             </div>
             <div class="card-value">{fmt_brl(val_estoque)}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    with col_f2:
+    with c2:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
-                <div class="icon-box icon-critico">🚨</div>
-                <div class="card-title">VALOR CRÍTICO</div>
+                <div class="icon-box icon-compras">🛒</div>
+                <div class="card-title">VALOR TOTAL DE COMPRA</div>
             </div>
-            <div class="card-value">{fmt_brl(val_critico)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    with col_f3:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-obsoleto">🕸️</div>
-                <div class="card-title">VALOR OBSOLETOS</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_obsoleto)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    with col_f4:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-obra">🚧</div>
-                <div class="card-title">VALOR OBRA</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_obra)}</div>
+            <div class="card-value">{fmt_brl(val_compras)}</div>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ------------------------------------------
-    # LINHA 2: OPERACIONAL (3 Cards)
-    # ------------------------------------------
-    col_o1, col_o2, col_o3 = st.columns(3)
+    c3, c4 = st.columns(2)
 
-    with col_o1:
+    with c3:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-consumo">📉</div>
+                <div class="card-title">VALOR TOTAL DE CONSUMO</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_consumo)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c4:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-skus">🏷️</div>
-                <div class="card-title">TOTAL DE SKUs ATIVOS</div>
+                <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
             </div>
-            <div class="card-value" style="text-align: left;">{fmt_int(val_skus)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-    with col_o2:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-giro">🔄</div>
-                <div class="card-title">GIRO DE ESTOQUE</div>
-            </div>
-            <div class="card-value" style="text-align: left;">{texto_giro}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_o3:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-cobertura">🛡️</div>
-                <div class="card-title">COBERTURA (DIAS)</div>
-            </div>
-            <div class="card-value" style="text-align: left;">{texto_cobertura}</div>
+            <div class="card-value">{fmt_int(val_skus)}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -693,6 +569,7 @@ with aba_geral:
 
 with aba_detalhada:
     if not df_filtrado.empty:
+        # Gráfico de Tendência de Estoque envelopado em container com efeito de relevo/cartão
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
 
@@ -757,22 +634,13 @@ with aba_detalhada:
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
-
-        # Correção 3: a versão anterior fazia, para CADA grupo do groupby,
-        # um `.loc` no df_filtrado inteiro (caro e frágil a qualquer
-        # dessincronia de índice). Aqui criamos uma coluna auxiliar UMA
-        # vez, fora do groupby, e agregamos com `nunique` diretamente —
-        # mais rápido e sem depender de os índices baterem.
-        mask_sku_valido = (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
-        df_filtrado = df_filtrado.assign(
-            sku_ativo=df_filtrado["codigo_produto"].where(mask_sku_valido)
-        )
-
+        
+        # Tabela Dinâmica por Unidade
         df_tabela = df_filtrado.groupby('unidade_almoxarifado').agg(
             Valor_Estoque=('valor_saldo_atual', 'sum'),
             Valor_Compras=('valor_entrada_compras', 'sum'),
             Valor_Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum()),
-            SKUs_Ativos=('sku_ativo', 'nunique')
+            SKUs_Ativos=('codigo_produto', lambda x: x[df_filtrado.loc[x.index, 'qtde_saldo_atual'] > 0].nunique())
         ).reset_index()
 
         df_tabela = df_tabela.sort_values(by='Valor_Estoque', ascending=False)
