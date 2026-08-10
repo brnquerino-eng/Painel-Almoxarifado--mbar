@@ -43,8 +43,9 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
+                # ATENÇÃO AQUI: Adicionamos a coluna 'critico' na consulta ao banco de dados
                 res = supabase.table(table_name).select(
-                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual"
+                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, critico"
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
@@ -71,7 +72,7 @@ def carregar_dados():
                     s_val = s_val[:-2]
                 return s_val
 
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "critico"]:
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
@@ -283,10 +284,15 @@ st.markdown("""
         justify-content: center;
         font-size: 14px;
     }
+    /* Cores atualizadas dos ícones */
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
-    .icon-compras { background-color: #2a2211; color: #f39c12; }
-    .icon-consumo { background-color: #2a1515; color: #e74c3c; }
+    .icon-critico { background-color: #2a1515; color: #ff4757; }
+    .icon-obsoleto { background-color: #1e2732; color: #747d8c; }
+    .icon-obra { background-color: #2a2211; color: #ffa502; }
     .icon-skus { background-color: #1a222d; color: #3498db; }
+    .icon-giro { background-color: #132a24; color: #2ed573; }
+    .icon-cobertura { background-color: #1a222d; color: #1e90ff; }
+    
     .card-title {
         color: #8c9ba5;
         font-size: 12px;
@@ -295,9 +301,9 @@ st.markdown("""
     }
     .card-value {
         color: #ffffff;
-        font-size: 26px;
+        font-size: 24px;
         font-weight: bold;
-        text-align: center;
+        text-align: left;
         font-family: monospace;
     }
 </style>
@@ -357,24 +363,52 @@ if st.session_state.f_meses:
 if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
-# 7. Somas e Contagens Dinâmicas baseadas na quantidade física
+# 7. CÁLCULOS DOS NOVOS KPIs (Financeiros e Operacionais)
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
     return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
 
 val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
-val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
+val_consumo_abs = abs(val_consumo)
 
+# Máscara para garantir que apenas itens com saldo físico entrem nas contas financeiras
+if "qtde_saldo_atual" in df_filtrado.columns:
+    mask_com_saldo = df_filtrado["qtde_saldo_atual"] > 0
+else:
+    mask_com_saldo = pd.Series(True, index=df_filtrado.index)
+
+# Lógica Crítico (agora com a coluna corretamente carregada do banco)
+if "critico" in df_filtrado.columns:
+    mask_critico = df_filtrado["critico"].str.contains("1-sim", case=False, na=False)
+    val_critico = df_filtrado[mask_critico & mask_com_saldo]["valor_saldo_atual"].sum()
+else:
+    val_critico = 0.0
+
+# Lógica Obsoleto
+mask_obsoleto = df_filtrado["unidade_almoxarifado"].str.contains("OBSOLETO", case=False, na=False)
+val_obsoleto = df_filtrado[mask_obsoleto & mask_com_saldo]["valor_saldo_atual"].sum()
+
+# Lógica Obra
+mask_obra = df_filtrado["unidade_almoxarifado"].str.contains("OBRA", case=False, na=False)
+val_obra = df_filtrado[mask_obra & mask_com_saldo]["valor_saldo_atual"].sum()
+
+# Lógica Operacional
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
-    df_skus_ativos = df_filtrado[
-        (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
-    ]
+    df_skus_ativos = df_filtrado[(df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")]
     val_skus = df_skus_ativos["codigo_produto"].nunique()
 else:
     val_skus = 0
 
+# Giro de Estoque: Consumo / Estoque
+giro_estoque = (val_consumo_abs / val_estoque) if val_estoque > 0 else 0.0
+
+# Cobertura de Estoque: Estoque / Consumo médio diário (Base 30 dias)
+consumo_diario = val_consumo_abs / 30
+cobertura_estoque = (val_estoque / consumo_diario) if consumo_diario > 0 else 0.0
+
+# Formatadores
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
@@ -387,54 +421,92 @@ def fmt_int(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # 8.1 Cards Executivos
-    c1, c2 = st.columns(2)
+    # ------------------------------------------
+    # LINHA 1: FINANCEIRO (4 Cards)
+    # ------------------------------------------
+    col_f1, col_f2, col_f3, col_f4 = st.columns(4)
 
-    with c1:
+    with col_f1:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-estoque">📦</div>
-                <div class="card-title">VALOR TOTAL EM ESTOQUE</div>
+                <div class="card-title">VALOR TOTAL ESTOQUE</div>
             </div>
             <div class="card-value">{fmt_brl(val_estoque)}</div>
         </div>
         """, unsafe_allow_html=True)
 
-    with c2:
+    with col_f2:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
-                <div class="icon-box icon-compras">🛒</div>
-                <div class="card-title">VALOR TOTAL DE COMPRA</div>
+                <div class="icon-box icon-critico">🚨</div>
+                <div class="card-title">VALOR CRÍTICO</div>
             </div>
-            <div class="card-value">{fmt_brl(val_compras)}</div>
+            <div class="card-value">{fmt_brl(val_critico)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_f3:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-obsoleto">🕸️</div>
+                <div class="card-title">VALOR OBSOLETOS</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_obsoleto)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_f4:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-obra">🚧</div>
+                <div class="card-title">VALOR OBRA</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_obra)}</div>
         </div>
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    c3, c4 = st.columns(2)
+    # ------------------------------------------
+    # LINHA 2: OPERACIONAL (3 Cards)
+    # ------------------------------------------
+    col_o1, col_o2, col_o3 = st.columns(3)
 
-    with c3:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-consumo">📉</div>
-                <div class="card-title">VALOR TOTAL DE CONSUMO</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_consumo)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c4:
+    with col_o1:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-skus">🏷️</div>
-                <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
+                <div class="card-title">TOTAL DE SKUs ATIVOS</div>
             </div>
-            <div class="card-value">{fmt_int(val_skus)}</div>
+            <div class="card-value" style="text-align: center;">{fmt_int(val_skus)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with col_o2:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-giro">🔄</div>
+                <div class="card-title">GIRO DE ESTOQUE</div>
+            </div>
+            <div class="card-value" style="text-align: center;">{giro_estoque:,.2f}x</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col_o3:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-cobertura">🛡️</div>
+                <div class="card-title">COBERTURA (DIAS)</div>
+            </div>
+            <div class="card-value" style="text-align: center;">{cobertura_estoque:,.1f}</div>
         </div>
         """, unsafe_allow_html=True)
 
