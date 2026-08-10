@@ -289,6 +289,7 @@ st.markdown("""
     .icon-obsoleto { background-color: #2a2a2a; color: #9b59b6; }
     .icon-obra { background-color: #1a2a2a; color: #1abc9c; }
     .icon-skus { background-color: #1a222d; color: #3498db; }
+    .icon-giro { background-color: #221a2d; color: #9b59b6; }
     .card-title {
         color: #8c9ba5;
         font-size: 11px;
@@ -376,8 +377,6 @@ def somar_coluna(dataframe, coluna):
     return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
 
 val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
-val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
-val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
 
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
     df_skus_ativos = df_filtrado[
@@ -407,6 +406,32 @@ if "nome_local_estoque" in df_filtrado.columns and "valor_saldo_atual" in df_fil
     val_obra = somar_coluna(df_obra, "valor_saldo_atual")
 else:
     val_obra = 0.0
+
+# --- CÁLCULO DO GIRO DE ESTOQUE MENSAL E ANUALIZADO ---
+giro_mensal = 0.0
+giro_anual = 0.0
+if not df_filtrado.empty:
+    df_giro = df_filtrado.copy()
+    df_giro['ano_num'] = pd.to_numeric(df_giro['ano_referencia'], errors='coerce').fillna(0)
+    df_giro['mes_num'] = pd.to_numeric(df_giro['mes_referencia'], errors='coerce').fillna(0)
+    df_giro['consumo_abs'] = pd.to_numeric(df_giro['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
+    df_giro['val_estoque'] = pd.to_numeric(df_giro['valor_saldo_atual'], errors='coerce').fillna(0.0)
+    
+    df_giro['is_critico'] = df_giro['item_critico'] == '1-Sim'
+    df_giro['is_obsoleto'] = df_giro['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)
+    
+    monthly_groups = df_giro.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])
+    monthly_df = monthly_groups.apply(lambda g: pd.Series({
+        'estoque_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'val_estoque'].sum(),
+        'consumo_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'consumo_abs'].sum()
+    })).reset_index()
+    
+    if not monthly_df.empty:
+        estoque_medio_op = monthly_df['estoque_op'].mean()
+        consumo_medio_mensal = monthly_df['consumo_op'].mean()
+        if estoque_medio_op > 0:
+            giro_mensal = consumo_medio_mensal / estoque_medio_op
+            giro_anual = giro_mensal * 12
 
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -472,7 +497,7 @@ with aba_geral:
 
     # --- LINHA OPERACIONAL ---
     st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
-    c5, c_vazio1, c_vazio2, c_vazio3 = st.columns(4)
+    c5, c6, c_vazio1, c_vazio2 = st.columns(4)
 
     with c5:
         st.markdown(f"""
@@ -485,7 +510,27 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO (ABA GERAL) ---
+    with c6:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-giro">🔄</div>
+                <div class="card-title">GIRO DE ESTOQUE</div>
+            </div>
+            <div style="display: flex; justify-content: space-around; margin-top: 6px;">
+                <div style="text-align: center;">
+                    <span style="font-size: 10px; color: #8c9ba5;">MENSAL</span><br>
+                    <span style="font-size: 16px; font-weight: bold; color: #ffffff; font-family: monospace;">{giro_mensal*100:.2f}%'.replace('.', ',')</span>
+                </div>
+                <div style="text-align: center; border-left: 1px solid #232b36; padding-left: 12px;">
+                    <span style="font-size: 10px; color: #8c9ba5;">ANUALIZADO</span><br>
+                    <span style="font-size: 16px; font-weight: bold; color: #ffffff; font-family: monospace;">{giro_anual:.2f}x'.replace('.', ',')</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # --- GRÁFICO DE TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO (VISÃO GERAL) ---
     st.markdown("<br>", unsafe_allow_html=True)
     if not df_filtrado.empty:
         with st.container(border=True):
@@ -548,7 +593,6 @@ with aba_geral:
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
             fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
 
-            # Corrigido com key exclusiva para evitar duplicidade
             st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, key="tendencia_geral")
 
     # 9. GRÁFICOS INTERATIVOS
@@ -742,7 +786,6 @@ with aba_detalhada:
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
             fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
 
-            # Corrigido com key exclusiva para evitar duplicidade
             st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, key="tendencia_detalhada")
 
         st.markdown("<br>", unsafe_allow_html=True)
