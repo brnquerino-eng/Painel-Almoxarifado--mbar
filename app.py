@@ -242,8 +242,9 @@ st.markdown("""
         background-color: #161c24;
         border: 1px solid #232b36;
         border-radius: 8px;
-        padding: 20px;
-        height: 120px;
+        padding: 16px;
+        min-height: 130px;
+        height: auto;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -290,16 +291,17 @@ st.markdown("""
     .icon-skus { background-color: #1a222d; color: #3498db; }
     .card-title {
         color: #8c9ba5;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: bold;
         letter-spacing: 0.5px;
     }
     .card-value {
         color: #ffffff;
-        font-size: 26px;
+        font-size: 21px;
         font-weight: bold;
         text-align: center;
         font-family: monospace;
+        margin-top: 8px;
     }
     .section-title {
         color: #ffffff;
