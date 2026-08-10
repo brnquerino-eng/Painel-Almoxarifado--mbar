@@ -8,6 +8,11 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
+# ==========================================
+# CONSTANTE DE REGRA DE NEGÓCIO (CRÍTICO)
+# ==========================================
+FLAG_ITEM_CRITICO = "1-sim"
+
 # Inicialização dos estados para os filtros múltiplos
 if 'f_unidades' not in st.session_state:
     st.session_state.f_unidades = []
@@ -43,9 +48,10 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
+                # Adicionado "item_critico" na seleção para o nosso primeiro card novo
                 res = supabase.table(table_name).select(
-                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual"
-                ).order("id").range(start_r, end_r).execute()
+                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico"
+                ).range(start_r, end_r).execute()
                 return res.data if res.data else []
 
             with ThreadPoolExecutor(max_workers=4) as executor:
@@ -71,7 +77,7 @@ def carregar_dados():
                     s_val = s_val[:-2]
                 return s_val
 
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "item_critico"]:
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
@@ -284,7 +290,7 @@ st.markdown("""
         font-size: 14px;
     }
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
-    .icon-compras { background-color: #2a2211; color: #f39c12; }
+    .icon-critico { background-color: #2a1515; color: #ff4757; }
     .icon-consumo { background-color: #2a1515; color: #e74c3c; }
     .icon-skus { background-color: #1a222d; color: #3498db; }
     .card-title {
@@ -295,9 +301,9 @@ st.markdown("""
     }
     .card-value {
         color: #ffffff;
-        font-size: 26px;
+        font-size: 24px;
         font-weight: bold;
-        text-align: center;
+        text-align: left;
         font-family: monospace;
     }
 </style>
@@ -357,15 +363,27 @@ if st.session_state.f_meses:
 if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
-# 7. Somas e Contagens Dinâmicas baseadas na quantidade física
+# 7. Somas e Contagens Dinâmicas
 def somar_coluna(dataframe, coluna):
     if coluna not in dataframe.columns or dataframe.empty:
         return 0.0
     return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
 
 val_estoque = somar_coluna(df_filtrado, "valor_saldo_atual")
-val_compras = somar_coluna(df_filtrado, "valor_entrada_compras")
 val_consumo = somar_coluna(df_filtrado, "valor_saida_cons_interno")
+
+# Máscara para garantir saldo físico positivo nas contas
+if "qtde_saldo_atual" in df_filtrado.columns:
+    mask_com_saldo = df_filtrado["qtde_saldo_atual"] > 0
+else:
+    mask_com_saldo = pd.Series(True, index=df_filtrado.index)
+
+# Lógica para o Valor Crítico (nosso primeiro card novo!)
+if "item_critico" in df_filtrado.columns:
+    mask_critico = df_filtrado["item_critico"].astype(str).str.contains(FLAG_ITEM_CRITICO, case=False, na=False)
+    val_critico = df_filtrado[mask_critico & mask_com_saldo]["valor_saldo_atual"].sum()
+else:
+    val_critico = 0.0
 
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
     df_skus_ativos = df_filtrado[
@@ -387,7 +405,7 @@ def fmt_int(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # 8.1 Cards Executivos
+    # 8.1 Cards Executivos (Incluindo o Card Crítico)
     c1, c2 = st.columns(2)
 
     with c1:
@@ -405,10 +423,10 @@ with aba_geral:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
-                <div class="icon-box icon-compras">🛒</div>
-                <div class="card-title">VALOR TOTAL DE COMPRA</div>
+                <div class="icon-box icon-critico">🚨</div>
+                <div class="card-title">VALOR CRÍTICO</div>
             </div>
-            <div class="card-value">{fmt_brl(val_compras)}</div>
+            <div class="card-value">{fmt_brl(val_critico)}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -569,7 +587,6 @@ with aba_geral:
 
 with aba_detalhada:
     if not df_filtrado.empty:
-        # Gráfico de Tendência de Estoque envelopado em container com efeito de relevo/cartão
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
 
