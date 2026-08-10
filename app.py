@@ -43,8 +43,9 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
+                # Adicionado campo nome_local_estoque para a lógica de obsoleto
                 res = supabase.table(table_name).select(
-                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico"
+                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
@@ -71,7 +72,7 @@ def carregar_dados():
                     s_val = s_val[:-2]
                 return s_val
 
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "item_critico"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "item_critico", "nome_local_estoque"]:
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
@@ -288,6 +289,7 @@ st.markdown("""
     .icon-consumo { background-color: #2a1515; color: #e74c3c; }
     .icon-skus { background-color: #1a222d; color: #3498db; }
     .icon-critico { background-color: #2a1515; color: #e74c3c; }
+    .icon-obsoleto { background-color: #2a2a2a; color: #9b59b6; }
     .card-title {
         color: #8c9ba5;
         font-size: 12px;
@@ -376,12 +378,19 @@ if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado
 else:
     val_skus = 0
 
-# Cálculo para o novo card de Estoque Crítico (item_critico == "1-Sim")
+# Cálculo para Estoque Crítico
 if "item_critico" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.columns:
     df_criticos = df_filtrado[df_filtrado["item_critico"] == "1-Sim"]
-    val_critico = pd.to_numeric(df_criticos["valor_saldo_atual"], errors='coerce').fillna(0.0).sum()
+    val_critico = somar_coluna(df_criticos, "valor_saldo_atual")
 else:
     val_critico = 0.0
+
+# Cálculo para Estoque Obsoleto (nome_local_estoque contendo 'Obsoleto')
+if "nome_local_estoque" in df_filtrado.columns and "valor_saldo_atual" in df_filtrado.columns:
+    df_obsoleto = df_filtrado[df_filtrado["nome_local_estoque"].astype(str).str.contains("Obsoleto", case=False, na=False)]
+    val_obsoleto = somar_coluna(df_obsoleto, "valor_saldo_atual")
+else:
+    val_obsoleto = 0.0
 
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -395,7 +404,7 @@ def fmt_int(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # 8.1 Cards Executivos (3 colunas na primeira linha)
+    # 8.1 Cards Executivos (Linha 1)
     c1, c2, c3 = st.columns(3)
 
     with c1:
@@ -433,8 +442,8 @@ with aba_geral:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 2ª Linha de Cards (2 colunas: SKUs Únicos e Estoque Crítico)
-    c4, c5 = st.columns(2)
+    # 2ª Linha de Cards (SKUs, Crítico, Obsoleto)
+    c4, c5, c6 = st.columns(3)
 
     with c4:
         st.markdown(f"""
@@ -458,9 +467,21 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
+    with c6:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-obsoleto">🗑️</div>
+                <div class="card-title">ESTOQUE OBSOLETO</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_obsoleto)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
     # 9. GRÁFICOS INTERATIVOS
     st.markdown("<br><br>", unsafe_allow_html=True)
 
+    # (Restante do código de gráficos permanece o mesmo...)
     if not df_filtrado.empty:
         layout_transparente = dict(
             plot_bgcolor='rgba(0,0,0,0)',
