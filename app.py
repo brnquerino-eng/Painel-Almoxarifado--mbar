@@ -290,6 +290,7 @@ st.markdown("""
     .icon-obra { background-color: #1a2a2a; color: #1abc9c; }
     .icon-skus { background-color: #1a222d; color: #3498db; }
     .icon-giro { background-color: #221a2d; color: #9b59b6; }
+    .icon-cobertura { background-color: #2a2211; color: #e67e22; }
     .card-title {
         color: #8c9ba5;
         font-size: 11px;
@@ -407,9 +408,12 @@ if "nome_local_estoque" in df_filtrado.columns and "valor_saldo_atual" in df_fil
 else:
     val_obra = 0.0
 
-# --- CÁLCULO DO GIRO DE ESTOQUE MENSAL E ANUALIZADO ---
+# --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE ---
 giro_mensal = 0.0
 giro_anual = 0.0
+cobertura_meses = 0.0
+cobertura_anos = 0.0
+
 if not df_filtrado.empty:
     df_giro = df_filtrado.copy()
     df_giro['ano_num'] = pd.to_numeric(df_giro['ano_referencia'], errors='coerce').fillna(0)
@@ -432,6 +436,9 @@ if not df_filtrado.empty:
         if estoque_medio_op > 0:
             giro_mensal = consumo_medio_mensal / estoque_medio_op
             giro_anual = giro_mensal * 12
+        if consumo_medio_mensal > 0:
+            cobertura_meses = estoque_medio_op / consumo_medio_mensal
+            cobertura_anos = cobertura_meses / 12
 
 def fmt_brl(val):
     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -444,6 +451,9 @@ def fmt_pct(val):
 
 def fmt_dec(val):
     return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
+
+def fmt_mes(val):
+    return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
 # ==========================================
 # 8. SISTEMA DE ABAS NATIVO
@@ -501,9 +511,9 @@ with aba_geral:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- LINHA OPERACIONAL (Agora com 2 colunas equilibradas) ---
+    # --- LINHA OPERACIONAL (Agora com 3 colunas simétricas) ---
     st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
-    c5, c6 = st.columns(2)
+    c5, c6, c7 = st.columns(3)
 
     with c5:
         st.markdown(f"""
@@ -532,6 +542,27 @@ with aba_geral:
                 <div style="text-align: center; flex: 1;">
                     <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO</span><br>
                     <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c7:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-cobertura">⏳</div>
+                <div class="card-title">COBERTURA DE ESTOQUE</div>
+            </div>
+            <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
+                <div style="text-align: center; flex: 1;">
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL (MESES)</span><br>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_meses)}</span>
+                </div>
+                <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
+                <div style="text-align: center; flex: 1;">
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO (ANOS)</span><br>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_anos)}</span>
                 </div>
             </div>
         </div>
