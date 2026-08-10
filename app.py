@@ -43,9 +43,9 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r):
-                # ATENÇÃO AQUI: Adicionamos a coluna 'critico' na consulta ao banco de dados
+                # ATENÇÃO AQUI: Colunas corrigidas (item_critico e nome_local_estoque adicionadas)
                 res = supabase.table(table_name).select(
-                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, critico"
+                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
                 ).order("id").range(start_r, end_r).execute()
                 return res.data if res.data else []
 
@@ -72,7 +72,7 @@ def carregar_dados():
                     s_val = s_val[:-2]
                 return s_val
 
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "critico"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "item_critico", "nome_local_estoque"]:
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
@@ -284,7 +284,7 @@ st.markdown("""
         justify-content: center;
         font-size: 14px;
     }
-    /* Cores atualizadas dos ícones */
+    /* Cores dos ícones atualizadas para o novo layout */
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
     .icon-critico { background-color: #2a1515; color: #ff4757; }
     .icon-obsoleto { background-color: #1e2732; color: #747d8c; }
@@ -379,20 +379,26 @@ if "qtde_saldo_atual" in df_filtrado.columns:
 else:
     mask_com_saldo = pd.Series(True, index=df_filtrado.index)
 
-# Lógica Crítico (agora com a coluna corretamente carregada do banco)
-if "critico" in df_filtrado.columns:
-    mask_critico = df_filtrado["critico"].str.contains("1-sim", case=False, na=False)
+# Lógica Crítico (agora usando a coluna correta item_critico)
+if "item_critico" in df_filtrado.columns:
+    mask_critico = df_filtrado["item_critico"].astype(str).str.contains("1-sim", case=False, na=False)
     val_critico = df_filtrado[mask_critico & mask_com_saldo]["valor_saldo_atual"].sum()
 else:
     val_critico = 0.0
 
-# Lógica Obsoleto
-mask_obsoleto = df_filtrado["unidade_almoxarifado"].str.contains("OBSOLETO", case=False, na=False)
-val_obsoleto = df_filtrado[mask_obsoleto & mask_com_saldo]["valor_saldo_atual"].sum()
+# Lógica Obsoleto (agora usando a coluna correta nome_local_estoque)
+if "nome_local_estoque" in df_filtrado.columns:
+    mask_obsoleto = df_filtrado["nome_local_estoque"].astype(str).str.contains("OBSOLETO", case=False, na=False)
+    val_obsoleto = df_filtrado[mask_obsoleto & mask_com_saldo]["valor_saldo_atual"].sum()
+else:
+    val_obsoleto = 0.0
 
-# Lógica Obra
-mask_obra = df_filtrado["unidade_almoxarifado"].str.contains("OBRA", case=False, na=False)
-val_obra = df_filtrado[mask_obra & mask_com_saldo]["valor_saldo_atual"].sum()
+# Lógica Obra (agora usando a coluna correta nome_local_estoque)
+if "nome_local_estoque" in df_filtrado.columns:
+    mask_obra = df_filtrado["nome_local_estoque"].astype(str).str.contains("OBRA", case=False, na=False)
+    val_obra = df_filtrado[mask_obra & mask_com_saldo]["valor_saldo_atual"].sum()
+else:
+    val_obra = 0.0
 
 # Lógica Operacional
 if "qtde_saldo_atual" in df_filtrado.columns and "codigo_produto" in df_filtrado.columns:
@@ -484,7 +490,7 @@ with aba_geral:
                 <div class="icon-box icon-skus">🏷️</div>
                 <div class="card-title">TOTAL DE SKUs ATIVOS</div>
             </div>
-            <div class="card-value" style="text-align: center;">{fmt_int(val_skus)}</div>
+            <div class="card-value" style="text-align: left;">{fmt_int(val_skus)}</div>
         </div>
         """, unsafe_allow_html=True)
         
@@ -495,7 +501,7 @@ with aba_geral:
                 <div class="icon-box icon-giro">🔄</div>
                 <div class="card-title">GIRO DE ESTOQUE</div>
             </div>
-            <div class="card-value" style="text-align: center;">{giro_estoque:,.2f}x</div>
+            <div class="card-value" style="text-align: left;">{giro_estoque:,.2f}x</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -506,7 +512,7 @@ with aba_geral:
                 <div class="icon-box icon-cobertura">🛡️</div>
                 <div class="card-title">COBERTURA (DIAS)</div>
             </div>
-            <div class="card-value" style="text-align: center;">{cobertura_estoque:,.1f}</div>
+            <div class="card-value" style="text-align: left;">{cobertura_estoque:,.1f}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -641,7 +647,6 @@ with aba_geral:
 
 with aba_detalhada:
     if not df_filtrado.empty:
-        # Gráfico de Tendência de Estoque envelopado em container com efeito de relevo/cartão
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO</div>", unsafe_allow_html=True)
 
