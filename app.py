@@ -737,11 +737,35 @@ with aba_geral:
                     hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obra:</b> %{customdata}<extra></extra>'
                 ))
 
+            # --- INÍCIO DA LÓGICA DE DESTAQUE (HIGHLIGHT) ---
+            sel_state = st.session_state.get("tendencia_geral", {})
+            pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
+            
+            if pontos_clicados:
+                x_hl = pontos_clicados[0]["x"]
+                y_hl = pontos_clicados[0]["y"]
+                fig_linha_estoque.add_trace(go.Scatter(
+                    x=[x_hl], y=[y_hl],
+                    mode='markers',
+                    name='Foco Selecionado',
+                    marker=dict(size=24, color='rgba(0,0,0,0)', line=dict(color='#f1c40f', width=4)),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+            # --- FIM DA LÓGICA DE DESTAQUE ---
+
             fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
             fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
 
-            st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, key="tendencia_geral")
+            st.plotly_chart(
+                fig_linha_estoque, 
+                use_container_width=True, 
+                config={'displayModeBar': False}, 
+                on_select="rerun", 
+                selection_mode="points", 
+                key="tendencia_geral"
+            )
 
     # 9. GRÁFICOS INTERATIVOS
     st.markdown("<br>", unsafe_allow_html=True)
