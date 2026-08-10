@@ -485,7 +485,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO (ADICIONADO NA ABA GERAL) ---
+    # --- GRÁFICO DE TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO (ABA GERAL) ---
     st.markdown("<br>", unsafe_allow_html=True)
     if not df_filtrado.empty:
         with st.container(border=True):
@@ -548,7 +548,8 @@ with aba_geral:
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
             fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
 
-            st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False})
+            # Corrigido com key exclusiva para evitar duplicidade
+            st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, key="tendencia_geral")
 
     # 9. GRÁFICOS INTERATIVOS
     st.markdown("<br>", unsafe_allow_html=True)
@@ -587,7 +588,7 @@ with aba_geral:
                 fig_linha.update_xaxes(showgrid=False, zeroline=False)
                 fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
 
-                st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False}, key="compras_consumo_geral")
 
         with col_g2:
             with st.container(border=True):
@@ -607,7 +608,7 @@ with aba_geral:
                 fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
                 fig_bar.update_yaxes(title="", showgrid=False)
 
-                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
+                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False}, key="top10_geral")
 
         # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
         st.markdown("<br>", unsafe_allow_html=True)
@@ -674,7 +675,7 @@ with aba_geral:
             fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos - 0.2])
             fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
 
-            st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False})
+            st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False}, key="skus_geral")
 
     else:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
@@ -741,7 +742,8 @@ with aba_detalhada:
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
             fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.25], showticklabels=False)
 
-            st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False})
+            # Corrigido com key exclusiva para evitar duplicidade
+            st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, key="tendencia_detalhada")
 
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
