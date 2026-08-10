@@ -568,21 +568,18 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA DE ESTOQUE TOTAL NO TEMPO (COM LINHA DE CRÍTICO E FILTRO LOCAL) ---
+    # --- GRÁFICO DE TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO ---
     st.markdown("<br>", unsafe_allow_html=True)
     if not df_filtrado.empty:
         with st.container(border=True):
-            # Cabeçalho e Filtro exclusivo do gráfico na mesma linha
             col_tg_title, col_tg_filter = st.columns([3, 2])
             with col_tg_title:
-                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA: ESTOQUE TOTAL VS ESTOQUE CRÍTICO</div>", unsafe_allow_html=True)
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO</div>", unsafe_allow_html=True)
             
             with col_tg_filter:
-                # Filtro local opcional para refinar este gráfico específico
                 unidades_disponiveis_grafico = sorted(df_filtrado["unidade_almoxarifado"].dropna().unique().tolist())
                 filtro_unidade_chart = st.multiselect("Filtrar Unidades no Gráfico:", unidades_disponiveis_grafico, default=[], key="local_chart_filter", placeholder="Todas as unidades filtradas")
 
-            # Aplica o filtro local do gráfico se houver seleção
             df_chart_base = df_filtrado.copy()
             if filtro_unidade_chart:
                 df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(filtro_unidade_chart)]
@@ -601,6 +598,12 @@ with aba_geral:
             df_critico_mes = df_critico_mes.sort_values(['ano_num', 'mes_num'])
             df_critico_mes['Periodo'] = df_critico_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
 
+            # Série 3: Estoque Obsoleto
+            df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
+            df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'ano_num', 'mes_num'])['valor_saldo_atual'].sum().reset_index()
+            df_obsoleto_mes = df_obsoleto_mes.sort_values(['ano_num', 'mes_num'])
+            df_obsoleto_mes['Periodo'] = df_obsoleto_mes['mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
+
             def fmt_valor_milhoes(val):
                 if val >= 1e9:
                     return f"R$ {val/1e9:.1f}B".replace('.', ',')
@@ -618,6 +621,10 @@ with aba_geral:
             if not df_critico_mes.empty:
                 df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
                 df_critico_mes['hover_valor'] = df_critico_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+
+            if not df_obsoleto_mes.empty:
+                df_obsoleto_mes['texto_labels'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+                df_obsoleto_mes['hover_valor'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
             max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
             n_pontos_est = len(df_estoque_mes)
@@ -663,6 +670,22 @@ with aba_geral:
                     line=dict(color='#f39c12', width=2.5, dash='dash'),
                     marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
                     hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Crítico:</b> %{customdata}<extra></extra>'
+                ))
+
+            # Traço 3: Estoque Obsoleto
+            if not df_obsoleto_mes.empty:
+                fig_linha_estoque.add_trace(go.Scatter(
+                    x=df_obsoleto_mes['Periodo'],
+                    y=df_obsoleto_mes['valor_saldo_atual'],
+                    customdata=df_obsoleto_mes['hover_valor'],
+                    name='Estoque Obsoleto',
+                    mode='lines+markers+text',
+                    text=df_obsoleto_mes['texto_labels'],
+                    textposition='top center',
+                    textfont=dict(color='#9b59b6', size=11),
+                    line=dict(color='#9b59b6', width=2.5, dash='dot'),
+                    marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
+                    hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obsoleto:</b> %{customdata}<extra></extra>'
                 ))
 
             fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
@@ -879,7 +902,7 @@ with aba_detalhada:
 
         df_exibicao = pd.DataFrame()
         df_exibicao['Unidade de Almoxarifado'] = df_tabela['unidade_almoxarifado']
-        df_exibicao['Valor em Estocada'] = df_tabela['Valor_Estoque'].apply(fmt_brl)
+        df_exibicao['Valor em Estoque'] = df_tabela['Valor_Estoque'].apply(fmt_brl)
         df_exibicao['Valor de Compras'] = df_tabela['Valor_Compras'].apply(fmt_brl)
         df_exibicao['Valor de Consumo'] = df_tabela['Valor_Consumo'].apply(fmt_brl)
         df_exibicao['SKUs Ativos'] = df_tabela['SKUs_Ativos'].apply(fmt_int)
