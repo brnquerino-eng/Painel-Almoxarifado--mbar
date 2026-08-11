@@ -536,7 +536,7 @@ with aba_geral:
                 
                 if not df_critico_mes.empty:
                     df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-                    df_critico_mes['hover_valor'] = df_critico_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+                    df_critico_mes['hover_valor'] = df_critico_mes['hover_valor'] = df_critico_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
                 if not df_obsoleto_mes.empty:
                     df_obsoleto_mes['texto_labels'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
@@ -549,12 +549,14 @@ with aba_geral:
                 max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
                 n_pontos_est = len(df_estoque_mes)
 
+                # Layout alterado: hovermode=False para remover a linha vertical e a caixa de hover
                 layout_linha_estoque = dict(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
                     margin=dict(l=10, r=10, t=50, b=30),
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    hovermode=False 
                 )
 
                 fig_linha_estoque = go.Figure()
@@ -563,7 +565,6 @@ with aba_geral:
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_estoque_mes['Periodo'],
                     y=df_estoque_mes['valor_saldo_atual'],
-                    customdata=df_estoque_mes['hover_valor'],
                     name='Estoque Total',
                     mode='lines+markers+text',
                     text=df_estoque_mes['texto_labels'],
@@ -573,7 +574,7 @@ with aba_geral:
                     marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
                     fill='tozeroy',
                     fillcolor='rgba(231, 76, 60, 0.08)',
-                    hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
+                    hoverinfo='skip'
                 ))
 
                 # Traço 2: Estoque Crítico
@@ -581,7 +582,6 @@ with aba_geral:
                     fig_linha_estoque.add_trace(go.Scatter(
                         x=df_critico_mes['Periodo'],
                         y=df_critico_mes['valor_saldo_atual'],
-                        customdata=df_critico_mes['hover_valor'],
                         name='Estoque Crítico',
                         mode='lines+markers+text',
                         text=df_critico_mes['texto_labels'],
@@ -590,7 +590,7 @@ with aba_geral:
                         line=dict(color='#f39c12', width=2.5, dash='dash'),
                         marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
                         visible='legendonly',
-                        hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Crítico:</b> %{customdata}<extra></extra>'
+                        hoverinfo='skip'
                     ))
 
                 # Traço 3: Estoque Obsoleto
@@ -598,7 +598,6 @@ with aba_geral:
                     fig_linha_estoque.add_trace(go.Scatter(
                         x=df_obsoleto_mes['Periodo'],
                         y=df_obsoleto_mes['valor_saldo_atual'],
-                        customdata=df_obsoleto_mes['hover_valor'],
                         name='Estoque Obsoleto',
                         mode='lines+markers+text',
                         text=df_obsoleto_mes['texto_labels'],
@@ -607,7 +606,7 @@ with aba_geral:
                         line=dict(color='#9b59b6', width=2.5, dash='dot'),
                         marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
                         visible='legendonly',
-                        hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obsoleto:</b> %{customdata}<extra></extra>'
+                        hoverinfo='skip'
                     ))
 
                 # Traço 4: Estoque Obra
@@ -615,7 +614,6 @@ with aba_geral:
                     fig_linha_estoque.add_trace(go.Scatter(
                         x=df_obra_mes['Periodo'],
                         y=df_obra_mes['valor_saldo_atual'],
-                        customdata=df_obra_mes['hover_valor'],
                         name='Estoque Obra',
                         mode='lines+markers+text',
                         text=df_obra_mes['texto_labels'],
@@ -624,10 +622,10 @@ with aba_geral:
                         line=dict(color='#1abc9c', width=2.5, dash='longdash'),
                         marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
                         visible='legendonly',
-                        hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obra:</b> %{customdata}<extra></extra>'
+                        hoverinfo='skip'
                     ))
 
-                # --- HOLOFOTE VERTICAL (FAIXA DE DESTAQUE ESTILO POWER BI) ---
+                # --- HOLOFOTE VERTICAL ---
                 sel_state = st.session_state.get("tendencia_geral", {})
                 pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
                 
@@ -647,7 +645,7 @@ with aba_geral:
                         )
                 # --- FIM DO HOLOFOTE VERTICAL ---
 
-                fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
+                fig_linha_estoque.update_layout(**layout_linha_estoque, showlegend=True)
                 fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
                 fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
 
@@ -882,10 +880,10 @@ with aba_geral:
                 line=dict(color='#e74c3c', width=3),
                 fill='tozeroy',
                 fillcolor='rgba(231, 76, 60, 0.1)',
-                hovertemplate='<b>Período:</b> %{x}<br><b>SKUs Ativos:</b> %{customdata}<extra></extra>'
+                hoverinfo='skip'
             ))
 
-            fig_sku_linha.update_layout(**layout_sku, hovermode="x unified", showlegend=False)
+            fig_sku_linha.update_layout(**layout_sku, hovermode=False, showlegend=False)
             fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos - 0.2])
             fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
 
