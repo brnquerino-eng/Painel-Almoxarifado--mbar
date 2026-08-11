@@ -594,7 +594,9 @@ with aba_geral:
                     if match_idx:
                         idx = match_idx[0]
                         fig_linha_estoque.add_shape(
-                            type="rect", x0=idx - 0.45, x1=idx + 0.45, y0=0, y1=1, yref="paper",
+                            type="rect", 
+                            x0=idx - 0.25, x1=idx + 0.25,  # <-- LARGURA REDUZIDA AQUI DE 0.45 PARA 0.25
+                            y0=0, y1=1, yref="paper",
                             fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
                         )
 
