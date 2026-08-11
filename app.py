@@ -587,185 +587,189 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA COM HOLOFOTE VERTICAL (ESTILO POWER BI) ---
+    # --- GRÁFICO DE TENDÊNCIA ISOLADO EM FRAGMENTO (CLIQUE INSTANTÂNEO SEM ENGASGO) ---
     st.markdown("<br>", unsafe_allow_html=True)
-    if not df_filtrado.empty:
-        with st.container(border=True):
-            col_tg_title, col_tg_filter = st.columns([3, 2])
-            with col_tg_title:
-                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
-            
-            with col_tg_filter:
-                unidades_disponiveis_grafico = sorted(df_filtrado["unidade_almoxarifado"].dropna().unique().tolist())
-                filtro_unidade_chart = st.multiselect("Filtrar Unidades no Gráfico:", unidades_disponiveis_grafico, default=[], key="local_chart_filter", placeholder="Todas as unidades filtradas")
 
-            df_chart_base = df_filtrado.copy()
-            if filtro_unidade_chart:
-                df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(filtro_unidade_chart)]
+    @st.fragment
+    def render_grafico_tendencia(df_f):
+        if not df_f.empty:
+            with st.container(border=True):
+                col_tg_title, col_tg_filter = st.columns([3, 2])
+                with col_tg_title:
+                    st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
+                
+                with col_tg_filter:
+                    unidades_disponiveis_grafico = sorted(df_f["unidade_almoxarifado"].dropna().unique().tolist())
+                    filtro_unidade_chart = st.multiselect("Filtrar Unidades no Gráfico:", unidades_disponiveis_grafico, default=[], key="local_chart_filter", placeholder="Todas as unidades filtradas")
 
-            # Série 1: Estoque Total
-            df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_estoque_mes = df_estoque_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-            df_estoque_mes['Periodo'] = df_estoque_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
+                df_chart_base = df_f.copy()
+                if filtro_unidade_chart:
+                    df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(filtro_unidade_chart)]
 
-            # Série 2: Estoque Crítico
-            df_critico_trend = df_chart_base[df_chart_base['item_critico'] == '1-Sim']
-            df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_critico_mes = df_critico_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-            df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
+                # Série 1: Estoque Total
+                df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+                df_estoque_mes = df_estoque_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+                df_estoque_mes['Periodo'] = df_estoque_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
 
-            # Série 3: Estoque Obsoleto
-            df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
-            df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_obsoleto_mes = df_obsoleto_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-            df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
+                # Série 2: Estoque Crítico
+                df_critico_trend = df_chart_base[df_chart_base['item_critico'] == '1-Sim']
+                df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+                df_critico_mes = df_critico_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+                df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
 
-            # Série 4: Estoque Obra
-            df_obra_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('obra', case=False, na=False)]
-            df_obra_mes = df_obra_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_obra_mes = df_obra_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-            df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
+                # Série 3: Estoque Obsoleto
+                df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
+                df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+                df_obsoleto_mes = df_obsoleto_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+                df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
 
-            def fmt_valor_milhoes(val):
-                if val >= 1e9:
-                    return f"R$ {val/1e9:.1f}B".replace('.', ',')
-                elif val >= 1e6:
-                    return f"R$ {val/1e6:.1f}M".replace('.', ',')
-                else:
+                # Série 4: Estoque Obra
+                df_obra_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('obra', case=False, na=False)]
+                df_obra_mes = df_obra_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+                df_obra_mes = df_obra_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+                df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
+
+                def fmt_valor_milhoes(val):
+                    if val >= 1e9:
+                        return f"R$ {val/1e9:.1f}B".replace('.', ',')
+                    elif val >= 1e6:
+                        return f"R$ {val/1e6:.1f}M".replace('.', ',')
+                    else:
+                        return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+                def fmt_hover_brl(val):
                     return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-            def fmt_hover_brl(val):
-                return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+                df_estoque_mes['hover_valor'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+                
+                if not df_critico_mes.empty:
+                    df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+                    df_critico_mes['hover_valor'] = df_critico_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
-            df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-            df_estoque_mes['hover_valor'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_hover_brl)
-            
-            if not df_critico_mes.empty:
-                df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-                df_critico_mes['hover_valor'] = df_critico_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+                if not df_obsoleto_mes.empty:
+                    df_obsoleto_mes['texto_labels'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+                    df_obsoleto_mes['hover_valor'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
-            if not df_obsoleto_mes.empty:
-                df_obsoleto_mes['texto_labels'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-                df_obsoleto_mes['hover_valor'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+                if not df_obra_mes.empty:
+                    df_obra_mes['texto_labels'] = df_obra_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+                    df_obra_mes['hover_valor'] = df_obra_mes['valor_saldo_atual'].apply(fmt_hover_brl)
 
-            if not df_obra_mes.empty:
-                df_obra_mes['texto_labels'] = df_obra_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-                df_obra_mes['hover_valor'] = df_obra_mes['valor_saldo_atual'].apply(fmt_hover_brl)
+                max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
+                n_pontos_est = len(df_estoque_mes)
 
-            max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
-            n_pontos_est = len(df_estoque_mes)
+                layout_linha_estoque = dict(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#8c9ba5'),
+                    margin=dict(l=10, r=10, t=50, b=30),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
 
-            layout_linha_estoque = dict(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#8c9ba5'),
-                margin=dict(l=10, r=10, t=50, b=30),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-            )
-
-            fig_linha_estoque = go.Figure()
-            
-            # Traço 1: Estoque Total
-            fig_linha_estoque.add_trace(go.Scatter(
-                x=df_estoque_mes['Periodo'],
-                y=df_estoque_mes['valor_saldo_atual'],
-                customdata=df_estoque_mes['hover_valor'],
-                name='Estoque Total',
-                mode='lines+markers+text',
-                text=df_estoque_mes['texto_labels'],
-                textposition='top center',
-                textfont=dict(color='white', size=11),
-                line=dict(color='#e74c3c', width=3),
-                marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
-                fill='tozeroy',
-                fillcolor='rgba(231, 76, 60, 0.08)',
-                hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
-            ))
-
-            # Traço 2: Estoque Crítico
-            if not df_critico_mes.empty:
+                fig_linha_estoque = go.Figure()
+                
+                # Traço 1: Estoque Total
                 fig_linha_estoque.add_trace(go.Scatter(
-                    x=df_critico_mes['Periodo'],
-                    y=df_critico_mes['valor_saldo_atual'],
-                    customdata=df_critico_mes['hover_valor'],
-                    name='Estoque Crítico',
+                    x=df_estoque_mes['Periodo'],
+                    y=df_estoque_mes['valor_saldo_atual'],
+                    customdata=df_estoque_mes['hover_valor'],
+                    name='Estoque Total',
                     mode='lines+markers+text',
-                    text=df_critico_mes['texto_labels'],
-                    textposition='bottom center',
-                    textfont=dict(color='#f39c12', size=11),
-                    line=dict(color='#f39c12', width=2.5, dash='dash'),
-                    marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
-                    visible='legendonly',
-                    hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Crítico:</b> %{customdata}<extra></extra>'
-                ))
-
-            # Traço 3: Estoque Obsoleto
-            if not df_obsoleto_mes.empty:
-                fig_linha_estoque.add_trace(go.Scatter(
-                    x=df_obsoleto_mes['Periodo'],
-                    y=df_obsoleto_mes['valor_saldo_atual'],
-                    customdata=df_obsoleto_mes['hover_valor'],
-                    name='Estoque Obsoleto',
-                    mode='lines+markers+text',
-                    text=df_obsoleto_mes['texto_labels'],
+                    text=df_estoque_mes['texto_labels'],
                     textposition='top center',
-                    textfont=dict(color='#9b59b6', size=11),
-                    line=dict(color='#9b59b6', width=2.5, dash='dot'),
-                    marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
-                    visible='legendonly',
-                    hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obsoleto:</b> %{customdata}<extra></extra>'
+                    textfont=dict(color='white', size=11),
+                    line=dict(color='#e74c3c', width=3),
+                    marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
+                    fill='tozeroy',
+                    fillcolor='rgba(231, 76, 60, 0.08)',
+                    hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Total:</b> %{customdata}<extra></extra>'
                 ))
 
-            # Traço 4: Estoque Obra
-            if not df_obra_mes.empty:
-                fig_linha_estoque.add_trace(go.Scatter(
-                    x=df_obra_mes['Periodo'],
-                    y=df_obra_mes['valor_saldo_atual'],
-                    customdata=df_obra_mes['hover_valor'],
-                    name='Estoque Obra',
-                    mode='lines+markers+text',
-                    text=df_obra_mes['texto_labels'],
-                    textposition='bottom center',
-                    textfont=dict(color='#1abc9c', size=11),
-                    line=dict(color='#1abc9c', width=2.5, dash='longdash'),
-                    marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
-                    visible='legendonly',
-                    hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obra:</b> %{customdata}<extra></extra>'
-                ))
+                # Traço 2: Estoque Crítico
+                if not df_critico_mes.empty:
+                    fig_linha_estoque.add_trace(go.Scatter(
+                        x=df_critico_mes['Periodo'],
+                        y=df_critico_mes['valor_saldo_atual'],
+                        customdata=df_critico_mes['hover_valor'],
+                        name='Estoque Crítico',
+                        mode='lines+markers+text',
+                        text=df_critico_mes['texto_labels'],
+                        textposition='bottom center',
+                        textfont=dict(color='#f39c12', size=11),
+                        line=dict(color='#f39c12', width=2.5, dash='dash'),
+                        marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
+                        visible='legendonly',
+                        hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Crítico:</b> %{customdata}<extra></extra>'
+                    ))
 
-            # --- HOLOFOTE VERTICAL (FAIXA DE DESTAQUE ESTILO POWER BI) ---
-            sel_state = st.session_state.get("tendencia_geral", {})
-            pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
-            
-            if pontos_clicados:
-                x_hl = pontos_clicados[0]["x"]
-                # Encontrar o índice numérico da categoria x_hl para desenhar a barra vertical de fundo
-                match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == x_hl].tolist()
-                if match_idx:
-                    idx = match_idx[0]
-                    fig_linha_estoque.add_shape(
-                        type="rect",
-                        x0=idx - 0.45, x1=idx + 0.45,
-                        y0=0, y1=1,
-                        yref="paper",
-                        fillcolor="rgba(216, 92, 39, 0.18)", # Tom âmbar translúcido combinando com o tema
-                        line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), # Borda sutil de destaque
-                        layer="below"
-                    )
-            # --- FIM DO HOLOFOTE VERTICAL ---
+                # Traço 3: Estoque Obsoleto
+                if not df_obsoleto_mes.empty:
+                    fig_linha_estoque.add_trace(go.Scatter(
+                        x=df_obsoleto_mes['Periodo'],
+                        y=df_obsoleto_mes['valor_saldo_atual'],
+                        customdata=df_obsoleto_mes['hover_valor'],
+                        name='Estoque Obsoleto',
+                        mode='lines+markers+text',
+                        text=df_obsoleto_mes['texto_labels'],
+                        textposition='top center',
+                        textfont=dict(color='#9b59b6', size=11),
+                        line=dict(color='#9b59b6', width=2.5, dash='dot'),
+                        marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
+                        visible='legendonly',
+                        hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obsoleto:</b> %{customdata}<extra></extra>'
+                    ))
 
-            fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
-            fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-            fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
+                # Traço 4: Estoque Obra
+                if not df_obra_mes.empty:
+                    fig_linha_estoque.add_trace(go.Scatter(
+                        x=df_obra_mes['Periodo'],
+                        y=df_obra_mes['valor_saldo_atual'],
+                        customdata=df_obra_mes['hover_valor'],
+                        name='Estoque Obra',
+                        mode='lines+markers+text',
+                        text=df_obra_mes['texto_labels'],
+                        textposition='bottom center',
+                        textfont=dict(color='#1abc9c', size=11),
+                        line=dict(color='#1abc9c', width=2.5, dash='longdash'),
+                        marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
+                        visible='legendonly',
+                        hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obra:</b> %{customdata}<extra></extra>'
+                    ))
 
-            st.plotly_chart(
-                fig_linha_estoque, 
-                use_container_width=True, 
-                config={'displayModeBar': False}, 
-                on_select="rerun", 
-                selection_mode="points", 
-                key="tendencia_geral"
-            )
+                # --- HOLOFOTE VERTICAL (FAIXA DE DESTAQUE ESTILO POWER BI) ---
+                sel_state = st.session_state.get("tendencia_geral", {})
+                pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
+                
+                if pontos_clicados:
+                    x_hl = pontos_clicados[0]["x"]
+                    match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == x_hl].tolist()
+                    if match_idx:
+                        idx = match_idx[0]
+                        fig_linha_estoque.add_shape(
+                            type="rect",
+                            x0=idx - 0.45, x1=idx + 0.45,
+                            y0=0, y1=1,
+                            yref="paper",
+                            fillcolor="rgba(216, 92, 39, 0.18)",
+                            line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"),
+                            layer="below"
+                        )
+                # --- FIM DO HOLOFOTE VERTICAL ---
+
+                fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
+                fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
+                fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
+
+                st.plotly_chart(
+                    fig_linha_estoque, 
+                    use_container_width=True, 
+                    config={'displayModeBar': False}, 
+                    on_select="rerun", 
+                    selection_mode="points", 
+                    key="tendencia_geral"
+                )
+
+    render_grafico_tendencia(df_filtrado)
 
     # 9. GRÁFICOS INTERATIVOS
     st.markdown("<br>", unsafe_allow_html=True)
