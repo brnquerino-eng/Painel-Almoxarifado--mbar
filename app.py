@@ -536,19 +536,19 @@ with aba_geral:
                 max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
                 n_pontos_est = len(df_estoque_mes)
 
-                # Layout: hovermode=False remove a linha guia e a caixa de hover
+                # Layout: hovermode="closest" mantém o motor de clique ativo (para o farol), sem linha vertical cortando a tela
                 layout_linha_estoque = dict(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
                     margin=dict(l=10, r=10, t=50, b=30),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    hovermode=False 
+                    hovermode="closest" 
                 )
 
                 fig_linha_estoque = go.Figure()
                 
-                # Traces: hoverinfo='none' remove a caixa ao passar o mouse, mas permite o clique
+                # Traces: hoverinfo='none' esconde a caixinha de texto ao passar o mouse, mas preserva a interatividade de clique
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
                     name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
@@ -832,7 +832,7 @@ with aba_geral:
                 hoverinfo='none'
             ))
 
-            fig_sku_linha.update_layout(**layout_sku, hovermode=False, showlegend=False)
+            fig_sku_linha.update_layout(**layout_sku, hovermode="closest", showlegend=False)
             fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos - 0.2])
             fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
 
