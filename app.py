@@ -383,7 +383,6 @@ if st.session_state.f_anos:
     df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(st.session_state.f_anos)]
 
 # 6.1 Criação do DataFrame de Snapshot (para os Cards e Top 10)
-# Se o usuário não escolheu um mês específico, o snapshot foca automaticamente no último mês/ano atualizado da base
 df_snapshot = df_filtrado.copy()
 if not st.session_state.f_meses:
     if st.session_state.f_anos:
@@ -412,28 +411,25 @@ if "qtde_saldo_atual" in df_snapshot.columns and "codigo_produto" in df_snapshot
 else:
     val_skus = 0
 
-# Cálculo para Estoque Crítico no Snapshot
 if "item_critico" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
     df_criticos = df_snapshot[df_snapshot["item_critico"] == "1-Sim"]
     val_critico = somar_coluna(df_criticos, "valor_saldo_atual")
 else:
     val_critico = 0.0
 
-# Cálculo para Estoque Obsoleto no Snapshot
 if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
     df_obsoleto = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("Obsoleto", case=False, na=False)]
     val_obsoleto = somar_coluna(df_obsoleto, "valor_saldo_atual")
 else:
     val_obsoleto = 0.0
 
-# Cálculo para Estoque Obra no Snapshot
 if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
     df_obra = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("obra", case=False, na=False)]
     val_obra = somar_coluna(df_obra, "valor_saldo_atual")
 else:
     val_obra = 0.0
 
-# --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (Usa o histórico filtrado para calcular médias operacionais) ---
+# --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE ---
 giro_mensal = 0.0
 giro_anual = 0.0
 cobertura_meses = 0.0
@@ -591,13 +587,13 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # --- GRÁFICO DE TENDÊNCIA (Usa df_filtrado para mostrar o histórico ao longo do tempo) ---
+    # --- GRÁFICO DE TENDÊNCIA COM HOLOFOTE VERTICAL (ESTILO POWER BI) ---
     st.markdown("<br>", unsafe_allow_html=True)
     if not df_filtrado.empty:
         with st.container(border=True):
             col_tg_title, col_tg_filter = st.columns([3, 2])
             with col_tg_title:
-                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
             
             with col_tg_filter:
                 unidades_disponiveis_grafico = sorted(df_filtrado["unidade_almoxarifado"].dropna().unique().tolist())
@@ -737,22 +733,26 @@ with aba_geral:
                     hovertemplate='<b>Período:</b> %{x}<br><b>Estoque Obra:</b> %{customdata}<extra></extra>'
                 ))
 
-            # --- INÍCIO DA LÓGICA DE DESTAQUE (HIGHLIGHT) ---
+            # --- HOLOFOTE VERTICAL (FAIXA DE DESTAQUE ESTILO POWER BI) ---
             sel_state = st.session_state.get("tendencia_geral", {})
             pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
             
             if pontos_clicados:
                 x_hl = pontos_clicados[0]["x"]
-                y_hl = pontos_clicados[0]["y"]
-                fig_linha_estoque.add_trace(go.Scatter(
-                    x=[x_hl], y=[y_hl],
-                    mode='markers',
-                    name='Foco Selecionado',
-                    marker=dict(size=24, color='rgba(0,0,0,0)', line=dict(color='#f1c40f', width=4)),
-                    showlegend=False,
-                    hoverinfo='skip'
-                ))
-            # --- FIM DA LÓGICA DE DESTAQUE ---
+                # Encontrar o índice numérico da categoria x_hl para desenhar a barra vertical de fundo
+                match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == x_hl].tolist()
+                if match_idx:
+                    idx = match_idx[0]
+                    fig_linha_estoque.add_shape(
+                        type="rect",
+                        x0=idx - 0.45, x1=idx + 0.45,
+                        y0=0, y1=1,
+                        yref="paper",
+                        fillcolor="rgba(216, 92, 39, 0.18)", # Tom âmbar translúcido combinando com o tema
+                        line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), # Borda sutil de destaque
+                        layer="below"
+                    )
+            # --- FIM DO HOLOFOTE VERTICAL ---
 
             fig_linha_estoque.update_layout(**layout_linha_estoque, hovermode="x unified", showlegend=True)
             fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
@@ -805,7 +805,6 @@ with aba_geral:
 
         with col_g2:
             with st.container(border=True):
-                # O Top 10 agora reflete o snapshot do mês atual / selecionado
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
 
                 df_rank = df_snapshot.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
@@ -827,7 +826,7 @@ with aba_geral:
         # 10. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #e74c3c; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
 
             df_sku_trend = df_filtrado[
                 (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
@@ -896,7 +895,6 @@ with aba_detalhada:
     if not df_snapshot.empty:
         st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
         
-        # Tabela Dinâmica por Unidade baseada no Snapshot
         df_tabela = df_snapshot.groupby('unidade_almoxarifado').agg(
             Valor_Estoque=('valor_saldo_atual', 'sum'),
             Valor_Compras=('valor_entrada_compras', 'sum'),
