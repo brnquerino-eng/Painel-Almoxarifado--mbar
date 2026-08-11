@@ -1,4 +1,5 @@
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
+from textwrap import dedent
 
 import pandas as pd
 import streamlit as st
@@ -8,58 +9,32 @@ import plotly.graph_objects as go
 
 
 # ============================================================
-# CONFIGURAÇÃO
+# CONFIGURAÇÃO DA PÁGINA
 # ============================================================
 
 st.set_page_config(
     page_title="Visão Executiva de Estoque",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="collapsed",
+    layout="wide"
 )
-
-TABLE_NAME = "painel_estoque"
-
-# Número de registros por requisição.
-# 1000 é mais seguro para instalações Supabase/PostgREST
-# que mantêm o limite padrão de retorno.
-BATCH_SIZE = 1000
-
-# Número de requisições simultâneas.
-MAX_WORKERS = 6
-
-COLUNAS_TEXTO = [
-    "mes_referencia",
-    "ano_referencia",
-    "codigo_produto",
-    "item_critico",
-    "nome_local_estoque",
-]
-
-COLUNAS_NUMERICAS = [
-    "valor_saldo_atual",
-    "valor_entrada_compras",
-    "valor_saida_cons_interno",
-    "qtde_saldo_atual",
-]
-
-COLUNAS_SELECT = [
-    "id",
-    "valor_saldo_atual",
-    "valor_entrada_compras",
-    "valor_saida_cons_interno",
-    "unidade_almoxarifado",
-    "mes_referencia",
-    "ano_referencia",
-    "codigo_produto",
-    "qtde_saldo_atual",
-    "item_critico",
-    "nome_local_estoque",
-]
 
 
 # ============================================================
-# ESTADO DOS FILTROS
+# FUNÇÃO AUXILIAR PARA HTML
+# ============================================================
+# IMPORTANTE:
+# O dedent evita que o Streamlit interprete o HTML indentado
+# como bloco de código.
+# ============================================================
+
+def html_markdown(html):
+    st.markdown(
+        dedent(html),
+        unsafe_allow_html=True
+    )
+
+
+# ============================================================
+# ESTADOS DOS FILTROS
 # ============================================================
 
 if "f_unidades" not in st.session_state:
@@ -73,15 +48,11 @@ if "f_anos" not in st.session_state:
 
 
 # ============================================================
-# SUPABASE
+# CONEXÃO COM SUPABASE
 # ============================================================
 
 @st.cache_resource
 def conectar_supabase():
-    """
-    Cria uma única conexão reutilizável durante a sessão
-    do Streamlit.
-    """
     url = st.secrets["SUPABASE_URL"]
     key = st.secrets["SUPABASE_KEY"]
 
@@ -90,325 +61,208 @@ def conectar_supabase():
 
 supabase = conectar_supabase()
 
-
-# ============================================================
-# FUNÇÕES AUXILIARES
-# ============================================================
-
-def limpar_valor(valor):
-    """
-    Normaliza valores que chegam do banco como string,
-    float ou None.
-    """
-    if pd.isna(valor) or valor is None:
-        return ""
-
-    valor = str(valor).strip()
-
-    if valor.endswith(".0"):
-        valor = valor[:-2]
-
-    return valor
-
-
-def fmt_brl(valor):
-    valor = float(valor or 0)
-
-    return (
-        f"R$ {valor:,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-    )
-
-
-def fmt_int(valor):
-    return f"{int(valor or 0):,}".replace(",", ".")
-
-
-def fmt_x(valor):
-    return (
-        f"{float(valor or 0):,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-        + "x"
-    )
-
-
-def fmt_mes(valor):
-    return (
-        f"{float(valor or 0):,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-    )
-
-
-def fmt_valor_milhoes(valor):
-    valor = float(valor or 0)
-
-    if abs(valor) >= 1e9:
-        return f"R$ {valor / 1e9:.1f}B".replace(".", ",")
-
-    if abs(valor) >= 1e6:
-        return f"R$ {valor / 1e6:.1f}M".replace(".", ",")
-
-    if abs(valor) >= 1e3:
-        return f"R$ {valor / 1e3:.1f}K".replace(".", ",")
-
-    return (
-        f"R$ {valor:,.2f}"
-        .replace(",", "X")
-        .replace(".", ",")
-        .replace("X", ".")
-    )
-
-
-def chave_numerica(valor):
-    try:
-        return (0, int(valor))
-    except (ValueError, TypeError):
-        return (1, str(valor))
-
-
-def somar_coluna(dataframe, coluna):
-    if dataframe.empty or coluna not in dataframe.columns:
-        return 0.0
-
-    return (
-        pd.to_numeric(dataframe[coluna], errors="coerce")
-        .fillna(0.0)
-        .sum()
-    )
-
-
-def periodo_label(df):
-    """
-    Cria a coluna de período no formato MM/AAAA.
-    """
-    df = df.copy()
-
-    df["Periodo"] = (
-        df["tmp_mes_num"]
-        .astype(int)
-        .astype(str)
-        .str.zfill(2)
-        + "/"
-        + df["ano_referencia"].astype(str)
-    )
-
-    return df
+table_name = "painel_estoque"
 
 
 # ============================================================
-# CARREGAMENTO DO SUPABASE
+# CARREGAMENTO DOS DADOS
 # ============================================================
 
-def buscar_lote(start_row, end_row):
-    """
-    Busca um lote específico.
-    """
-
-    response = (
-        supabase
-        .table(TABLE_NAME)
-        .select(",".join(COLUNAS_SELECT))
-        .order("id")
-        .range(start_row, end_row)
-        .execute()
-    )
-
-    return response.data or []
-
-
-@st.cache_data(show_spinner=False, ttl=900)
+@st.cache_data
 def carregar_dados():
-    """
-    Carrega a base do Supabase em lotes paralelos.
-
-    TTL de 15 minutos:
-    evita consultar toda a base a cada interação do usuário.
-    """
 
     try:
-        # --------------------------------------------------------
-        # Descobre quantidade de registros
-        # --------------------------------------------------------
 
-        count_response = (
-            supabase
-            .table(TABLE_NAME)
-            .select("id", count="exact", head=True)
-            .execute()
-        )
+        with st.spinner(
+            "Carregando e normalizando base de dados em alta performance..."
+        ):
 
-        total_rows = count_response.count
+            # ------------------------------------------------
+            # Conta registros
+            # ------------------------------------------------
 
-        if not total_rows:
-            return pd.DataFrame()
-
-        # --------------------------------------------------------
-        # Cria ranges
-        # --------------------------------------------------------
-
-        ranges = [
-            (
-                inicio,
-                min(inicio + BATCH_SIZE - 1, total_rows - 1),
+            count_res = (
+                supabase
+                .table(table_name)
+                .select("*", count="exact", head=True)
+                .execute()
             )
-            for inicio in range(0, total_rows, BATCH_SIZE)
-        ]
 
-        dados = []
+            total_rows = getattr(count_res, "count", None)
 
-        progress_placeholder = st.empty()
+            # Fallback apenas se a contagem não estiver disponível
+            if not total_rows or total_rows == 0:
+                total_rows = 460000
 
-        # --------------------------------------------------------
-        # Busca paralela
-        # --------------------------------------------------------
+            # ------------------------------------------------
+            # Configuração dos lotes
+            # ------------------------------------------------
 
-        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            batch_size = 1000
 
-            futures = {
-                executor.submit(
-                    buscar_lote,
-                    inicio,
-                    fim,
-                ): (inicio, fim)
-                for inicio, fim in ranges
-            }
+            ranges = [
+                (
+                    i,
+                    min(i + batch_size - 1, total_rows - 1)
+                )
+                for i in range(0, total_rows, batch_size)
+            ]
 
-            total_lotes = len(futures)
-            lotes_processados = 0
+            all_data = []
 
-            for future in as_completed(futures):
+            # ------------------------------------------------
+            # Função para buscar lote
+            # ------------------------------------------------
 
-                inicio, fim = futures[future]
+            def fetch_range(start_r, end_r):
 
-                try:
-                    lote = future.result()
-
-                    if lote:
-                        dados.extend(lote)
-
-                except Exception as erro:
-                    st.warning(
-                        f"Falha ao carregar registros {inicio}-{fim}: {erro}"
+                response = (
+                    supabase
+                    .table(table_name)
+                    .select(
+                        """
+                        id,
+                        valor_saldo_atual,
+                        valor_entrada_compras,
+                        valor_saida_cons_interno,
+                        unidade_almoxarifado,
+                        mes_referencia,
+                        ano_referencia,
+                        codigo_produto,
+                        qtde_saldo_atual,
+                        item_critico,
+                        nome_local_estoque
+                        """
                     )
-
-                lotes_processados += 1
-
-                progresso = lotes_processados / total_lotes
-
-                progress_placeholder.progress(
-                    progresso,
-                    text=(
-                        f"Carregando base: "
-                        f"{lotes_processados}/{total_lotes} lotes"
-                    ),
+                    .order("id")
+                    .range(start_r, end_r)
+                    .execute()
                 )
 
-        progress_placeholder.empty()
+                return response.data if response.data else []
 
-        if not dados:
-            return pd.DataFrame()
+            # ------------------------------------------------
+            # Execução paralela controlada
+            # ------------------------------------------------
 
-        # --------------------------------------------------------
-        # DataFrame
-        # --------------------------------------------------------
+            with ThreadPoolExecutor(max_workers=4) as executor:
 
-        df = pd.DataFrame(dados)
+                futures = [
+                    executor.submit(fetch_range, start, end)
+                    for start, end in ranges
+                ]
 
-        # --------------------------------------------------------
-        # Normalização
-        # --------------------------------------------------------
+                for future in futures:
 
-        if "unidade_almoxarifado" in df.columns:
-            df["unidade_almoxarifado"] = (
-                df["unidade_almoxarifado"]
-                .astype(str)
-                .str.strip()
-                .str.upper()
-            )
+                    data = future.result()
 
-        for coluna in COLUNAS_TEXTO:
+                    if data:
+                        all_data.extend(data)
 
-            if coluna in df.columns:
-                df[coluna] = df[coluna].apply(limpar_valor)
+            # ------------------------------------------------
+            # Nenhum dado
+            # ------------------------------------------------
 
-        for coluna in COLUNAS_NUMERICAS:
+            if not all_data:
+                return pd.DataFrame()
 
-            if coluna in df.columns:
-                df[coluna] = (
-                    pd.to_numeric(
-                        df[coluna],
-                        errors="coerce",
-                    )
-                    .fillna(0.0)
+            # ------------------------------------------------
+            # DataFrame
+            # ------------------------------------------------
+
+            df = pd.DataFrame(all_data)
+
+            # ------------------------------------------------
+            # Normalização das unidades
+            # ------------------------------------------------
+
+            if "unidade_almoxarifado" in df.columns:
+
+                df["unidade_almoxarifado"] = (
+                    df["unidade_almoxarifado"]
+                    .astype(str)
+                    .str.strip()
+                    .str.upper()
                 )
 
-        # --------------------------------------------------------
-        # Auxiliares temporários
-        # --------------------------------------------------------
+            # ------------------------------------------------
+            # Limpeza de valores textuais
+            # ------------------------------------------------
 
-        df["tmp_ano_num"] = (
-            pd.to_numeric(
-                df["ano_referencia"],
-                errors="coerce",
+            def limpar_valor(val):
+
+                if pd.isna(val) or val is None:
+                    return ""
+
+                s_val = str(val).strip()
+
+                if s_val.endswith(".0"):
+                    s_val = s_val[:-2]
+
+                return s_val
+
+            colunas_texto = [
+                "mes_referencia",
+                "ano_referencia",
+                "codigo_produto",
+                "item_critico",
+                "nome_local_estoque"
+            ]
+
+            for col in colunas_texto:
+
+                if col in df.columns:
+                    df[col] = df[col].apply(limpar_valor)
+
+            # ------------------------------------------------
+            # Conversão numérica
+            # ------------------------------------------------
+
+            colunas_numericas = [
+                "valor_saldo_atual",
+                "valor_entrada_compras",
+                "valor_saida_cons_interno",
+                "qtde_saldo_atual"
+            ]
+
+            for col in colunas_numericas:
+
+                if col in df.columns:
+
+                    df[col] = (
+                        pd.to_numeric(
+                            df[col],
+                            errors="coerce"
+                        )
+                        .fillna(0.0)
+                    )
+
+            # ------------------------------------------------
+            # Colunas auxiliares para ordenação temporal
+            # ------------------------------------------------
+
+            df["tmp_ano_num"] = (
+                pd.to_numeric(
+                    df["ano_referencia"],
+                    errors="coerce"
+                )
+                .fillna(0)
             )
-            .fillna(0)
-            .astype(int)
-        )
 
-        df["tmp_mes_num"] = (
-            pd.to_numeric(
-                df["mes_referencia"],
-                errors="coerce",
+            df["tmp_mes_num"] = (
+                pd.to_numeric(
+                    df["mes_referencia"],
+                    errors="coerce"
+                )
+                .fillna(0)
             )
-            .fillna(0)
-            .astype(int)
-        )
 
-        # --------------------------------------------------------
-        # Flags utilizadas em vários cálculos
-        # --------------------------------------------------------
+            return df
 
-        df["is_critico"] = (
-            df["item_critico"] == "1-Sim"
-        )
-
-        df["is_obsoleto"] = (
-            df["nome_local_estoque"]
-            .astype(str)
-            .str.contains(
-                "obsoleto",
-                case=False,
-                na=False,
-            )
-        )
-
-        df["is_obra"] = (
-            df["nome_local_estoque"]
-            .astype(str)
-            .str.contains(
-                "obra",
-                case=False,
-                na=False,
-            )
-        )
-
-        df["consumo_abs"] = (
-            df["valor_saida_cons_interno"]
-            .abs()
-        )
-
-        return df
-
-    except Exception as erro:
+    except Exception as e:
 
         st.error(
-            f"Erro ao carregar dados do Supabase: {erro}"
+            f"Erro ao carregar dados do Supabase: {e}"
         )
 
         return pd.DataFrame()
@@ -418,10 +272,7 @@ def carregar_dados():
 # CARREGA BASE
 # ============================================================
 
-with st.spinner(
-    "Carregando e normalizando base de dados..."
-):
-    df_completo = carregar_dados()
+df_completo = carregar_dados()
 
 
 # ============================================================
@@ -430,14 +281,13 @@ with st.spinner(
 
 if not df_completo.empty:
 
-    max_ano_base = int(
-        df_completo["tmp_ano_num"].max()
-    )
+    max_ano_base = df_completo["tmp_ano_num"].max()
 
-    max_mes_base = int(
+    max_mes_base = (
         df_completo[
             df_completo["tmp_ano_num"] == max_ano_base
-        ]["tmp_mes_num"].max()
+        ]["tmp_mes_num"]
+        .max()
     )
 
 else:
@@ -447,7 +297,7 @@ else:
 
 
 # ============================================================
-# OPÇÕES DOS FILTROS
+# UNIDADES
 # ============================================================
 
 if not df_completo.empty:
@@ -467,40 +317,68 @@ else:
 
 
 unidades_gerenciais = [
-    unidade
-    for unidade in unidades_opcoes
-    if "GERENCIAL" in unidade
+    u
+    for u in unidades_opcoes
+    if "GERENCIAL" in u
 ]
 
 unidades_ativas = [
-    unidade
-    for unidade in unidades_opcoes
-    if "GERENCIAL" not in unidade
+    u
+    for u in unidades_opcoes
+    if "GERENCIAL" not in u
 ]
 
 
+# ============================================================
+# ORDENAÇÃO NUMÉRICA
+# ============================================================
+
+def _chave_numerica(val):
+
+    try:
+        return (0, int(val))
+
+    except (ValueError, TypeError):
+
+        return (1, str(val))
+
+
+# ============================================================
+# MESES
+# ============================================================
+
 dict_meses_nome = {
+
     "1": "01 - Janeiro",
     "01": "01 - Janeiro",
+
     "2": "02 - Fevereiro",
     "02": "02 - Fevereiro",
+
     "3": "03 - Março",
     "03": "03 - Março",
+
     "4": "04 - Abril",
     "04": "04 - Abril",
+
     "5": "05 - Maio",
     "05": "05 - Maio",
+
     "6": "06 - Junho",
     "06": "06 - Junho",
+
     "7": "07 - Julho",
     "07": "07 - Julho",
+
     "8": "08 - Agosto",
     "08": "08 - Agosto",
+
     "9": "09 - Setembro",
     "09": "09 - Setembro",
+
     "10": "10 - Outubro",
     "11": "11 - Novembro",
-    "12": "12 - Dezembro",
+    "12": "12 - Dezembro"
 }
 
 
@@ -513,7 +391,7 @@ if not df_completo.empty:
         .dropna()
         .unique()
         .tolist(),
-        key=chave_numerica,
+        key=_chave_numerica
     )
 
 else:
@@ -522,22 +400,28 @@ else:
 
 
 map_raw_para_fmt = {
-    mes: dict_meses_nome.get(
-        str(mes).strip(),
-        f"{str(mes).strip().zfill(2)} - Mês {mes}",
+    m: dict_meses_nome.get(
+        str(m).strip(),
+        f"{str(m).strip().zfill(2)} - Mês {m}"
     )
-    for mes in raw_meses
+    for m in raw_meses
 }
 
+
 map_fmt_para_raw = {
-    valor: chave
-    for chave, valor in map_raw_para_fmt.items()
+    v: k
+    for k, v in map_raw_para_fmt.items()
 }
+
 
 meses_opcoes_formatadas = list(
     map_raw_para_fmt.values()
 )
 
+
+# ============================================================
+# ANOS
+# ============================================================
 
 if not df_completo.empty:
 
@@ -548,7 +432,7 @@ if not df_completo.empty:
         .dropna()
         .unique()
         .tolist(),
-        key=chave_numerica,
+        key=_chave_numerica
     )
 
 else:
@@ -562,85 +446,103 @@ else:
 
 @st.dialog(
     "Filtros de Análise - Visão Executiva",
-    width="large",
+    width="large"
 )
 def modal_filtros():
 
-    st.markdown(
-        """
+    html_markdown("""
         <p style="
-            color: #8c9ba5;
-            font-size: 13px;
-            margin-bottom: 20px;
+            color:#8c9ba5;
+            font-size:13px;
+            margin-bottom:20px;
         ">
-        Selecione uma ou mais opções para consolidar os dados.
-        Deixe em branco para considerar todas.
+            Selecione uma ou mais opções para consolidar os dados
+            (deixe em branco para considerar todas):
         </p>
-        """,
-        unsafe_allow_html=True,
-    )
+    """)
 
     col_u1, col_u2 = st.columns(2)
+
+    # --------------------------------------------------------
+    # UNIDADES ATIVAS
+    # --------------------------------------------------------
 
     with col_u1:
 
         default_ativas = [
-            unidade
-            for unidade in st.session_state.f_unidades
-            if unidade in unidades_ativas
+            u
+            for u in st.session_state.f_unidades
+            if u in unidades_ativas
         ]
 
         f_ativas_sel = st.multiselect(
-            "🏢 Unidades Ativas",
+            "🏢 Unidades Ativas:",
             unidades_ativas,
-            default=default_ativas,
+            default=default_ativas
         )
+
+    # --------------------------------------------------------
+    # UNIDADES GERENCIAIS
+    # --------------------------------------------------------
 
     with col_u2:
 
         default_gerenciais = [
-            unidade
-            for unidade in st.session_state.f_unidades
-            if unidade in unidades_gerenciais
+            u
+            for u in st.session_state.f_unidades
+            if u in unidades_gerenciais
         ]
 
         f_gerenciais_sel = st.multiselect(
-            "📊 Unidades Gerenciais",
+            "📊 Unidades Gerenciais:",
             unidades_gerenciais,
-            default=default_gerenciais,
+            default=default_gerenciais
         )
 
     f_unidades_sel = (
-        f_ativas_sel + f_gerenciais_sel
+        f_ativas_sel +
+        f_gerenciais_sel
     )
 
+    # --------------------------------------------------------
+    # MESES
+    # --------------------------------------------------------
+
     default_meses_fmt = [
-        map_raw_para_fmt[mes]
-        for mes in st.session_state.f_meses
-        if mes in map_raw_para_fmt
+        map_raw_para_fmt[m]
+        for m in st.session_state.f_meses
+        if m in map_raw_para_fmt
     ]
 
     f_meses_sel_fmt = st.multiselect(
-        "Meses de Referência",
+        "Meses de Referência:",
         meses_opcoes_formatadas,
-        default=default_meses_fmt,
+        default=default_meses_fmt
     )
 
+    # --------------------------------------------------------
+    # ANOS
+    # --------------------------------------------------------
+
     f_anos_sel = st.multiselect(
-        "Anos de Referência",
+        "Anos de Referência:",
         ano_opcoes,
-        default=st.session_state.f_anos,
+        default=st.session_state.f_anos
     )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
     col_btn1, col_btn2 = st.columns(2)
 
+    # --------------------------------------------------------
+    # LIMPAR
+    # --------------------------------------------------------
+
     with col_btn1:
 
         if st.button(
             "Limpar Filtros",
-            use_container_width=True,
+            use_container_width=True
         ):
 
             st.session_state.f_unidades = []
@@ -649,12 +551,16 @@ def modal_filtros():
 
             st.rerun()
 
+    # --------------------------------------------------------
+    # APLICAR
+    # --------------------------------------------------------
+
     with col_btn2:
 
         if st.button(
             "Aplicar Filtros",
             use_container_width=True,
-            type="primary",
+            type="primary"
         ):
 
             st.session_state.f_unidades = (
@@ -662,8 +568,8 @@ def modal_filtros():
             )
 
             st.session_state.f_meses = [
-                map_fmt_para_raw[mes]
-                for mes in f_meses_sel_fmt
+                map_fmt_para_raw[f]
+                for f in f_meses_sel_fmt
             ]
 
             st.session_state.f_anos = (
@@ -679,391 +585,432 @@ def modal_filtros():
 
 st.markdown(
     """
-<style>
+    <style>
 
-@keyframes smoothPageLoad {
-    0% {
-        opacity: 0.2;
-        transform: scale(0.98);
+    /* =====================================================
+       PÁGINA
+       ===================================================== */
+
+    @keyframes smoothPageLoad {
+
+        0% {
+            opacity:0.2;
+            transform:scale(0.98);
+        }
+
+        100% {
+            opacity:1;
+            transform:scale(1);
+        }
     }
 
-    100% {
-        opacity: 1;
-        transform: scale(1);
-    }
-}
+    .stApp {
 
-.stApp {
-    background-color: #0f141c;
-    animation:
-        smoothPageLoad
-        0.5s
-        cubic-bezier(0.16, 1, 0.3, 1)
-        forwards !important;
-}
+        background-color:#0f141c;
 
-@keyframes scaleInModal {
-
-    0% {
-        opacity: 0;
-        transform:
-            scale(0.8)
-            translateY(-20px);
+        animation:
+            smoothPageLoad
+            0.5s
+            cubic-bezier(0.16, 1, 0.3, 1)
+            forwards !important;
     }
 
-    100% {
-        opacity: 1;
-        transform:
-            scale(1)
-            translateY(0);
+
+    /* =====================================================
+       MODAL
+       ===================================================== */
+
+    @keyframes scaleInModal {
+
+        0% {
+            opacity:0;
+            transform:
+                scale(0.8)
+                translateY(-20px);
+        }
+
+        100% {
+            opacity:1;
+            transform:
+                scale(1)
+                translateY(0);
+        }
     }
-}
 
-@keyframes fadeInScrim {
+    @keyframes fadeInScrim {
 
-    0% {
-        opacity: 0;
-        backdrop-filter: blur(0px);
+        0% {
+            opacity:0;
+            backdrop-filter:blur(0px);
+        }
+
+        100% {
+            opacity:1;
+            backdrop-filter:blur(5px);
+        }
     }
 
-    100% {
-        opacity: 1;
-        backdrop-filter: blur(5px);
+    div[role="dialog"],
+    div[data-testid="stDialog"] {
+
+        animation:
+            scaleInModal
+            0.6s
+            cubic-bezier(0.16, 1, 0.3, 1)
+            forwards !important;
+
+        transform-origin:center center;
     }
-}
 
-div[role="dialog"],
-div[data-testid="stDialog"] {
+    div[data-testid="stModalScrim"] {
 
-    animation:
-        scaleInModal
-        0.6s
-        cubic-bezier(0.16, 1, 0.3, 1)
-        forwards !important;
+        background-color:
+            rgba(15, 20, 28, 0.7) !important;
 
-    transform-origin:
-        center center;
-}
+        animation:
+            fadeInScrim
+            0.6s
+            ease-out
+            forwards !important;
+    }
 
-div[data-testid="stModalScrim"] {
 
-    background-color:
-        rgba(15, 20, 28, 0.7) !important;
+    /* =====================================================
+       BOTÕES
+       ===================================================== */
 
-    animation:
-        fadeInScrim
-        0.6s
-        ease-out
-        forwards !important;
-}
+    .stButton > button {
 
-.stButton > button {
+        background-color:#1a222d !important;
 
-    background-color: #1a222d !important;
-    color: #ffffff !important;
-    border: 1px solid #333d4d !important;
-    border-radius: 6px !important;
-    transition: all 0.3s ease;
-}
+        color:#ffffff !important;
 
-.stButton > button:hover {
+        border:
+            1px solid #333d4d !important;
 
-    border-color: #d85c27 !important;
-    color: #d85c27 !important;
-}
+        border-radius:6px !important;
 
-.header-container {
+        transition:all 0.3s ease;
+    }
 
-    display: flex;
-    align-items: center;
+    .stButton > button:hover {
 
-    border-bottom:
-        2px solid #d85c27;
+        border-color:#d85c27 !important;
 
-    padding-bottom: 12px;
-    margin-bottom: 20px;
+        color:#d85c27 !important;
+    }
 
-    gap: 20px;
-}
 
-.logo-container {
+    /* =====================================================
+       CABEÇALHO
+       ===================================================== */
 
-    background-color: #ffffff;
+    .header-container {
 
-    padding:
-        6px 16px;
+        display:flex;
 
-    border-radius: 4px;
+        align-items:center;
 
-    text-align: center;
+        border-bottom:
+            2px solid #d85c27;
 
-    font-family:
-        Arial,
-        sans-serif;
-}
+        padding-bottom:12px;
 
-.logo-main {
+        margin-bottom:20px;
 
-    color: #12161f;
+        gap:20px;
+    }
 
-    font-weight: 900;
+    .logo-container {
 
-    font-size: 18px;
+        background-color:#ffffff;
 
-    line-height: 1;
-}
+        padding:6px 16px;
 
-.logo-sub {
+        border-radius:4px;
 
-    color: #d85c27;
+        text-align:center;
 
-    font-size: 9px;
+        font-family:Arial, sans-serif;
+    }
 
-    font-weight: bold;
+    .logo-main {
 
-    letter-spacing: 1px;
-}
+        color:#12161f;
 
-.title-container {
+        font-weight:900;
 
-    border-left:
-        1px solid #333d4d;
+        font-size:18px;
 
-    padding-left: 15px;
-}
+        line-height:1;
+    }
 
-.title-main {
+    .logo-sub {
 
-    color: #ffffff;
+        color:#d85c27;
 
-    font-size: 18px;
+        font-size:9px;
 
-    font-weight: bold;
+        font-weight:bold;
 
-    letter-spacing: 1px;
+        letter-spacing:1px;
+    }
 
-    margin: 0;
-}
+    .title-container {
 
-.title-sub {
+        border-left:
+            1px solid #333d4d;
 
-    color: #8c9ba5;
+        padding-left:15px;
+    }
 
-    font-size: 12px;
+    .title-main {
 
-    margin: 0;
-}
+        color:#ffffff;
 
-.card-box {
+        font-size:18px;
 
-    background-color: #161c24;
+        font-weight:bold;
 
-    border:
-        1px solid #232b36;
+        letter-spacing:1px;
 
-    border-radius: 8px;
+        margin:0;
+    }
 
-    padding: 16px;
+    .title-sub {
 
-    min-height: 130px;
+        color:#8c9ba5;
 
-    height: auto;
+        font-size:12px;
 
-    display: flex;
+        margin:0;
+    }
 
-    flex-direction: column;
 
-    justify-content: space-between;
+    /* =====================================================
+       CARDS
+       ===================================================== */
 
-    box-shadow:
-        0 10px 20px rgba(0, 0, 0, 0.5),
-        0 4px 8px rgba(0, 0, 0, 0.3);
+    .card-box {
 
-    transition:
-        all
-        0.3s
-        cubic-bezier(
-            0.25,
-            0.8,
-            0.25,
-            1
-        );
-}
+        background-color:#161c24;
 
-.card-box:hover {
+        border:
+            1px solid #232b36;
 
-    transform:
-        translateY(-5px);
+        border-radius:8px;
 
-    box-shadow:
-        0 15px 30px rgba(0, 0, 0, 0.8),
-        0 5px 15px
-        rgba(216, 92, 39, 0.15);
+        padding:16px;
 
-    border-color: #333d4d;
-}
+        min-height:130px;
 
-div[data-testid="stContainer"] {
+        height:auto;
 
-    background-color:
-        #161c24 !important;
+        display:flex;
 
-    border:
-        1px solid #232b36 !important;
+        flex-direction:column;
 
-    border-radius:
-        8px !important;
+        justify-content:space-between;
 
-    padding:
-        20px !important;
+        box-shadow:
+            0 10px 20px rgba(0,0,0,0.5),
+            0 4px 8px rgba(0,0,0,0.3);
 
-    box-shadow:
-        0 15px 30px
-        rgba(0, 0, 0, 0.8) !important;
+        transition:
+            all 0.3s
+            cubic-bezier(0.25,0.8,0.25,1);
+    }
 
-    overflow:
-        visible !important;
+    .card-box:hover {
 
-    transition:
-        all
-        0.3s
-        cubic-bezier(
-            0.25,
-            0.8,
-            0.25,
-            1
-        );
-}
+        transform:translateY(-5px);
 
-div[data-testid="stContainer"]:hover {
+        box-shadow:
+            0 15px 30px rgba(0,0,0,0.8),
+            0 5px 15px rgba(216,92,39,0.15);
 
-    transform:
-        translateY(-4px);
+        border-color:#333d4d;
+    }
 
-    box-shadow:
-        0 20px 35px
-        rgba(0, 0, 0, 0.85),
-        0 8px 20px
-        rgba(216, 92, 39, 0.2) !important;
+    .card-header {
 
-    border-color:
-        #333d4d !important;
-}
+        display:flex;
 
-.card-header {
+        align-items:center;
 
-    display: flex;
+        gap:12px;
+    }
 
-    align-items: center;
+    .icon-box {
 
-    gap: 12px;
-}
+        width:32px;
 
-.icon-box {
+        height:32px;
 
-    width: 32px;
-    height: 32px;
+        min-width:32px;
 
-    border-radius: 6px;
+        border-radius:6px;
 
-    display: flex;
+        display:flex;
 
-    align-items: center;
+        align-items:center;
 
-    justify-content: center;
+        justify-content:center;
 
-    font-size: 14px;
-}
+        font-size:14px;
+    }
 
-.icon-estoque {
+    .icon-estoque {
 
-    background-color: #132a24;
-    color: #2ecc71;
-}
+        background-color:#132a24;
 
-.icon-critico {
+        color:#2ecc71;
+    }
 
-    background-color: #2a1515;
-    color: #e74c3c;
-}
+    .icon-critico {
 
-.icon-obsoleto {
+        background-color:#2a1515;
 
-    background-color: #2a2a2a;
-    color: #9b59b6;
-}
+        color:#e74c3c;
+    }
 
-.icon-obra {
+    .icon-obsoleto {
 
-    background-color: #1a2a2a;
-    color: #1abc9c;
-}
+        background-color:#2a2a2a;
 
-.icon-skus {
+        color:#9b59b6;
+    }
 
-    background-color: #1a222d;
-    color: #3498db;
-}
+    .icon-obra {
 
-.icon-giro {
+        background-color:#1a2a2a;
 
-    background-color: #221a2d;
-    color: #9b59b6;
-}
+        color:#1abc9c;
+    }
 
-.icon-cobertura {
+    .icon-skus {
 
-    background-color: #2a2211;
-    color: #e67e22;
-}
+        background-color:#1a222d;
 
-.card-title {
+        color:#3498db;
+    }
 
-    color: #8c9ba5;
+    .icon-giro {
 
-    font-size: 11px;
+        background-color:#221a2d;
 
-    font-weight: bold;
+        color:#9b59b6;
+    }
 
-    letter-spacing: 0.5px;
-}
+    .icon-cobertura {
 
-.card-value {
+        background-color:#2a2211;
 
-    color: #ffffff;
+        color:#e67e22;
+    }
 
-    font-size: 21px;
+    .card-title {
 
-    font-weight: bold;
+        color:#8c9ba5;
 
-    text-align: center;
+        font-size:11px;
 
-    font-family: monospace;
+        font-weight:bold;
 
-    margin-top: 8px;
-}
+        letter-spacing:0.5px;
+    }
 
-.section-title {
+    .card-value {
 
-    color: #ffffff;
+        color:#ffffff;
 
-    font-size: 14px;
+        font-size:21px;
 
-    font-weight: bold;
+        font-weight:bold;
 
-    margin-bottom: 12px;
+        text-align:center;
 
-    letter-spacing: 0.5px;
+        font-family:monospace;
 
-    border-left:
-        3px solid #d85c27;
+        margin-top:8px;
+    }
 
-    padding-left: 10px;
-}
 
-</style>
-""",
-    unsafe_allow_html=True,
+    /* =====================================================
+       CONTAINERS
+       ===================================================== */
+
+    div[data-testid="stContainer"] {
+
+        background-color:#161c24 !important;
+
+        border:
+            1px solid #232b36 !important;
+
+        border-radius:8px !important;
+
+        padding:20px !important;
+
+        box-shadow:
+            0 15px 30px
+            rgba(0,0,0,0.8) !important;
+
+        overflow:visible !important;
+
+        transition:
+            all 0.3s
+            cubic-bezier(0.25,0.8,0.25,1);
+    }
+
+    div[data-testid="stContainer"]:hover {
+
+        transform:translateY(-4px);
+
+        box-shadow:
+            0 20px 35px rgba(0,0,0,0.85),
+            0 8px 20px rgba(216,92,39,0.2)
+            !important;
+
+        border-color:#333d4d !important;
+    }
+
+
+    /* =====================================================
+       TÍTULOS
+       ===================================================== */
+
+    .section-title {
+
+        color:#ffffff;
+
+        font-size:14px;
+
+        font-weight:bold;
+
+        margin-bottom:12px;
+
+        letter-spacing:0.5px;
+
+        border-left:
+            3px solid #d85c27;
+
+        padding-left:10px;
+    }
+
+
+    /* =====================================================
+       DATAFRAME
+       ===================================================== */
+
+    div[data-testid="stDataFrame"] {
+
+        border-radius:8px;
+        overflow:hidden;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
 )
 
 
@@ -1073,10 +1020,10 @@ div[data-testid="stContainer"]:hover {
 
 col_header, col_btn = st.columns([5, 1])
 
+
 with col_header:
 
-    st.markdown(
-        """
+    html_markdown("""
         <div class="header-container">
 
             <div class="logo-container">
@@ -1104,16 +1051,14 @@ with col_header:
             </div>
 
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """)
 
 
 with col_btn:
 
     st.markdown(
         "<br>",
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
 
     filtro_ativo = bool(
@@ -1130,8 +1075,9 @@ with col_btn:
 
     if st.button(
         label_botao,
-        use_container_width=True,
+        use_container_width=True
     ):
+
         modal_filtros()
 
 
@@ -1140,29 +1086,42 @@ with col_btn:
 # ============================================================
 
 f_unidades_atuais = (
-    st.session_state.f_unidades
+    st.session_state.get(
+        "f_unidades",
+        []
+    )
 )
+
 
 if not f_unidades_atuais:
 
-    texto_informativo = (
-        "Exibindo dados consolidados de "
-        "**todas as unidades** "
-        "(Ativas e Gerenciais)."
-    )
+    html_markdown("""
+        <p style="
+            color:#8c9ba5;
+            font-size:14px;
+            margin-top:-10px;
+            margin-bottom:20px;
+        ">
+            Exibindo dados consolidados de
+            <strong style="color:#ffffff;">
+                todas as unidades
+            </strong>
+            (Ativas e Gerenciais).
+        </p>
+    """)
 
 else:
 
     sel_ativas = [
-        unidade
-        for unidade in f_unidades_atuais
-        if unidade in unidades_ativas
+        u
+        for u in f_unidades_atuais
+        if u in unidades_ativas
     ]
 
     sel_gerenciais = [
-        unidade
-        for unidade in f_unidades_atuais
-        if unidade in unidades_gerenciais
+        u
+        for u in f_unidades_atuais
+        if u in unidades_gerenciais
     ]
 
     partes = []
@@ -1170,13 +1129,17 @@ else:
     if sel_ativas:
 
         partes.append(
-            f"**{len(sel_ativas)} unidade(s) ativa(s)**"
+            f"<strong style='color:#ffffff;'>"
+            f"{len(sel_ativas)} unidade(s) ativa(s)"
+            f"</strong>"
         )
 
     if sel_gerenciais:
 
         partes.append(
-            f"**{len(sel_gerenciais)} gerencial(is)**"
+            f"<strong style='color:#ffffff;'>"
+            f"{len(sel_gerenciais)} gerencial(is)"
+            f"</strong>"
         )
 
     texto_informativo = (
@@ -1185,27 +1148,24 @@ else:
         + "."
     )
 
-
-st.markdown(
-    f"""
-    <p style="
-        color: #8c9ba5;
-        font-size: 14px;
-        margin-top: -10px;
-        margin-bottom: 20px;
-    ">
-        {texto_informativo}
-    </p>
-    """,
-    unsafe_allow_html=True,
-)
+    html_markdown(f"""
+        <p style="
+            color:#8c9ba5;
+            font-size:14px;
+            margin-top:-10px;
+            margin-bottom:20px;
+        ">
+            {texto_informativo}
+        </p>
+    """)
 
 
 # ============================================================
-# FILTRAGEM
+# FILTRAGEM PRINCIPAL
 # ============================================================
 
 df_filtrado = df_completo.copy()
+
 
 if st.session_state.f_unidades:
 
@@ -1246,13 +1206,14 @@ if st.session_state.f_anos:
 
 df_snapshot = df_filtrado.copy()
 
+
 if not st.session_state.f_meses:
 
     if st.session_state.f_anos:
 
         anos_sel_num = [
-            int(ano)
-            for ano in st.session_state.f_anos
+            int(a)
+            for a in st.session_state.f_anos
         ]
 
         df_anos_sel = df_snapshot[
@@ -1263,28 +1224,26 @@ if not st.session_state.f_meses:
 
         if not df_anos_sel.empty:
 
-            ano_snapshot = int(
-                df_anos_sel[
-                    "tmp_ano_num"
-                ].max()
+            m_ano = (
+                df_anos_sel["tmp_ano_num"].max()
             )
 
-            mes_snapshot = int(
+            m_mes = (
                 df_anos_sel[
-                    df_anos_sel["tmp_ano_num"]
-                    == ano_snapshot
-                ]["tmp_mes_num"].max()
+                    df_anos_sel["tmp_ano_num"] == m_ano
+                ]["tmp_mes_num"]
+                .max()
             )
 
             df_snapshot = df_snapshot[
                 (
                     df_snapshot["tmp_ano_num"]
-                    == ano_snapshot
+                    == m_ano
                 )
                 &
                 (
                     df_snapshot["tmp_mes_num"]
-                    == mes_snapshot
+                    == m_mes
                 )
             ]
 
@@ -1304,39 +1263,139 @@ if not st.session_state.f_meses:
 
 
 # ============================================================
-# INDICADORES
+# FUNÇÕES DE FORMATAÇÃO
+# ============================================================
+
+def somar_coluna(dataframe, coluna):
+
+    if (
+        coluna not in dataframe.columns
+        or dataframe.empty
+    ):
+        return 0.0
+
+    return (
+        pd.to_numeric(
+            dataframe[coluna],
+            errors="coerce"
+        )
+        .fillna(0.0)
+        .sum()
+    )
+
+
+def fmt_brl(val):
+
+    return (
+        f"R$ {val:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+    )
+
+
+def fmt_int(val):
+
+    return (
+        f"{val:,}"
+        .replace(",", ".")
+    )
+
+
+def fmt_pct(val):
+
+    return (
+        f"{val * 100:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+        + "%"
+    )
+
+
+def fmt_dec(val):
+
+    return (
+        f"{val:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+        + "x"
+    )
+
+
+def fmt_mes(val):
+
+    return (
+        f"{val:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+    )
+
+
+def fmt_valor_milhoes(val):
+
+    if val >= 1e9:
+
+        return (
+            f"R$ {val / 1e9:.1f}B"
+            .replace(".", ",")
+        )
+
+    elif val >= 1e6:
+
+        return (
+            f"R$ {val / 1e6:.1f}M"
+            .replace(".", ",")
+        )
+
+    else:
+
+        return (
+            f"R$ {val:,.2f}"
+            .replace(",", "X")
+            .replace(".", ",")
+            .replace("X", ".")
+        )
+
+
+# ============================================================
+# CARDS - VALORES FINANCEIROS
 # ============================================================
 
 val_estoque = somar_coluna(
     df_snapshot,
-    "valor_saldo_atual",
+    "valor_saldo_atual"
 )
 
 
-# ------------------------------------------------------------
-# SKUs
-# ------------------------------------------------------------
+# ============================================================
+# SKUS
+# ============================================================
 
 if (
-    not df_snapshot.empty
-    and "qtde_saldo_atual" in df_snapshot.columns
+    "qtde_saldo_atual" in df_snapshot.columns
     and "codigo_produto" in df_snapshot.columns
 ):
 
     df_skus_ativos = df_snapshot[
         (
-            df_snapshot["qtde_saldo_atual"] > 0
+            df_snapshot["qtde_saldo_atual"]
+            > 0
         )
         &
         (
-            df_snapshot["codigo_produto"] != ""
+            df_snapshot["codigo_produto"]
+            != ""
         )
     ]
 
     val_skus = (
         df_skus_ativos[
             "codigo_produto"
-        ].nunique()
+        ]
+        .nunique()
     )
 
 else:
@@ -1344,17 +1403,23 @@ else:
     val_skus = 0
 
 
-# ------------------------------------------------------------
+# ============================================================
 # CRÍTICO
-# ------------------------------------------------------------
+# ============================================================
 
-if not df_snapshot.empty:
+if (
+    "item_critico" in df_snapshot.columns
+    and "valor_saldo_atual" in df_snapshot.columns
+):
+
+    df_criticos = df_snapshot[
+        df_snapshot["item_critico"]
+        == "1-Sim"
+    ]
 
     val_critico = somar_coluna(
-        df_snapshot[
-            df_snapshot["is_critico"]
-        ],
-        "valor_saldo_atual",
+        df_criticos,
+        "valor_saldo_atual"
     )
 
 else:
@@ -1362,17 +1427,30 @@ else:
     val_critico = 0.0
 
 
-# ------------------------------------------------------------
+# ============================================================
 # OBSOLETO
-# ------------------------------------------------------------
+# ============================================================
 
-if not df_snapshot.empty:
+if (
+    "nome_local_estoque" in df_snapshot.columns
+    and "valor_saldo_atual" in df_snapshot.columns
+):
+
+    df_obsoleto = df_snapshot[
+        df_snapshot[
+            "nome_local_estoque"
+        ]
+        .astype(str)
+        .str.contains(
+            "Obsoleto",
+            case=False,
+            na=False
+        )
+    ]
 
     val_obsoleto = somar_coluna(
-        df_snapshot[
-            df_snapshot["is_obsoleto"]
-        ],
-        "valor_saldo_atual",
+        df_obsoleto,
+        "valor_saldo_atual"
     )
 
 else:
@@ -1380,17 +1458,30 @@ else:
     val_obsoleto = 0.0
 
 
-# ------------------------------------------------------------
+# ============================================================
 # OBRA
-# ------------------------------------------------------------
+# ============================================================
 
-if not df_snapshot.empty:
+if (
+    "nome_local_estoque" in df_snapshot.columns
+    and "valor_saldo_atual" in df_snapshot.columns
+):
+
+    df_obra = df_snapshot[
+        df_snapshot[
+            "nome_local_estoque"
+        ]
+        .astype(str)
+        .str.contains(
+            "obra",
+            case=False,
+            na=False
+        )
+    ]
 
     val_obra = somar_coluna(
-        df_snapshot[
-            df_snapshot["is_obra"]
-        ],
-        "valor_saldo_atual",
+        df_obra,
+        "valor_saldo_atual"
     )
 
 else:
@@ -1412,77 +1503,108 @@ if not df_filtrado.empty:
 
     df_giro = df_filtrado.copy()
 
-    # --------------------------------------------------------
-    # Estoque operacional
-    # Exclui crítico e obsoleto
-    # --------------------------------------------------------
-
-    df_giro["estoque_operacional"] = (
-        df_giro["valor_saldo_atual"]
-    ).where(
-        ~(
-            df_giro["is_critico"]
-            |
-            df_giro["is_obsoleto"]
-        ),
-        0.0,
+    df_giro["consumo_abs"] = (
+        pd.to_numeric(
+            df_giro[
+                "valor_saida_cons_interno"
+            ],
+            errors="coerce"
+        )
+        .fillna(0.0)
+        .abs()
     )
 
-    # --------------------------------------------------------
-    # Consumo operacional
-    # --------------------------------------------------------
+    df_giro["val_estoque"] = (
+        pd.to_numeric(
+            df_giro[
+                "valor_saldo_atual"
+            ],
+            errors="coerce"
+        )
+        .fillna(0.0)
+    )
 
-    df_giro["consumo_operacional"] = (
-        df_giro["consumo_abs"]
-    ).where(
-        ~(
-            df_giro["is_critico"]
-            |
-            df_giro["is_obsoleto"]
-        ),
-        0.0,
+    df_giro["is_critico"] = (
+        df_giro["item_critico"]
+        == "1-Sim"
+    )
+
+    df_giro["is_obsoleto"] = (
+        df_giro[
+            "nome_local_estoque"
+        ]
+        .astype(str)
+        .str.contains(
+            "Obsoleto",
+            case=False,
+            na=False
+        )
     )
 
     # --------------------------------------------------------
     # Agrupamento mensal
     # --------------------------------------------------------
 
-    monthly_df = (
-        df_giro
-        .groupby(
-            [
-                "tmp_ano_num",
-                "tmp_mes_num",
-            ],
-            as_index=False,
-        )
-        .agg(
-            estoque_op=(
-                "estoque_operacional",
-                "sum",
-            ),
-            consumo_op=(
-                "consumo_operacional",
-                "sum",
-            ),
-        )
-    )
+    grupos = []
+
+    for keys, grupo in df_giro.groupby(
+        [
+            "ano_referencia",
+            "mes_referencia",
+            "tmp_ano_num",
+            "tmp_mes_num"
+        ]
+    ):
+
+        operacional = grupo[
+            ~(
+                grupo["is_critico"]
+                |
+                grupo["is_obsoleto"]
+            )
+        ]
+
+        grupos.append({
+
+            "ano_referencia": keys[0],
+
+            "mes_referencia": keys[1],
+
+            "tmp_ano_num": keys[2],
+
+            "tmp_mes_num": keys[3],
+
+            "estoque_op":
+                operacional[
+                    "val_estoque"
+                ].sum(),
+
+            "consumo_op":
+                operacional[
+                    "consumo_abs"
+                ].sum()
+        })
+
+    monthly_df = pd.DataFrame(grupos)
 
     if not monthly_df.empty:
 
         estoque_medio_op = (
-            monthly_df["estoque_op"].mean()
+            monthly_df["estoque_op"]
+            .mean()
         )
 
         consumo_medio_mensal = (
-            monthly_df["consumo_op"].mean()
+            monthly_df["consumo_op"]
+            .mean()
         )
 
         if estoque_medio_op > 0:
 
             giro_mensal = (
                 consumo_medio_mensal
-                / estoque_medio_op
+                /
+                estoque_medio_op
             )
 
             giro_anual = (
@@ -1493,7 +1615,8 @@ if not df_filtrado.empty:
 
             cobertura_meses = (
                 estoque_medio_op
-                / consumo_medio_mensal
+                /
+                consumo_medio_mensal
             )
 
             cobertura_anos = (
@@ -1508,7 +1631,7 @@ if not df_filtrado.empty:
 aba_geral, aba_detalhada = st.tabs(
     [
         "📈 Visão Geral",
-        "📊 Análises Detalhadas & Tendência de Estoque",
+        "📊 Análises Detalhadas & Tendência de Estoque"
     ]
 )
 
@@ -1520,7 +1643,7 @@ aba_geral, aba_detalhada = st.tabs(
 with aba_geral:
 
     # ========================================================
-    # TENDÊNCIA
+    # GRÁFICO DE TENDÊNCIA
     # ========================================================
 
     @st.fragment
@@ -1531,30 +1654,27 @@ with aba_geral:
 
         with st.container(border=True):
 
-            col_titulo, col_filtro = st.columns(
+            col_tg_title, col_tg_filter = st.columns(
                 [3, 2]
             )
 
-            with col_titulo:
+            with col_tg_title:
 
-                st.markdown(
-                    """
+                html_markdown("""
                     <div style="
-                        color: #ffffff;
-                        font-size: 14px;
-                        font-weight: bold;
-                        margin-bottom: 5px;
-                        border-left: 3px solid #d85c27;
-                        padding-left: 10px;
+                        color:#ffffff;
+                        font-size:14px;
+                        font-weight:bold;
+                        margin-bottom:5px;
+                        border-left:3px solid #d85c27;
+                        padding-left:10px;
                     ">
                         📊 TENDÊNCIA:
                         TOTAL VS CRÍTICO VS OBSOLETO VS OBRA
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                """)
 
-            with col_filtro:
+            with col_tg_filter:
 
                 unidades_disponiveis_grafico = sorted(
                     df_f[
@@ -1565,17 +1685,17 @@ with aba_geral:
                     .tolist()
                 )
 
-                filtro_unidade_chart = (
-                    st.multiselect(
-                        "Filtrar Unidades no Gráfico:",
-                        unidades_disponiveis_grafico,
-                        default=[],
-                        key="local_chart_filter",
-                        placeholder=(
-                            "Todas as unidades filtradas"
-                        ),
-                    )
+                filtro_unidade_chart = st.multiselect(
+                    "Filtrar Unidades no Gráfico:",
+                    unidades_disponiveis_grafico,
+                    default=[],
+                    key="local_chart_filter",
+                    placeholder="Todas as unidades filtradas"
                 )
+
+            # ------------------------------------------------
+            # Filtro local do gráfico
+            # ------------------------------------------------
 
             df_chart_base = df_f.copy()
 
@@ -1589,15 +1709,8 @@ with aba_geral:
                     )
                 ]
 
-            if df_chart_base.empty:
-                st.info(
-                    "Nenhum dado disponível "
-                    "para as unidades selecionadas."
-                )
-                return
-
             # ------------------------------------------------
-            # ESTOQUE TOTAL
+            # Estoque Total
             # ------------------------------------------------
 
             df_estoque_mes = (
@@ -1607,11 +1720,13 @@ with aba_geral:
                         "ano_referencia",
                         "mes_referencia",
                         "tmp_ano_num",
-                        "tmp_mes_num",
-                    ],
-                    as_index=False,
-                )["valor_saldo_atual"]
+                        "tmp_mes_num"
+                    ]
+                )[
+                    "valor_saldo_atual"
+                ]
                 .sum()
+                .reset_index()
             )
 
             df_estoque_mes = (
@@ -1619,145 +1734,233 @@ with aba_geral:
                 .sort_values(
                     [
                         "tmp_ano_num",
-                        "tmp_mes_num",
-                    ]
-                )
-                .reset_index(drop=True)
-            )
-
-            df_estoque_mes = periodo_label(
-                df_estoque_mes
-            )
-
-            # ------------------------------------------------
-            # CRÍTICO
-            # ------------------------------------------------
-
-            df_critico_mes = (
-                df_chart_base[
-                    df_chart_base["is_critico"]
-                ]
-                .groupby(
-                    [
-                        "ano_referencia",
-                        "mes_referencia",
-                        "tmp_ano_num",
-                        "tmp_mes_num",
-                    ],
-                    as_index=False,
-                )["valor_saldo_atual"]
-                .sum()
-            )
-
-            df_critico_mes = (
-                df_critico_mes
-                .sort_values(
-                    [
-                        "tmp_ano_num",
-                        "tmp_mes_num",
+                        "tmp_mes_num"
                     ]
                 )
             )
 
-            df_critico_mes = periodo_label(
-                df_critico_mes
-            )
-
-            # ------------------------------------------------
-            # OBSOLETO
-            # ------------------------------------------------
-
-            df_obsoleto_mes = (
-                df_chart_base[
-                    df_chart_base["is_obsoleto"]
-                ]
-                .groupby(
-                    [
-                        "ano_referencia",
-                        "mes_referencia",
-                        "tmp_ano_num",
-                        "tmp_mes_num",
-                    ],
-                    as_index=False,
-                )["valor_saldo_atual"]
-                .sum()
-            )
-
-            df_obsoleto_mes = (
-                df_obsoleto_mes
-                .sort_values(
-                    [
-                        "tmp_ano_num",
-                        "tmp_mes_num",
-                    ]
-                )
-            )
-
-            df_obsoleto_mes = periodo_label(
-                df_obsoleto_mes
-            )
-
-            # ------------------------------------------------
-            # OBRA
-            # ------------------------------------------------
-
-            df_obra_mes = (
-                df_chart_base[
-                    df_chart_base["is_obra"]
-                ]
-                .groupby(
-                    [
-                        "ano_referencia",
-                        "mes_referencia",
-                        "tmp_ano_num",
-                        "tmp_mes_num",
-                    ],
-                    as_index=False,
-                )["valor_saldo_atual"]
-                .sum()
-            )
-
-            df_obra_mes = (
-                df_obra_mes
-                .sort_values(
-                    [
-                        "tmp_ano_num",
-                        "tmp_mes_num",
-                    ]
-                )
-            )
-
-            df_obra_mes = periodo_label(
-                df_obra_mes
-            )
-
-            # ------------------------------------------------
-            # LABELS
-            # ------------------------------------------------
-
-            df_estoque_mes["texto_labels"] = (
+            df_estoque_mes["Periodo"] = (
                 df_estoque_mes[
+                    "tmp_mes_num"
+                ]
+                .astype(int)
+                .astype(str)
+                .str.zfill(2)
+                + "/"
+                + df_estoque_mes[
+                    "ano_referencia"
+                ].astype(str)
+            )
+
+            # ------------------------------------------------
+            # Crítico
+            # ------------------------------------------------
+
+            df_critico_trend = df_chart_base[
+                df_chart_base[
+                    "item_critico"
+                ]
+                == "1-Sim"
+            ]
+
+            df_critico_mes = (
+                df_critico_trend
+                .groupby(
+                    [
+                        "ano_referencia",
+                        "mes_referencia",
+                        "tmp_ano_num",
+                        "tmp_mes_num"
+                    ]
+                )[
                     "valor_saldo_atual"
-                ].apply(
-                    fmt_valor_milhoes
+                ]
+                .sum()
+                .reset_index()
+            )
+
+            df_critico_mes = (
+                df_critico_mes
+                .sort_values(
+                    [
+                        "tmp_ano_num",
+                        "tmp_mes_num"
+                    ]
                 )
             )
 
-            for dataframe in [
-                df_critico_mes,
-                df_obsoleto_mes,
-                df_obra_mes,
-            ]:
+            if not df_critico_mes.empty:
 
-                if not dataframe.empty:
+                df_critico_mes["Periodo"] = (
+                    df_critico_mes[
+                        "tmp_mes_num"
+                    ]
+                    .astype(int)
+                    .astype(str)
+                    .str.zfill(2)
+                    + "/"
+                    + df_critico_mes[
+                        "ano_referencia"
+                    ].astype(str)
+                )
 
-                    dataframe["texto_labels"] = (
-                        dataframe[
-                            "valor_saldo_atual"
-                        ].apply(
-                            fmt_valor_milhoes
-                        )
-                    )
+            # ------------------------------------------------
+            # Obsoleto
+            # ------------------------------------------------
+
+            df_obsoleto_trend = df_chart_base[
+                df_chart_base[
+                    "nome_local_estoque"
+                ]
+                .astype(str)
+                .str.contains(
+                    "Obsoleto",
+                    case=False,
+                    na=False
+                )
+            ]
+
+            df_obsoleto_mes = (
+                df_obsoleto_trend
+                .groupby(
+                    [
+                        "ano_referencia",
+                        "mes_referencia",
+                        "tmp_ano_num",
+                        "tmp_mes_num"
+                    ]
+                )[
+                    "valor_saldo_atual"
+                ]
+                .sum()
+                .reset_index()
+            )
+
+            df_obsoleto_mes = (
+                df_obsoleto_mes
+                .sort_values(
+                    [
+                        "tmp_ano_num",
+                        "tmp_mes_num"
+                    ]
+                )
+            )
+
+            if not df_obsoleto_mes.empty:
+
+                df_obsoleto_mes["Periodo"] = (
+                    df_obsoleto_mes[
+                        "tmp_mes_num"
+                    ]
+                    .astype(int)
+                    .astype(str)
+                    .str.zfill(2)
+                    + "/"
+                    + df_obsoleto_mes[
+                        "ano_referencia"
+                    ].astype(str)
+                )
+
+            # ------------------------------------------------
+            # Obra
+            # ------------------------------------------------
+
+            df_obra_trend = df_chart_base[
+                df_chart_base[
+                    "nome_local_estoque"
+                ]
+                .astype(str)
+                .str.contains(
+                    "obra",
+                    case=False,
+                    na=False
+                )
+            ]
+
+            df_obra_mes = (
+                df_obra_trend
+                .groupby(
+                    [
+                        "ano_referencia",
+                        "mes_referencia",
+                        "tmp_ano_num",
+                        "tmp_mes_num"
+                    ]
+                )[
+                    "valor_saldo_atual"
+                ]
+                .sum()
+                .reset_index()
+            )
+
+            df_obra_mes = (
+                df_obra_mes
+                .sort_values(
+                    [
+                        "tmp_ano_num",
+                        "tmp_mes_num"
+                    ]
+                )
+            )
+
+            if not df_obra_mes.empty:
+
+                df_obra_mes["Periodo"] = (
+                    df_obra_mes[
+                        "tmp_mes_num"
+                    ]
+                    .astype(int)
+                    .astype(str)
+                    .str.zfill(2)
+                    + "/"
+                    + df_obra_mes[
+                        "ano_referencia"
+                    ].astype(str)
+                )
+
+            # ------------------------------------------------
+            # Labels
+            # ------------------------------------------------
+
+            if not df_estoque_mes.empty:
+
+                df_estoque_mes["texto_labels"] = (
+                    df_estoque_mes[
+                        "valor_saldo_atual"
+                    ]
+                    .apply(fmt_valor_milhoes)
+                )
+
+            if not df_critico_mes.empty:
+
+                df_critico_mes["texto_labels"] = (
+                    df_critico_mes[
+                        "valor_saldo_atual"
+                    ]
+                    .apply(fmt_valor_milhoes)
+                )
+
+            if not df_obsoleto_mes.empty:
+
+                df_obsoleto_mes["texto_labels"] = (
+                    df_obsoleto_mes[
+                        "valor_saldo_atual"
+                    ]
+                    .apply(fmt_valor_milhoes)
+                )
+
+            if not df_obra_mes.empty:
+
+                df_obra_mes["texto_labels"] = (
+                    df_obra_mes[
+                        "valor_saldo_atual"
+                    ]
+                    .apply(fmt_valor_milhoes)
+                )
+
+            # ------------------------------------------------
+            # Layout
+            # ------------------------------------------------
 
             max_y_est = (
                 df_estoque_mes[
@@ -1771,174 +1974,260 @@ with aba_geral:
                 df_estoque_mes
             )
 
+            layout_linha_estoque = dict(
+
+                plot_bgcolor="rgba(0,0,0,0)",
+
+                paper_bgcolor="rgba(0,0,0,0)",
+
+                font=dict(
+                    color="#8c9ba5"
+                ),
+
+                margin=dict(
+                    l=10,
+                    r=10,
+                    t=50,
+                    b=30
+                ),
+
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1
+                ),
+
+                hovermode=False
+            )
+
             # ------------------------------------------------
-            # FIGURA
+            # Figura
             # ------------------------------------------------
 
-            fig = go.Figure()
+            fig_linha_estoque = go.Figure()
 
-            fig.add_trace(
+            # Estoque total
+
+            fig_linha_estoque.add_trace(
                 go.Scatter(
-                    x=df_estoque_mes["Periodo"],
+
+                    x=df_estoque_mes[
+                        "Periodo"
+                    ],
+
                     y=df_estoque_mes[
                         "valor_saldo_atual"
                     ],
+
                     name="Estoque Total",
+
                     mode="lines+markers+text",
+
                     text=df_estoque_mes[
                         "texto_labels"
                     ],
+
                     textposition="top center",
+
                     textfont=dict(
                         color="white",
-                        size=11,
+                        size=11
                     ),
+
                     line=dict(
                         color="#e74c3c",
-                        width=3,
+                        width=3
                     ),
+
                     marker=dict(
                         size=8,
                         color="#e74c3c",
                         line=dict(
                             color="#ffffff",
-                            width=2,
-                        ),
+                            width=2
+                        )
                     ),
+
                     fill="tozeroy",
+
                     fillcolor=(
                         "rgba(231,76,60,0.08)"
                     ),
-                    hoverinfo="none",
+
+                    hoverinfo="none"
                 )
             )
 
+            # Crítico
+
             if not df_critico_mes.empty:
 
-                fig.add_trace(
+                fig_linha_estoque.add_trace(
                     go.Scatter(
+
                         x=df_critico_mes[
                             "Periodo"
                         ],
+
                         y=df_critico_mes[
                             "valor_saldo_atual"
                         ],
+
                         name="Estoque Crítico",
+
                         mode="lines+markers+text",
+
                         text=df_critico_mes[
                             "texto_labels"
                         ],
+
                         textposition="bottom center",
+
                         textfont=dict(
                             color="#f39c12",
-                            size=11,
+                            size=11
                         ),
+
                         line=dict(
                             color="#f39c12",
                             width=2.5,
-                            dash="dash",
+                            dash="dash"
                         ),
+
                         marker=dict(
                             size=6,
                             color="#f39c12",
                             line=dict(
                                 color="#ffffff",
-                                width=1,
-                            ),
+                                width=1
+                            )
                         ),
+
                         visible="legendonly",
-                        hoverinfo="none",
+
+                        hoverinfo="none"
                     )
                 )
+
+            # Obsoleto
 
             if not df_obsoleto_mes.empty:
 
-                fig.add_trace(
+                fig_linha_estoque.add_trace(
                     go.Scatter(
+
                         x=df_obsoleto_mes[
                             "Periodo"
                         ],
+
                         y=df_obsoleto_mes[
                             "valor_saldo_atual"
                         ],
+
                         name="Estoque Obsoleto",
+
                         mode="lines+markers+text",
+
                         text=df_obsoleto_mes[
                             "texto_labels"
                         ],
+
                         textposition="top center",
+
                         textfont=dict(
                             color="#9b59b6",
-                            size=11,
+                            size=11
                         ),
+
                         line=dict(
                             color="#9b59b6",
                             width=2.5,
-                            dash="dot",
+                            dash="dot"
                         ),
+
                         marker=dict(
                             size=6,
                             color="#9b59b6",
                             line=dict(
                                 color="#ffffff",
-                                width=1,
-                            ),
+                                width=1
+                            )
                         ),
+
                         visible="legendonly",
-                        hoverinfo="none",
+
+                        hoverinfo="none"
                     )
                 )
 
+            # Obra
+
             if not df_obra_mes.empty:
 
-                fig.add_trace(
+                fig_linha_estoque.add_trace(
                     go.Scatter(
+
                         x=df_obra_mes[
                             "Periodo"
                         ],
+
                         y=df_obra_mes[
                             "valor_saldo_atual"
                         ],
+
                         name="Estoque Obra",
+
                         mode="lines+markers+text",
+
                         text=df_obra_mes[
                             "texto_labels"
                         ],
+
                         textposition="bottom center",
+
                         textfont=dict(
                             color="#1abc9c",
-                            size=11,
+                            size=11
                         ),
+
                         line=dict(
                             color="#1abc9c",
                             width=2.5,
-                            dash="longdash",
+                            dash="longdash"
                         ),
+
                         marker=dict(
                             size=6,
                             color="#1abc9c",
                             line=dict(
                                 color="#ffffff",
-                                width=1,
-                            ),
+                                width=1
+                            )
                         ),
+
                         visible="legendonly",
-                        hoverinfo="none",
+
+                        hoverinfo="none"
                     )
                 )
 
             # ------------------------------------------------
-            # HOLOFOTE VERTICAL
+            # Holofote vertical
             # ------------------------------------------------
 
             sel_state = st.session_state.get(
                 "tendencia_geral",
-                {},
+                {}
             )
 
             pontos_clicados = []
 
-            if isinstance(sel_state, dict):
+            if isinstance(
+                sel_state,
+                dict
+            ):
 
                 pontos_clicados = (
                     sel_state
@@ -1952,126 +2241,132 @@ with aba_geral:
                     "x"
                 )
 
-                if x_hl:
+                match_idx = (
+                    df_estoque_mes.index[
+                        df_estoque_mes[
+                            "Periodo"
+                        ] == x_hl
+                    ]
+                    .tolist()
+                )
 
-                    indices = (
-                        df_estoque_mes.index[
-                            df_estoque_mes[
-                                "Periodo"
-                            ]
-                            == x_hl
-                        ]
-                        .tolist()
+                if match_idx:
+
+                    idx = match_idx[0]
+
+                    fig_linha_estoque.add_shape(
+
+                        type="rect",
+
+                        x0=idx - 0.45,
+
+                        x1=idx + 0.45,
+
+                        y0=0,
+
+                        y1=1,
+
+                        yref="paper",
+
+                        fillcolor=(
+                            "rgba(216,92,39,0.18)"
+                        ),
+
+                        line=dict(
+                            width=1.5,
+                            color=(
+                                "rgba(216,92,39,0.6)"
+                            )
+                        ),
+
+                        layer="below"
                     )
 
-                    if indices:
-
-                        idx = indices[0]
-
-                        fig.add_shape(
-                            type="rect",
-                            x0=idx - 0.45,
-                            x1=idx + 0.45,
-                            y0=0,
-                            y1=1,
-                            yref="paper",
-                            fillcolor=(
-                                "rgba(216,92,39,0.18)"
-                            ),
-                            line=dict(
-                                width=1.5,
-                                color=(
-                                    "rgba(216,92,39,0.6)"
-                                ),
-                            ),
-                            layer="below",
-                        )
-
             # ------------------------------------------------
-            # LAYOUT
+            # Eixos
             # ------------------------------------------------
 
-            fig.update_layout(
-                plot_bgcolor="rgba(0,0,0,0)",
-                paper_bgcolor="rgba(0,0,0,0)",
-                font=dict(
-                    color="#8c9ba5"
-                ),
-                margin=dict(
-                    l=10,
-                    r=10,
-                    t=50,
-                    b=30,
-                ),
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=1.02,
-                    xanchor="right",
-                    x=1,
-                ),
-                hovermode=False,
-                showlegend=True,
+            fig_linha_estoque.update_layout(
+                **layout_linha_estoque,
+                showlegend=True
             )
 
-            fig.update_xaxes(
+            fig_linha_estoque.update_xaxes(
                 showgrid=False,
                 zeroline=False,
                 range=[
                     -0.8,
-                    n_pontos_est - 0.2,
-                ],
+                    n_pontos_est - 0.2
+                ]
             )
 
-            fig.update_yaxes(
+            fig_linha_estoque.update_yaxes(
                 showgrid=True,
                 gridcolor="#232b36",
                 zeroline=False,
                 range=[
                     -max_y_est * 0.08,
-                    max_y_est * 1.3,
+                    max_y_est * 1.3
                 ],
-                showticklabels=False,
+                showticklabels=False
             )
 
+            # ------------------------------------------------
+            # Render
+            # ------------------------------------------------
+
             st.plotly_chart(
-                fig,
+
+                fig_linha_estoque,
+
                 use_container_width=True,
+
                 config={
                     "displayModeBar": False
                 },
+
                 on_select="rerun",
+
                 selection_mode="points",
-                key="tendencia_geral",
+
+                key="tendencia_geral"
             )
+
+
+    # ========================================================
+    # RENDERIZA TENDÊNCIA
+    # ========================================================
 
     render_grafico_tendencia(
         df_filtrado
     )
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        "<br>",
+        unsafe_allow_html=True
+    )
 
 
     # ========================================================
     # LINHA FINANCEIRA
     # ========================================================
 
-    st.markdown(
-        """
+    html_markdown("""
         <div class="section-title">
             💼 LINHA FINANCEIRA
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """)
 
     c1, c2, c3, c4 = st.columns(4)
 
 
+    # --------------------------------------------------------
+    # ESTOQUE
+    # --------------------------------------------------------
+
     with c1:
 
-        st.markdown(
-            f"""
+        html_markdown(f"""
             <div class="card-box">
 
                 <div class="card-header">
@@ -2091,15 +2386,16 @@ with aba_geral:
                 </div>
 
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """)
 
+
+    # --------------------------------------------------------
+    # CRÍTICO
+    # --------------------------------------------------------
 
     with c2:
 
-        st.markdown(
-            f"""
+        html_markdown(f"""
             <div class="card-box">
 
                 <div class="card-header">
@@ -2119,15 +2415,16 @@ with aba_geral:
                 </div>
 
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """)
 
+
+    # --------------------------------------------------------
+    # OBSOLETO
+    # --------------------------------------------------------
 
     with c3:
 
-        st.markdown(
-            f"""
+        html_markdown(f"""
             <div class="card-box">
 
                 <div class="card-header">
@@ -2147,15 +2444,16 @@ with aba_geral:
                 </div>
 
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """)
 
+
+    # --------------------------------------------------------
+    # OBRA
+    # --------------------------------------------------------
 
     with c4:
 
-        st.markdown(
-            f"""
+        html_markdown(f"""
             <div class="card-box">
 
                 <div class="card-header">
@@ -2175,34 +2473,35 @@ with aba_geral:
                 </div>
 
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """)
 
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(
+        "<br>",
+        unsafe_allow_html=True
+    )
 
 
     # ========================================================
     # LINHA OPERACIONAL
     # ========================================================
 
-    st.markdown(
-        """
+    html_markdown("""
         <div class="section-title">
             ⚙️ LINHA OPERACIONAL
         </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """)
 
     c5, c6, c7 = st.columns(3)
 
 
+    # --------------------------------------------------------
+    # SKUS
+    # --------------------------------------------------------
+
     with c5:
 
-        st.markdown(
-            f"""
+        html_markdown(f"""
             <div class="card-box">
 
                 <div class="card-header">
@@ -2222,15 +2521,16 @@ with aba_geral:
                 </div>
 
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """)
 
+
+    # --------------------------------------------------------
+    # GIRO
+    # --------------------------------------------------------
 
     with c6:
 
-        st.markdown(
-            f"""
+        html_markdown(f"""
             <div class="card-box">
 
                 <div class="card-header">
@@ -2246,21 +2546,21 @@ with aba_geral:
                 </div>
 
                 <div style="
-                    display: flex;
-                    justify-content: space-around;
-                    align-items: center;
-                    margin-top: 8px;
+                    display:flex;
+                    justify-content:space-around;
+                    align-items:center;
+                    margin-top:8px;
                 ">
 
                     <div style="
-                        text-align: center;
-                        flex: 1;
+                        text-align:center;
+                        flex:1;
                     ">
 
                         <span style="
-                            font-size: 10px;
-                            color: #8c9ba5;
-                            letter-spacing: 0.5px;
+                            font-size:10px;
+                            color:#8c9ba5;
+                            letter-spacing:0.5px;
                         ">
                             MENSAL
                         </span>
@@ -2268,31 +2568,31 @@ with aba_geral:
                         <br>
 
                         <span style="
-                            font-size: 20px;
-                            font-weight: bold;
-                            color: #ffffff;
-                            font-family: monospace;
+                            font-size:20px;
+                            font-weight:bold;
+                            color:#ffffff;
+                            font-family:monospace;
                         ">
-                            {fmt_x(giro_mensal)}
+                            {fmt_pct(giro_mensal)}
                         </span>
 
                     </div>
 
                     <div style="
-                        height: 35px;
-                        width: 1px;
-                        background-color: #232b36;
+                        height:35px;
+                        width:1px;
+                        background-color:#232b36;
                     "></div>
 
                     <div style="
-                        text-align: center;
-                        flex: 1;
+                        text-align:center;
+                        flex:1;
                     ">
 
                         <span style="
-                            font-size: 10px;
-                            color: #8c9ba5;
-                            letter-spacing: 0.5px;
+                            font-size:10px;
+                            color:#8c9ba5;
+                            letter-spacing:0.5px;
                         ">
                             ANUALIZADO
                         </span>
@@ -2300,12 +2600,12 @@ with aba_geral:
                         <br>
 
                         <span style="
-                            font-size: 20px;
-                            font-weight: bold;
-                            color: #ffffff;
-                            font-family: monospace;
+                            font-size:20px;
+                            font-weight:bold;
+                            color:#ffffff;
+                            font-family:monospace;
                         ">
-                            {fmt_x(giro_anual)}
+                            {fmt_dec(giro_anual)}
                         </span>
 
                     </div>
@@ -2313,15 +2613,16 @@ with aba_geral:
                 </div>
 
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """)
 
+
+    # --------------------------------------------------------
+    # COBERTURA
+    # --------------------------------------------------------
 
     with c7:
 
-        st.markdown(
-            f"""
+        html_markdown(f"""
             <div class="card-box">
 
                 <div class="card-header">
@@ -2337,21 +2638,21 @@ with aba_geral:
                 </div>
 
                 <div style="
-                    display: flex;
-                    justify-content: space-around;
-                    align-items: center;
-                    margin-top: 8px;
+                    display:flex;
+                    justify-content:space-around;
+                    align-items:center;
+                    margin-top:8px;
                 ">
 
                     <div style="
-                        text-align: center;
-                        flex: 1;
+                        text-align:center;
+                        flex:1;
                     ">
 
                         <span style="
-                            font-size: 10px;
-                            color: #8c9ba5;
-                            letter-spacing: 0.5px;
+                            font-size:10px;
+                            color:#8c9ba5;
+                            letter-spacing:0.5px;
                         ">
                             MENSAL (MESES)
                         </span>
@@ -2359,10 +2660,10 @@ with aba_geral:
                         <br>
 
                         <span style="
-                            font-size: 20px;
-                            font-weight: bold;
-                            color: #ffffff;
-                            font-family: monospace;
+                            font-size:20px;
+                            font-weight:bold;
+                            color:#ffffff;
+                            font-family:monospace;
                         ">
                             {fmt_mes(cobertura_meses)}
                         </span>
@@ -2370,20 +2671,20 @@ with aba_geral:
                     </div>
 
                     <div style="
-                        height: 35px;
-                        width: 1px;
-                        background-color: #232b36;
+                        height:35px;
+                        width:1px;
+                        background-color:#232b36;
                     "></div>
 
                     <div style="
-                        text-align: center;
-                        flex: 1;
+                        text-align:center;
+                        flex:1;
                     ">
 
                         <span style="
-                            font-size: 10px;
-                            color: #8c9ba5;
-                            letter-spacing: 0.5px;
+                            font-size:10px;
+                            color:#8c9ba5;
+                            letter-spacing:0.5px;
                         ">
                             ANUALIZADO (ANOS)
                         </span>
@@ -2391,10 +2692,10 @@ with aba_geral:
                         <br>
 
                         <span style="
-                            font-size: 20px;
-                            font-weight: bold;
-                            color: #ffffff;
-                            font-family: monospace;
+                            font-size:20px;
+                            font-weight:bold;
+                            color:#ffffff;
+                            font-family:monospace;
                         ">
                             {fmt_mes(cobertura_anos)}
                         </span>
@@ -2404,9 +2705,7 @@ with aba_geral:
                 </div>
 
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """)
 
 
     # ========================================================
@@ -2415,73 +2714,82 @@ with aba_geral:
 
     st.markdown(
         "<br>",
-        unsafe_allow_html=True,
+        unsafe_allow_html=True
     )
+
 
     if not df_filtrado.empty:
 
         layout_transparente = dict(
+
             plot_bgcolor="rgba(0,0,0,0)",
+
             paper_bgcolor="rgba(0,0,0,0)",
+
             font=dict(
                 color="#8c9ba5"
             ),
+
             margin=dict(
                 l=10,
                 r=10,
                 t=10,
-                b=10,
-            ),
+                b=10
+            )
         )
+
+
+        # ====================================================
+        # COMPRAS VS CONSUMO / TOP 10
+        # ====================================================
 
         col_g1, col_g2 = st.columns(
             [6, 4],
-            gap="large",
+            gap="large"
         )
 
 
-        # ====================================================
+        # ----------------------------------------------------
         # COMPRAS VS CONSUMO
-        # ====================================================
+        # ----------------------------------------------------
 
         with col_g1:
 
             with st.container(border=True):
 
-                st.markdown(
-                    """
+                html_markdown("""
                     <div style="
-                        color: #ffffff;
-                        font-size: 14px;
-                        font-weight: bold;
-                        margin-bottom: 15px;
-                        border-left: 3px solid #d85c27;
-                        padding-left: 10px;
+                        color:#ffffff;
+                        font-size:14px;
+                        font-weight:bold;
+                        margin-bottom:15px;
+                        border-left:3px solid #d85c27;
+                        padding-left:10px;
                     ">
                         📈 EVOLUÇÃO:
                         COMPRAS VS CONSUMO
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                """)
+
+                df_trend = df_filtrado.copy()
 
                 df_tempo = (
-                    df_filtrado
+                    df_trend
                     .groupby(
                         [
                             "ano_referencia",
                             "mes_referencia",
                             "tmp_ano_num",
-                            "tmp_mes_num",
-                        ],
-                        as_index=False,
+                            "tmp_mes_num"
+                        ]
                     )[
                         [
                             "valor_entrada_compras",
-                            "valor_saida_cons_interno",
+                            "valor_saida_cons_interno"
                         ]
                     ]
                     .sum()
+                    .reset_index()
                 )
 
                 df_tempo = (
@@ -2489,13 +2797,22 @@ with aba_geral:
                     .sort_values(
                         [
                             "tmp_ano_num",
-                            "tmp_mes_num",
+                            "tmp_mes_num"
                         ]
                     )
                 )
 
-                df_tempo = periodo_label(
-                    df_tempo
+                df_tempo["Periodo"] = (
+                    df_tempo[
+                        "tmp_mes_num"
+                    ]
+                    .astype(int)
+                    .astype(str)
+                    .str.zfill(2)
+                    + "/"
+                    + df_tempo[
+                        "ano_referencia"
+                    ].astype(str)
                 )
 
                 df_tempo[
@@ -2503,63 +2820,80 @@ with aba_geral:
                 ] = (
                     df_tempo[
                         "valor_saida_cons_interno"
-                    ].abs()
+                    ]
+                    .abs()
                 )
 
                 fig_linha = go.Figure()
 
                 fig_linha.add_trace(
                     go.Scatter(
-                        x=df_tempo["Periodo"],
+
+                        x=df_tempo[
+                            "Periodo"
+                        ],
+
                         y=df_tempo[
                             "valor_entrada_compras"
                         ],
+
                         name="Compras",
+
                         mode="lines+markers",
+
                         line=dict(
                             color="#f39c12",
-                            width=3,
-                        ),
+                            width=3
+                        )
                     )
                 )
 
                 fig_linha.add_trace(
                     go.Scatter(
-                        x=df_tempo["Periodo"],
+
+                        x=df_tempo[
+                            "Periodo"
+                        ],
+
                         y=df_tempo[
                             "valor_saida_cons_interno"
                         ],
+
                         name="Consumo",
+
                         mode="lines+markers",
+
                         line=dict(
                             color="#e74c3c",
-                            width=3,
-                        ),
+                            width=3
+                        )
                     )
                 )
 
                 fig_linha.update_layout(
                     **layout_transparente,
+
                     hovermode="x unified",
+
                     legend=dict(
                         orientation="h",
                         yanchor="bottom",
                         y=1.05,
                         xanchor="right",
-                        x=1,
-                    ),
+                        x=1
+                    )
                 )
 
                 fig_linha.update_xaxes(
                     showgrid=False,
-                    zeroline=False,
+                    zeroline=False
                 )
 
                 fig_linha.update_yaxes(
                     showgrid=True,
                     gridcolor="#232b36",
                     zeroline=False,
-                    tickprefix="R$ ",
+                    tickprefix="R$ "
                 )
 
                 st.plotly_chart(
@@ -2568,44 +2902,41 @@ with aba_geral:
                     config={
                         "displayModeBar": False
                     },
-                    key="compras_consumo_geral",
+                    key="compras_consumo_geral"
                 )
 
 
-        # ====================================================
+        # ----------------------------------------------------
         # TOP 10
-        # ====================================================
+        # ----------------------------------------------------
 
         with col_g2:
 
             with st.container(border=True):
 
-                st.markdown(
-                    """
+                html_markdown("""
                     <div style="
-                        color: #ffffff;
-                        font-size: 14px;
-                        font-weight: bold;
-                        margin-bottom: 15px;
-                        border-left: 3px solid #d85c27;
-                        padding-left: 10px;
+                        color:#ffffff;
+                        font-size:14px;
+                        font-weight:bold;
+                        margin-bottom:15px;
+                        border-left:3px solid #d85c27;
+                        padding-left:10px;
                     ">
                         🏆 TOP 10:
                         MAIOR VALOR EM ESTOQUE
                     </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+                """)
 
                 df_rank = (
                     df_snapshot
                     .groupby(
-                        "unidade_almoxarifado",
-                        as_index=False,
+                        "unidade_almoxarifado"
                     )[
                         "valor_saldo_atual"
                     ]
                     .sum()
+                    .reset_index()
                 )
 
                 df_rank = df_rank[
@@ -2618,7 +2949,7 @@ with aba_geral:
                     df_rank
                     .sort_values(
                         "valor_saldo_atual",
-                        ascending=True,
+                        ascending=True
                     )
                     .tail(10)
                 )
@@ -2628,45 +2959,60 @@ with aba_geral:
                 ] = (
                     df_rank[
                         "valor_saldo_atual"
-                    ].apply(
-                        fmt_valor_milhoes
+                    ]
+                    .apply(
+                        lambda x:
+                            f"R$ {x / 1e6:.1f}M"
+                            .replace(".", ",")
                     )
                 )
 
                 fig_bar = px.bar(
                     df_rank,
+
                     x="valor_saldo_atual",
+
                     y="unidade_almoxarifado",
+
                     orientation="h",
+
                     color_discrete_sequence=[
                         "#e74c3c"
                     ],
-                    text="texto_formatado",
+
+                    text="texto_formatado"
                 )
 
                 fig_bar.update_layout(
                     **layout_transparente,
-                    hovermode="y unified",
+
+                    hovermode="y unified"
                 )
 
                 fig_bar.update_traces(
                     textposition="auto",
+
                     textfont=dict(
                         color="white"
-                    ),
+                    )
                 )
 
                 fig_bar.update_xaxes(
                     title="",
+
                     showgrid=True,
+
                     gridcolor="#232b36",
+
                     tickprefix="R$ ",
-                    zeroline=False,
+
+                    zeroline=False
                 )
 
                 fig_bar.update_yaxes(
                     title="",
-                    showgrid=False,
+
+                    showgrid=False
                 )
 
                 st.plotly_chart(
@@ -2675,37 +3021,34 @@ with aba_geral:
                     config={
                         "displayModeBar": False
                     },
-                    key="top10_geral",
+                    key="top10_geral"
                 )
 
 
         # ====================================================
-        # EVOLUÇÃO DOS SKUs
+        # EVOLUÇÃO DE SKUS
         # ====================================================
 
         st.markdown(
             "<br>",
-            unsafe_allow_html=True,
+            unsafe_allow_html=True
         )
 
         with st.container(border=True):
 
-            st.markdown(
-                """
+            html_markdown("""
                 <div style="
-                    color: #ffffff;
-                    font-size: 14px;
-                    font-weight: bold;
-                    margin-bottom: 15px;
-                    border-left: 3px solid #d85c27;
-                    padding-left: 10px;
+                    color:#ffffff;
+                    font-size:14px;
+                    font-weight:bold;
+                    margin-bottom:15px;
+                    border-left:3px solid #d85c27;
+                    padding-left:10px;
                 ">
                     📦 EVOLUÇÃO DO MIX:
                     TOTAL DE SKUs ATIVOS NO TEMPO
                 </div>
-                """,
-                unsafe_allow_html=True,
-            )
+            """)
 
             df_sku_trend = df_filtrado[
                 (
@@ -2728,13 +3071,13 @@ with aba_geral:
                         "ano_referencia",
                         "mes_referencia",
                         "tmp_ano_num",
-                        "tmp_mes_num",
-                    ],
-                    as_index=False,
+                        "tmp_mes_num"
+                    ]
                 )[
                     "codigo_produto"
                 ]
                 .nunique()
+                .reset_index()
             )
 
             df_sku_tempo = (
@@ -2742,19 +3085,27 @@ with aba_geral:
                 .sort_values(
                     [
                         "tmp_ano_num",
-                        "tmp_mes_num",
+                        "tmp_mes_num"
                     ]
                 )
-                .reset_index(drop=True)
             )
 
-            df_sku_tempo = periodo_label(
-                df_sku_tempo
+            df_sku_tempo["Periodo"] = (
+                df_sku_tempo[
+                    "tmp_mes_num"
+                ]
+                .astype(int)
+                .astype(str)
+                .str.zfill(2)
+                + "/"
+                + df_sku_tempo[
+                    "ano_referencia"
+                ].astype(str)
             )
 
             textos_skus = [
-                fmt_int(valor)
-                for valor
+                f"{val:,}".replace(",", ".")
+                for val
                 in df_sku_tempo[
                     "codigo_produto"
                 ]
@@ -2774,17 +3125,18 @@ with aba_geral:
 
             total_skus_grafico = (
                 df_snapshot[
+                    "codigo_produto"
+                ][
                     df_snapshot[
                         "qtde_saldo_atual"
                     ] > 0
-                ]["codigo_produto"]
-                .replace("", pd.NA)
-                .dropna()
+                ]
                 .nunique()
             )
 
-            total_formatado = fmt_int(
-                total_skus_grafico
+            total_formatado = (
+                f"{total_skus_grafico:,}"
+                .replace(",", ".")
             )
 
             layout_sku = dict(
@@ -2801,90 +3153,122 @@ with aba_geral:
                     l=40,
                     r=40,
                     t=50,
-                    b=10,
+                    b=10
                 ),
 
                 annotations=[
+
                     dict(
+
                         x=1.0,
+
                         y=1.12,
+
                         xref="paper",
+
                         yref="paper",
+
                         text=(
-                            "<b>Total Período:</b> "
+                            f"<b>Total Período:</b> "
                             f"{total_formatado}"
                         ),
+
                         showarrow=False,
+
                         font=dict(
                             color="#ffffff",
                             size=12,
-                            family="monospace",
+                            family="monospace"
                         ),
+
                         bgcolor="#1a222d",
+
                         bordercolor="#333d4d",
+
                         borderwidth=1,
+
                         borderpad=6,
-                        align="right",
+
+                        align="right"
                     )
-                ],
+                ]
             )
 
             fig_sku_linha = go.Figure()
 
             fig_sku_linha.add_trace(
                 go.Scatter(
+
                     x=df_sku_tempo[
                         "Periodo"
                     ],
+
                     y=df_sku_tempo[
                         "codigo_produto"
                     ],
+
+                    customdata=textos_skus,
+
                     name="SKUs Ativos",
+
                     mode="lines+markers+text",
+
                     text=textos_skus,
+
                     textposition="top center",
+
                     textfont=dict(
                         color="white",
-                        size=11,
+                        size=11
                     ),
+
                     line=dict(
                         color="#e74c3c",
-                        width=3,
+                        width=3
                     ),
+
                     fill="tozeroy",
+
                     fillcolor=(
                         "rgba(231,76,60,0.1)"
                     ),
-                    hoverinfo="none",
+
+                    hoverinfo="none"
                 )
             )
 
             fig_sku_linha.update_layout(
                 **layout_sku,
+
                 hovermode=False,
-                showlegend=False,
+
+                showlegend=False
             )
 
             fig_sku_linha.update_xaxes(
                 showgrid=False,
+
                 zeroline=False,
+
                 range=[
                     -0.8,
-                    n_pontos - 0.2,
-                ],
+                    n_pontos - 0.2
+                ]
             )
 
             fig_sku_linha.update_yaxes(
                 showgrid=True,
+
                 gridcolor="#232b36",
+
                 zeroline=False,
+
                 range=[
                     0,
                     max_y * 1.15
-                    if max_y > 0
-                    else 100,
                 ],
-                showticklabels=False,
+
+                showticklabels=False
             )
 
             st.plotly_chart(
@@ -2893,14 +3277,14 @@ with aba_geral:
                 config={
                     "displayModeBar": False
                 },
-                key="skus_geral",
+                key="skus_geral"
             )
+
 
     else:
 
         st.info(
-            "Nenhum dado encontrado "
-            "para os filtros selecionados."
+            "Nenhum dado encontrado para os filtros selecionados."
         )
 
 
@@ -2912,107 +3296,101 @@ with aba_detalhada:
 
     if not df_snapshot.empty:
 
-        st.markdown(
-            """
+        html_markdown("""
             <div style="
-                color: #ffffff;
-                font-size: 16px;
-                font-weight: bold;
-                margin-bottom: 15px;
+                color:#ffffff;
+                font-size:16px;
+                font-weight:bold;
+                margin-bottom:15px;
             ">
                 📋 CONSOLIDAÇÃO ANALÍTICA
                 POR UNIDADE DE ALMOXARIFADO
             </div>
-            """,
-            unsafe_allow_html=True,
-        )
+        """)
 
         # ----------------------------------------------------
-        # AGREGAÇÃO
+        # SKUS POR UNIDADE
         # ----------------------------------------------------
 
-        df_tabela = (
+        def contar_skus_ativos(grupo):
+
+            if grupo.empty:
+                return 0
+
+            ativos = grupo[
+                grupo[
+                    "qtde_saldo_atual"
+                ] > 0
+            ]
+
+            return (
+                ativos[
+                    "codigo_produto"
+                ]
+                .nunique()
+            )
+
+
+        # ----------------------------------------------------
+        # TABELA
+        # ----------------------------------------------------
+
+        registros_tabela = []
+
+        for unidade, grupo in (
             df_snapshot
             .groupby(
-                "unidade_almoxarifado",
-                as_index=False,
-            )
-            .agg(
-                Valor_Estoque=(
-                    "valor_saldo_atual",
-                    "sum",
-                ),
-
-                Valor_Compras=(
-                    "valor_entrada_compras",
-                    "sum",
-                ),
-
-                Valor_Consumo=(
-                    "valor_saida_cons_interno",
-                    lambda x: x.abs().sum(),
-                ),
-            )
-        )
-
-        # ----------------------------------------------------
-        # SKUs ativos por unidade
-        # ----------------------------------------------------
-
-        df_sku_unidade = (
-            df_snapshot[
-                (
-                    df_snapshot[
-                        "qtde_saldo_atual"
-                    ] > 0
-                )
-                &
-                (
-                    df_snapshot[
-                        "codigo_produto"
-                    ] != ""
-                )
-            ]
-            .groupby(
                 "unidade_almoxarifado"
-            )["codigo_produto"]
-            .nunique()
-            .reset_index(
-                name="SKUs_Ativos"
             )
+        ):
+
+            registros_tabela.append({
+
+                "unidade_almoxarifado":
+                    unidade,
+
+                "Valor_Estoque":
+                    grupo[
+                        "valor_saldo_atual"
+                    ].sum(),
+
+                "Valor_Compras":
+                    grupo[
+                        "valor_entrada_compras"
+                    ].sum(),
+
+                "Valor_Consumo":
+                    grupo[
+                        "valor_saida_cons_interno"
+                    ]
+                    .abs()
+                    .sum(),
+
+                "SKUs_Ativos":
+                    contar_skus_ativos(
+                        grupo
+                    )
+            })
+
+
+        df_tabela = pd.DataFrame(
+            registros_tabela
         )
 
-        df_tabela = df_tabela.merge(
-            df_sku_unidade,
-            on="unidade_almoxarifado",
-            how="left",
-        )
 
-        df_tabela[
-            "SKUs_Ativos"
-        ] = (
-            df_tabela[
-                "SKUs_Ativos"
-            ]
-            .fillna(0)
-            .astype(int)
-        )
+        if not df_tabela.empty:
 
-        # ----------------------------------------------------
-        # Ordenação
-        # ----------------------------------------------------
-
-        df_tabela = (
-            df_tabela
-            .sort_values(
-                "Valor_Estoque",
-                ascending=False,
+            df_tabela = (
+                df_tabela
+                .sort_values(
+                    "Valor_Estoque",
+                    ascending=False
+                )
             )
-            .reset_index(drop=True)
-        )
+
 
         # ----------------------------------------------------
-        # DataFrame de exibição
+        # DATAFRAME PARA EXIBIÇÃO
         # ----------------------------------------------------
 
         df_exibicao = pd.DataFrame()
@@ -3030,7 +3408,8 @@ with aba_detalhada:
         ] = (
             df_tabela[
                 "Valor_Estoque"
-            ].apply(fmt_brl)
+            ]
+            .apply(fmt_brl)
         )
 
         df_exibicao[
@@ -3038,7 +3417,8 @@ with aba_detalhada:
         ] = (
             df_tabela[
                 "Valor_Compras"
-            ].apply(fmt_brl)
+            ]
+            .apply(fmt_brl)
         )
 
         df_exibicao[
@@ -3046,7 +3426,8 @@ with aba_detalhada:
         ] = (
             df_tabela[
                 "Valor_Consumo"
-            ].apply(fmt_brl)
+            ]
+            .apply(fmt_brl)
         )
 
         df_exibicao[
@@ -3054,22 +3435,26 @@ with aba_detalhada:
         ] = (
             df_tabela[
                 "SKUs_Ativos"
-            ].apply(fmt_int)
+            ]
+            .apply(fmt_int)
         )
 
+
         # ----------------------------------------------------
-        # Tabela
+        # TABELA
         # ----------------------------------------------------
 
         st.dataframe(
+
             df_exibicao,
+
             use_container_width=True,
-            hide_index=True,
+
+            hide_index=True
         )
 
     else:
 
         st.info(
-            "Nenhum dado encontrado "
-            "para os filtros selecionados."
+            "Nenhum dado encontrado para os filtros selecionados."
         )
