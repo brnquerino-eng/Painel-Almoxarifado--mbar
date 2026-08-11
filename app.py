@@ -480,116 +480,7 @@ def fmt_mes(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- LINHA FINANCEIRA ---
-    st.markdown("<div class='section-title'>💼 LINHA FINANCEIRA</div>", unsafe_allow_html=True)
-    c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-estoque">📦</div>
-                <div class="card-title">VALOR TOTAL EM ESTOQUE</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_estoque)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c2:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-critico">⚠️</div>
-                <div class="card-title">ESTOQUE CRÍTICO (1-SIM)</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_critico)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c3:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-obsoleto">🗑️</div>
-                <div class="card-title">ESTOQUE OBSOLETO</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_obsoleto)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c4:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-obra">🏗️</div>
-                <div class="card-title">ESTOQUE OBRA</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_obra)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # --- LINHA OPERACIONAL ---
-    st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
-    c5, c6, c7 = st.columns(3)
-
-    with c5:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-skus">🏷️</div>
-                <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
-            </div>
-            <div class="card-value">{fmt_int(val_skus)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c6:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-giro">🔄</div>
-                <div class="card-title">GIRO DE ESTOQUE</div>
-            </div>
-            <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
-                <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL</span><br>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_pct(giro_mensal)}</span>
-                </div>
-                <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
-                <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO</span><br>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c7:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-cobertura">⏳</div>
-                <div class="card-title">COBERTURA DE ESTOQUE</div>
-            </div>
-            <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
-                <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL (MESES)</span><br>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_meses)}</span>
-                </div>
-                <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
-                <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO (ANOS)</span><br>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_anos)}</span>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    # --- GRÁFICO DE TENDÊNCIA ISOLADO EM FRAGMENTO (CLIQUE INSTANTÂNEO SEM ENGASGO) ---
-    st.markdown("<br>", unsafe_allow_html=True)
-
+    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO PARA CLIQUE INSTANTÂNEO) ---
     @st.fragment
     def render_grafico_tendencia(df_f):
         if not df_f.empty:
@@ -770,6 +661,114 @@ with aba_geral:
                 )
 
     render_grafico_tendencia(df_filtrado)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- LINHA FINANCEIRA ---
+    st.markdown("<div class='section-title'>💼 LINHA FINANCEIRA</div>", unsafe_allow_html=True)
+    c1, c2, c3, c4 = st.columns(4)
+
+    with c1:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-estoque">📦</div>
+                <div class="card-title">VALOR TOTAL EM ESTOQUE</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_estoque)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c2:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-critico">⚠️</div>
+                <div class="card-title">ESTOQUE CRÍTICO (1-SIM)</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_critico)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c3:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-obsoleto">🗑️</div>
+                <div class="card-title">ESTOQUE OBSOLETO</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_obsoleto)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c4:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-obra">🏗️</div>
+                <div class="card-title">ESTOQUE OBRA</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_obra)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- LINHA OPERACIONAL ---
+    st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
+    c5, c6, c7 = st.columns(3)
+
+    with c5:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-skus">🏷️</div>
+                <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
+            </div>
+            <div class="card-value">{fmt_int(val_skus)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c6:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-giro">🔄</div>
+                <div class="card-title">GIRO DE ESTOQUE</div>
+            </div>
+            <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
+                <div style="text-align: center; flex: 1;">
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL</span><br>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_pct(giro_mensal)}</span>
+                </div>
+                <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
+                <div style="text-align: center; flex: 1;">
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO</span><br>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c7:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-cobertura">⏳</div>
+                <div class="card-title">COBERTURA DE ESTOQUE</div>
+            </div>
+            <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
+                <div style="text-align: center; flex: 1;">
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL (MESES)</span><br>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_meses)}</span>
+                </div>
+                <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
+                <div style="text-align: center; flex: 1;">
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO (ANOS)</span><br>
+                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_anos)}</span>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     # 9. GRÁFICOS INTERATIVOS
     st.markdown("<br>", unsafe_allow_html=True)
