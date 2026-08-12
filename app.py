@@ -480,20 +480,27 @@ def fmt_mes(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) COM FILTRO APENAS DE ANO ---
+    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) COM FILTROS DE UNIDADE E ANO LADO A LADO ---
     @st.fragment
     def render_grafico_tendencia(df_f):
         if not df_f.empty:
             with st.container(border=True):
-                col_tg_title, col_tg_ano = st.columns([3, 2])
+                col_tg_title, col_tg_filters = st.columns([2.5, 2.5])
                 with col_tg_title:
                     st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
                 
-                with col_tg_ano:
-                    anos_disponiveis_grafico = sorted(df_f["ano_referencia"].dropna().unique().tolist())
-                    filtro_ano_chart = st.multiselect("Filtrar Anos no Gráfico:", anos_disponiveis_grafico, default=[], key="local_ano_chart_filter", placeholder="Todos os anos filtrados")
+                with col_tg_filters:
+                    col_u_f, col_a_f = st.columns(2)
+                    with col_u_f:
+                        unidades_disponiveis_grafico = sorted(df_f["unidade_almoxarifado"].dropna().unique().tolist())
+                        filtro_unidade_chart = st.multiselect("Unidades:", unidades_disponiveis_grafico, default=[], key="local_unit_chart_filter", placeholder="Todas")
+                    with col_a_f:
+                        anos_disponiveis_grafico = sorted(df_f["ano_referencia"].dropna().unique().tolist())
+                        filtro_ano_chart = st.multiselect("Anos:", anos_disponiveis_grafico, default=[], key="local_ano_chart_filter", placeholder="Todos")
 
                 df_chart_base = df_f.copy()
+                if filtro_unidade_chart:
+                    df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(filtro_unidade_chart)]
                 if filtro_ano_chart:
                     df_chart_base = df_chart_base[df_chart_base["ano_referencia"].isin(filtro_ano_chart)]
 
@@ -540,7 +547,7 @@ with aba_geral:
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
-                    margin=dict(l=10, r=10, t=50, b=30),
+                    margin=dict(l=10, r=10, t=30, b=30),
                     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
                     hovermode='x' 
                 )
