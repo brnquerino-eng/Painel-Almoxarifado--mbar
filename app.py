@@ -8,13 +8,15 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Inicialização dos estados para os filtros múltiplos
+# Inicialização dos estados para os filtros múltiplos e seleção do gráfico
 if 'f_unidades' not in st.session_state:
     st.session_state.f_unidades = []
 if 'f_meses' not in st.session_state:
     st.session_state.f_meses = []
 if 'f_anos' not in st.session_state:
     st.session_state.f_anos = []
+if 'filtro_periodo_grafico' not in st.session_state:
+    st.session_state.filtro_periodo_grafico = None
 
 # 1. Conexão direta e segura com o Supabase
 @st.cache_resource
@@ -160,6 +162,7 @@ def modal_filtros():
             st.session_state.f_unidades = []
             st.session_state.f_meses = []
             st.session_state.f_anos = []
+            st.session_state.filtro_periodo_grafico = None
             st.rerun()
     with col_btn2:
         if st.button("Aplicar Filtros", use_container_width=True, type="primary"):
@@ -347,7 +350,7 @@ with col_header:
 
 with col_btn:
     st.markdown("<br>", unsafe_allow_html=True)
-    filtro_ativo = bool(st.session_state.f_unidades or st.session_state.f_meses or st.session_state.f_anos)
+    filtro_ativo = bool(st.session_state.f_unidades or st.session_state.f_meses or st.session_state.f_anos or st.session_state.filtro_periodo_grafico)
     label_botao = "⚙️ Filtros (Ativo)" if filtro_ativo else "⚙️ Filtros"
 
     if st.button(label_botao, use_container_width=True):
@@ -370,6 +373,9 @@ else:
 
     texto_informativo = "Exibindo dados de " + " e ".join(partes) + "."
 
+if st.session_state.get('filtro_periodo_grafico'):
+    texto_informativo += f" 🎯 **Filtro Mestre do Gráfico Ativo (Período: {st.session_state.filtro_periodo_grafico})**"
+
 st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: -10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
 # 6. Filtragem Rigorosa e Precisa (para gráficos de tendência e histórico)
@@ -384,16 +390,24 @@ if st.session_state.f_anos:
 
 # 6.1 Criação do DataFrame de Snapshot (para os Cards e Top 10)
 df_snapshot = df_filtrado.copy()
-if not st.session_state.f_meses:
-    if st.session_state.f_anos:
-        anos_sel_num = [int(a) for a in st.session_state.f_anos]
-        df_anos_sel = df_snapshot[df_snapshot['tmp_ano_num'].isin(anos_sel_num)]
-        if not df_anos_sel.empty:
-            m_ano = df_anos_sel['tmp_ano_num'].max()
-            m_mes = df_anos_sel[df_anos_sel['tmp_ano_num'] == m_ano]['tmp_mes_num'].max()
-            df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == m_ano) & (df_snapshot['tmp_mes_num'] == m_mes)]
-    else:
-        df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == max_ano_base) & (df_snapshot['tmp_mes_num'] == max_mes_base)]
+
+# Se houver um período selecionado diretamente no gráfico, ele dita as regras do snapshot!
+if st.session_state.get('filtro_periodo_grafico'):
+    p_sel = st.session_state.filtro_periodo_grafico # Ex: "07/2026"
+    m_str, a_str = p_sel.split('/')
+    m_num, a_num = int(m_str), int(a_str)
+    df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == a_num) & (df_snapshot['tmp_mes_num'] == m_num)]
+else:
+    if not st.session_state.f_meses:
+        if st.session_state.f_anos:
+            anos_sel_num = [int(a) for a in st.session_state.f_anos]
+            df_anos_sel = df_snapshot[df_snapshot['tmp_ano_num'].isin(anos_sel_num)]
+            if not df_anos_sel.empty:
+                m_ano = df_anos_sel['tmp_ano_num'].max()
+                m_mes = df_anos_sel[df_anos_sel['tmp_ano_num'] == m_ano]['tmp_mes_num'].max()
+                df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == m_ano) & (df_snapshot['tmp_mes_num'] == m_mes)]
+        else:
+            df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == max_ano_base) & (df_snapshot['tmp_mes_num'] == max_mes_base)]
 
 # 7. Somas e Contagens Dinâmicas baseadas no Snapshot (Posição Atual do Estoque)
 def somar_coluna(dataframe, coluna):
@@ -480,7 +494,7 @@ def fmt_mes(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) COM FILTROS DE UNIDADE E ANO LADO A LADO ---
+    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) COM CAPTURA DE CLIQUE (FILTRO MESTRE) ---
     @st.fragment
     def render_grafico_tendencia(df_f):
         if not df_f.empty:
@@ -589,12 +603,16 @@ with aba_geral:
                         visible='legendonly', hoverinfo='none'
                     ))
 
-                # --- HOLOFOTE VERTICAL ---
+                # --- CAPTURA DO CLIQUE PARA O FILTRO MESTRE ---
                 sel_state = st.session_state.get("tendencia_geral", {})
                 pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
                 
                 if pontos_clicados:
                     x_hl = pontos_clicados[0]["x"]
+                    if st.session_state.get("filtro_periodo_grafico") != x_hl:
+                        st.session_state.filtro_periodo_grafico = x_hl
+                        st.rerun()
+                    
                     match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == x_hl].tolist()
                     if match_idx:
                         idx = match_idx[0]
@@ -613,6 +631,16 @@ with aba_geral:
                     fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, 
                     on_select="rerun", selection_mode="points", key="tendencia_geral"
                 )
+                
+                # Botão rápido para limpar o filtro mestre do gráfico se estiver ativo
+                if st.session_state.get('filtro_periodo_grafico'):
+                    col_b_info, col_b_acao = st.columns([3, 1])
+                    with col_b_info:
+                        st.markdown(f"<span style='color: #d85c27; font-size: 12px;'>📌 Período fixado pelo gráfico: <b>{st.session_state.filtro_periodo_grafico}</b></span>", unsafe_allow_html=True)
+                    with col_b_acao:
+                        if st.button("🔄 Limpar Filtro do Gráfico", use_container_width=True):
+                            st.session_state.filtro_periodo_grafico = None
+                            st.rerun()
 
     render_grafico_tendencia(df_filtrado)
     st.markdown("<br>", unsafe_allow_html=True)
