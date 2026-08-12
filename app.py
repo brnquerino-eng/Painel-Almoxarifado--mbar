@@ -480,22 +480,22 @@ def fmt_mes(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) ---
+    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) COM FILTRO APENAS DE ANO ---
     @st.fragment
     def render_grafico_tendencia(df_f):
         if not df_f.empty:
             with st.container(border=True):
-                col_tg_title, col_tg_filter = st.columns([3, 2])
+                col_tg_title, col_tg_ano = st.columns([3, 2])
                 with col_tg_title:
                     st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
                 
-                with col_tg_filter:
-                    unidades_disponiveis_grafico = sorted(df_f["unidade_almoxarifado"].dropna().unique().tolist())
-                    filtro_unidade_chart = st.multiselect("Filtrar Unidades no Gráfico:", unidades_disponiveis_grafico, default=[], key="local_chart_filter", placeholder="Todas as unidades filtradas")
+                with col_tg_ano:
+                    anos_disponiveis_grafico = sorted(df_f["ano_referencia"].dropna().unique().tolist())
+                    filtro_ano_chart = st.multiselect("Filtrar Anos no Gráfico:", anos_disponiveis_grafico, default=[], key="local_ano_chart_filter", placeholder="Todos os anos filtrados")
 
                 df_chart_base = df_f.copy()
-                if filtro_unidade_chart:
-                    df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(filtro_unidade_chart)]
+                if filtro_ano_chart:
+                    df_chart_base = df_chart_base[df_chart_base["ano_referencia"].isin(filtro_ano_chart)]
 
                 # Série 1: Estoque Total
                 df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
@@ -536,7 +536,6 @@ with aba_geral:
                 max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
                 n_pontos_est = len(df_estoque_mes)
 
-                # Layout: hovermode='x' traz de volta a linha vertical, mas hoverinfo='none' esconde o texto
                 layout_linha_estoque = dict(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
@@ -548,7 +547,6 @@ with aba_geral:
 
                 fig_linha_estoque = go.Figure()
                 
-                # Traces: hoverinfo='none' esconde a caixinha ao passar o mouse, mas permite o clique
                 fig_linha_estoque.add_trace(go.Scatter(
                     x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
                     name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
@@ -595,7 +593,7 @@ with aba_geral:
                         idx = match_idx[0]
                         fig_linha_estoque.add_shape(
                             type="rect", 
-                            x0=idx - 0.25, x1=idx + 0.25,  # <-- LARGURA REDUZIDA AQUI DE 0.45 PARA 0.25
+                            x0=idx - 0.25, x1=idx + 0.25, 
                             y0=0, y1=1, yref="paper",
                             fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
                         )
@@ -745,9 +743,9 @@ with aba_geral:
 
                 fig_linha = go.Figure()
                 fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'],
-                                              name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
+                                             name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
                 fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
-                                              name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+                                             name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
 
                 fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
                 fig_linha.update_xaxes(showgrid=False, zeroline=False)
