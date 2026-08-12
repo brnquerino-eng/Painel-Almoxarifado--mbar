@@ -8,7 +8,7 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Inicialização dos estados para os filtros múltiplos e seleção do gráfico
+# Inicialização dos estados para os filtros múltiplos
 if 'f_unidades' not in st.session_state:
     st.session_state.f_unidades = []
 if 'f_meses' not in st.session_state:
@@ -96,6 +96,10 @@ df_completo = carregar_dados()
 if not df_completo.empty:
     max_ano_base = df_completo['tmp_ano_num'].max()
     max_mes_base = df_completo[df_completo['tmp_ano_num'] == max_ano_base]['tmp_mes_num'].max()
+    
+    # Se for a primeira vez abrindo o app, define o período mais recente como o padrão do gráfico
+    if st.session_state.filtro_periodo_grafico is None:
+        st.session_state.filtro_periodo_grafico = f"{int(max_mes_base):02d}/{int(max_ano_base)}"
 else:
     max_ano_base, max_mes_base = 2026, 7
 
@@ -162,7 +166,7 @@ def modal_filtros():
             st.session_state.f_unidades = []
             st.session_state.f_meses = []
             st.session_state.f_anos = []
-            st.session_state.filtro_periodo_grafico = None
+            st.session_state.filtro_periodo_grafico = f"{int(max_mes_base):02d}/{int(max_ano_base)}"
             st.rerun()
     with col_btn2:
         if st.button("Aplicar Filtros", use_container_width=True, type="primary"):
@@ -350,7 +354,7 @@ with col_header:
 
 with col_btn:
     st.markdown("<br>", unsafe_allow_html=True)
-    filtro_ativo = bool(st.session_state.f_unidades or st.session_state.f_meses or st.session_state.f_anos or st.session_state.filtro_periodo_grafico)
+    filtro_ativo = bool(st.session_state.f_unidades or st.session_state.f_meses or st.session_state.f_anos or st.session_state.get('filtro_periodo_grafico'))
     label_botao = "⚙️ Filtros (Ativo)" if filtro_ativo else "⚙️ Filtros"
 
     if st.button(label_botao, use_container_width=True):
@@ -494,7 +498,7 @@ def fmt_mes(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) COM CAPTURA DE CLIQUE (FILTRO MESTRE) ---
+    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) COM HOLOFOTE SEMPRE ATIVO ---
     @st.fragment
     def render_grafico_tendencia(df_f):
         if not df_f.empty:
@@ -603,7 +607,7 @@ with aba_geral:
                         visible='legendonly', hoverinfo='none'
                     ))
 
-                # --- CAPTURA DO CLIQUE PARA O FILTRO MESTRE ---
+                # --- CAPTURA E RENDERIZAÇÃO GARANTIDA DO HOLOFOTE (RETÂNGULO) ---
                 sel_state = st.session_state.get("tendencia_geral", {})
                 pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
                 
@@ -612,8 +616,11 @@ with aba_geral:
                     if st.session_state.get("filtro_periodo_grafico") != x_hl:
                         st.session_state.filtro_periodo_grafico = x_hl
                         st.rerun()
-                    
-                    match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == x_hl].tolist()
+
+                # Desenha o retângulo se houver um período ativo (seja por clique ou pelo padrão inicial)
+                periodo_ativo = st.session_state.get("filtro_periodo_grafico")
+                if periodo_ativo:
+                    match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == periodo_ativo].tolist()
                     if match_idx:
                         idx = match_idx[0]
                         fig_linha_estoque.add_shape(
@@ -632,7 +639,7 @@ with aba_geral:
                     on_select="rerun", selection_mode="points", key="tendencia_geral"
                 )
                 
-                # Botão rápido para limpar o filtro mestre do gráfico se estiver ativo
+                # Rodapé de controle do filtro mestre
                 if st.session_state.get('filtro_periodo_grafico'):
                     col_b_info, col_b_acao = st.columns([3, 1])
                     with col_b_info:
