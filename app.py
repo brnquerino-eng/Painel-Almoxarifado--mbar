@@ -155,7 +155,6 @@ st.markdown("""
         background-color: #0f141c;
         animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
-    /* Estilização da barra de rolagem */
     ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
@@ -171,8 +170,6 @@ st.markdown("""
     ::-webkit-scrollbar-thumb:hover {
         background: #d85c27;
     }
-
-    /* Botões compactos da legenda inteligente */
     .stButton > button {
         background-color: #161c24 !important;
         color: #8c9ba5 !important;
@@ -353,7 +350,7 @@ with aba_geral:
         with col_tg_ano:
             st.multiselect("Anos:", ano_opcoes, key="chart_anos", placeholder="Todos")
 
-        # 6. Filtragem Síncrona Rigorosa (Sem cópias desnecessárias na memória)
+        # 6. Filtragem Síncrona Rigorosa
         df_filtrado = df_completo
 
         escopo_atual = st.session_state.get('chart_escopo', 'Todas')
@@ -416,7 +413,7 @@ with aba_geral:
             if st.session_state.vis_obra:
                 st.markdown("<style>div.stButton > button[key='btn_vis_obra'] { border: 1px solid #f39c12 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
 
-        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA ---
+        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA (MESTRE) ---
         df_chart_base = df_filtrado
 
         df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
@@ -617,7 +614,6 @@ with aba_geral:
     cobertura_anos = 0.0
 
     if not df_filtrado.empty:
-        # Descobre o ano ativo e o mês teto baseado na seleção do gráfico ou no último mês disponível
         if st.session_state.get('filtro_periodo_grafico'):
             p_sel = st.session_state.filtro_periodo_grafico
             m_str, a_str = p_sel.split('/')
@@ -627,27 +623,22 @@ with aba_geral:
             ano_ativo_val = int(df_filtrado['tmp_ano_num'].max())
             mes_teto_val = int(df_filtrado[df_filtrado['tmp_ano_num'] == ano_ativo_val]['tmp_mes_num'].max())
 
-        # Aplicação da regra YTD progressiva: restringe ao ano ativo e acumula do mês 1 até o mês teto
         df_giro_ytd = df_filtrado[
             (df_filtrado['tmp_ano_num'] == ano_ativo_val) & 
             (df_filtrado['tmp_mes_num'] <= mes_teto_val)
-        ].copy() # Cópia necessária aqui para manipularmos apenas a matriz vetorizada do YTD sem gerar Warnings
+        ].copy()
 
-        # Vetorização de alta performance (Sem '.apply()', cálculo nativo Pandas)
         df_giro_ytd['consumo_abs'] = pd.to_numeric(df_giro_ytd['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
         df_giro_ytd['val_estoque'] = pd.to_numeric(df_giro_ytd['valor_saldo_atual'], errors='coerce').fillna(0.0)
 
-        # Máscara de Itens Operacionais (Tudo que NÃO é crítico e NÃO é obsoleto)
         mask_operacional = ~(
             (df_giro_ytd['item_critico'] == '1-Sim') | 
             (df_giro_ytd['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))
         )
 
-        # Aplica a máscara diretamente nas colunas (Multiplica o valor por 1 ou 0)
         df_giro_ytd['estoque_op'] = df_giro_ytd['val_estoque'] * mask_operacional
         df_giro_ytd['consumo_op'] = df_giro_ytd['consumo_abs'] * mask_operacional
 
-        # Agrupamento ultrarrápido nativo do C
         monthly_df = df_giro_ytd.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
             estoque_op=('estoque_op', 'sum'),
             consumo_op=('consumo_op', 'sum')
@@ -811,8 +802,6 @@ with aba_geral:
                 df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True)
 
                 df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
-                
-                # Ajuste cirúrgico do espaçamento interno do texto
                 df_rank['unidade_exibicao'] = df_rank['unidade_almoxarifado'] + " "
 
                 num_unidades = len(df_rank)
@@ -834,7 +823,6 @@ with aba_geral:
                 fig_bar.update_yaxes(title="", showgrid=False, tickfont=dict(size=10))
 
                 chart_html = fig_bar.to_html(full_html=True, include_plotlyjs='cdn', config={'displayModeBar': False})
-                # 🛡️ Anti-quebra: Usando Regex para substituir a tag body com segurança, independentemente de atualizações futuras do Plotly
                 chart_html = re.sub(r'<body[^>]*>', '<body style="background-color: #161c24; margin: 0; padding: 0;">', chart_html)
                 st.components.v1.html(chart_html, height=380, scrolling=True)
 
@@ -842,9 +830,8 @@ with aba_geral:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🍩 COMPOSIÇÃO DO ESTOQUE (VALOR)</div>", unsafe_allow_html=True)
                 
-                # Cálculo do 'Demais Estoque'
                 val_demais = val_estoque - (val_critico + val_obsoleto + val_obra)
-                if val_demais < 0: val_demais = 0  # Prevenção contra flutuações decimais
+                if val_demais < 0: val_demais = 0
                 
                 df_pizza = pd.DataFrame({
                     'Categoria': ['Estoque Crítico', 'Estoque Obsoleto', 'Estoque Obra', 'Demais Estoque'],
@@ -852,7 +839,6 @@ with aba_geral:
                     'Cor': ['#f39c12', '#9b59b6', '#1abc9c', '#3498db']
                 })
                 df_pizza = df_pizza[df_pizza['Valor'] > 0]
-                
                 df_pizza['Valor_Formatado'] = df_pizza['Valor'].apply(fmt_brl)
                 
                 fig_rosca = go.Figure(data=[go.Pie(
@@ -882,7 +868,7 @@ with aba_geral:
                 
                 st.plotly_chart(fig_rosca, use_container_width=True, config={'displayModeBar': False}, key="rosca_composicao")
 
-        # LINHA 2: EVOLUÇÃO DE COMPRAS VS CONSUMO (LARGURA TOTAL)
+        # LINHA 2: EVOLUÇÃO DE COMPRAS VS CONSUMO (COM HOLOFOTE SINCRONIZADO)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
@@ -900,13 +886,26 @@ with aba_geral:
             fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
                                            name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
 
+            # Aplicando o Holofote Sincronizado (Mesmo retângulo de destaque do mestre)
+            periodo_ativo = st.session_state.get("filtro_periodo_grafico")
+            if periodo_ativo and not df_tempo.empty:
+                match_idx_tempo = df_tempo.index[df_tempo['Periodo'] == periodo_ativo].tolist()
+                if match_idx_tempo:
+                    idx_t = match_idx_tempo[0]
+                    fig_linha.add_shape(
+                        type="rect",
+                        x0=idx_t - 0.25, x1=idx_t + 0.25,
+                        y0=0, y1=1, yref="paper",
+                        fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
+                    )
+
             fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
             fig_linha.update_xaxes(showgrid=False, zeroline=False)
             fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
 
             st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False}, key="compras_consumo_geral")
 
-        # 11. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
+        # 11. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (COM HOLOFOTE SINCRONIZADO)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -966,6 +965,18 @@ with aba_geral:
                 fillcolor='rgba(231, 76, 60, 0.1)',
                 hoverinfo='none'
             ))
+
+            # Aplicando o Holofote Sincronizado no Gráfico de SKUs também
+            if periodo_ativo and not df_sku_tempo.empty:
+                match_idx_sku = df_sku_tempo.index[df_sku_tempo['Periodo'] == periodo_ativo].tolist()
+                if match_idx_sku:
+                    idx_s = match_idx_sku[0]
+                    fig_sku_linha.add_shape(
+                        type="rect",
+                        x0=idx_s - 0.25, x1=idx_s + 0.25,
+                        y0=0, y1=1, yref="paper",
+                        fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
+                    )
 
             fig_sku_linha.update_layout(**layout_sku, hovermode='x', showlegend=False)
             fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos - 0.2])
