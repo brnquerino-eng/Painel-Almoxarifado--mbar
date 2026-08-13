@@ -985,13 +985,12 @@ with aba_geral:
 
 
         # ==========================================
-        # 12. NOVA OPÇÃO 1: GRÁFICO DE DISPERSÃO (GIRO VS COBERTURA POR UNIDADE)
+        # 12. GRÁFICO DE DISPERSÃO (GIRO VS COBERTURA)
         # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🎯 MATRIZ DE EFICIÊNCIA: GIRO (X) VS COBERTURA EM MESES (Y) POR UNIDADE</div>", unsafe_allow_html=True)
 
-            # Preparação dos dados para a Dispersão YTD
             df_sc_ytd = df_giro_ytd.copy() if 'df_giro_ytd' in locals() and not df_giro_ytd.empty else df_filtrado.copy()
             
             if not df_sc_ytd.empty:
@@ -1041,13 +1040,13 @@ with aba_geral:
                     showlegend=False
                 )
                 fig_disp.update_xaxes(title="Giro Anualizado (x)", showgrid=True, gridcolor='#232b36', zeroline=False)
-                fig_disp.update_yaxes(title="Cobertura Média (Meses)", showgrid=True, gridcolor='#232b36', zeroline=False)
+                fig_disp.update_yaxes(title="Cobertura Média (Meses)", showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, 36]) # Limitado para evitar distorção de outliers
 
                 st.plotly_chart(fig_disp, use_container_width=True, config={'displayModeBar': False}, key="dispersao_giro_cobertura")
 
 
         # ==========================================
-        # 13. NOVA OPÇÃO 2: GRÁFICO DE DUPLO EIXO (EVOLUÇÃO TEMPORAL: GIRO VS COBERTURA)
+        # 13. GRÁFICO DE DUPLO EIXO (GIRO VS COBERTURA NO TEMPO)
         # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
@@ -1077,7 +1076,6 @@ with aba_geral:
 
                 fig_duplo = go.Figure()
 
-                # Barras para o Giro Mensal
                 fig_duplo.add_trace(go.Bar(
                     x=df_duplo['Periodo'],
                     y=df_duplo['Giro_Mensal'],
@@ -1086,7 +1084,6 @@ with aba_geral:
                     opacity=0.85
                 ))
 
-                # Linha para a Cobertura em Meses no Eixo Y secundário
                 fig_duplo.add_trace(go.Scatter(
                     x=df_duplo['Periodo'],
                     y=df_duplo['Cobertura_Meses'],
@@ -1121,6 +1118,77 @@ with aba_geral:
                 fig_duplo.update_xaxes(showgrid=False, zeroline=False)
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
+
+
+        # ==========================================
+        # 14. NOVA OPÇÃO 3: TREEMAP EXECUTIVO (CONCENTRAÇÃO POR UNIDADE)
+        # ==========================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🗺️ TREEMAP EXECUTIVO: CONCENTRAÇÃO DE ESTOQUE POR UNIDADE</div>", unsafe_allow_html=True)
+
+            df_tree = df_snapshot.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+            df_tree = df_tree[df_tree['valor_saldo_atual'] > 0]
+
+            if not df_tree.empty:
+                fig_tree = px.treemap(
+                    df_tree,
+                    path=['unidade_almoxarifado'],
+                    values='valor_saldo_atual',
+                    color='valor_saldo_atual',
+                    color_continuous_scale='Reds'
+                )
+                fig_tree.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#8c9ba5'),
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    height=380
+                )
+                st.plotly_chart(fig_tree, use_container_width=True, config={'displayModeBar': False}, key="treemap_estoque")
+
+
+        # ==========================================
+        # 15. NOVA OPÇÃO 4: BARRAS AGRUPADAS (ESTOQUE VS COMPRAS VS CONSUMO)
+        # ==========================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 DIAGNÓSTICO OPERACIONAL: ESTOQUE VS COMPRAS VS CONSUMO POR UNIDADE</div>", unsafe_allow_html=True)
+
+            df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
+                Estoque=('valor_saldo_atual', 'sum'),
+                Compras=('valor_entrada_compras', 'sum'),
+                Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
+            ).reset_index()
+
+            if not df_diag.empty:
+                df_diag_melted = df_diag.melt(
+                    id_vars='unidade_almoxarifado', 
+                    value_vars=['Estoque', 'Compras', 'Consumo'],
+                    var_name='Métrica', 
+                    value_name='Valor'
+                )
+
+                fig_diag = px.bar(
+                    df_diag_melted,
+                    x='unidade_almoxarifado',
+                    y='Valor',
+                    color='Métrica',
+                    barmode='group',
+                    color_discrete_map={'Estoque': '#e74c3c', 'Compras': '#f39c12', 'Consumo': '#3498db'}
+                )
+                fig_diag.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#8c9ba5'),
+                    margin=dict(l=10, r=10, t=30, b=50),
+                    height=400,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                )
+                fig_diag.update_xaxes(title="", tickangle=-30, showgrid=False, zeroline=False)
+                fig_diag.update_yaxes(title="Valor (R$)", showgrid=True, gridcolor='#232b36', zeroline=False)
+
+                st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diagnostico_barras_agrupadas")
 
     else:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
