@@ -538,7 +538,7 @@ with aba_geral:
 
     st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: 10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
-    # 7. Criação do DataFrame de Snapshot (para os Cards e Top 10)
+    # 7. Criação do DataFrame de Snapshot (para os Cards e Unidades)
     df_snapshot = df_filtrado.copy()
 
     if st.session_state.get('filtro_periodo_grafico'):
@@ -756,28 +756,37 @@ with aba_geral:
             margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        # LINHA 1: TOP 10 vs COMPOSIÇÃO DE ESTOQUE (ROSCA)
+        # LINHA 1: RANKING DE UNIDADES ROLÁVEL vs COMPOSIÇÃO DE ESTOQUE (ROSCA SEM % NO HOVER)
         col_c1, col_c2 = st.columns([5, 5], gap="large")
 
         with col_c1:
             with st.container(border=True):
-                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 RANKING: VALOR EM ESTOQUE POR UNIDADE</div>", unsafe_allow_html=True)
 
                 df_rank = df_snapshot.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
                 df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
-                df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True).tail(10)
+                # Ordenação padrão crescente para o gráfico de barras horizontais do Plotly exibir o topo em cima
+                df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True)
 
                 df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
+
+                # Altura dinâmica baseada na quantidade de unidades para habilitar o scroll natural
+                num_unidades = len(df_rank)
+                altura_calculada = max(400, num_unidades * 32)
 
                 fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h',
                                  color_discrete_sequence=['#e74c3c'], text='texto_formatado')
 
-                fig_bar.update_layout(**layout_transparente, hovermode="y unified")
+                layout_bar_dinamico = dict(**layout_transparente)
+                layout_bar_dinamico['height'] = altura_calculada
+                layout_bar_dinamico['hovermode'] = "y unified"
+
+                fig_bar.update_layout(**layout_bar_dinamico)
                 fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
                 fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
                 fig_bar.update_yaxes(title="", showgrid=False)
 
-                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False}, key="top10_geral")
+                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': True}, key="ranking_unidades_geral")
 
         with col_c2:
             with st.container(border=True):
@@ -795,7 +804,7 @@ with aba_geral:
                 # Filtra apenas o que tem valor para não desenhar fatias zeradas
                 df_pizza = df_pizza[df_pizza['Valor'] > 0]
                 
-                # Cria a coluna com a formatação bonitinha brasileira para exibir na caixa (hover)
+                # Cria a coluna com a formatação bonitinha brasileira para exibir na caixa (hover sem a porcentagem)
                 df_pizza['Valor_Formatado'] = df_pizza['Valor'].apply(fmt_brl)
                 
                 fig_rosca = go.Figure(data=[go.Pie(
@@ -806,8 +815,8 @@ with aba_geral:
                     textinfo='label+percent',
                     textposition='outside',
                     insidetextorientation='horizontal', 
-                    hovertext=df_pizza['Valor_Formatado'], # <-- Chama a coluna formatada
-                    hovertemplate="<b>%{label}</b><br>%{hovertext}<br>%{percent}<extra></extra>", # <-- Personaliza a caixinha
+                    hovertext=df_pizza['Valor_Formatado'], 
+                    hovertemplate="<b>%{label}</b><br>%{hovertext}<extra></extra>", # Apenas Categoria e Valor formatado
                     textfont=dict(size=11)
                 )])
                 
