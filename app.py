@@ -799,7 +799,7 @@ with aba_geral:
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
-                    margin=dict(l=145, r=15, t=10, b=10), # Margem esquerda ajustada com precisão para l=145
+                    margin=dict(l=165, r=15, t=10, b=10), # Margem esquerda ajustada com precisão para l=145
                     height=altura_grafico,
                     hovermode="y unified"
                 )
