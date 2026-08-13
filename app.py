@@ -784,7 +784,7 @@ with aba_geral:
                 df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
                 df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True)
 
-               df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                 
                 # Ajuste cirúrgico do espaçamento interno do texto
                 df_rank['unidade_exibicao'] = df_rank['unidade_almoxarifado'] + " "
