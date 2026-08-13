@@ -356,22 +356,28 @@ with aba_geral:
                 max_m = df_filtrado[df_filtrado['tmp_ano_num'] == max_a]['tmp_mes_num'].max()
                 st.session_state.filtro_periodo_grafico = f"{int(max_m):02d}/{int(max_a)}"
 
-        # --- LEGENDA INTELIGENTE COM MEMÓRIA (Substitui a nativa do Plotly) ---
+        # --- LEGENDA INTELIGENTE COM FEEDBACK VISUAL DE ATIVO/INATIVO ---
         c_leg1, c_leg2, c_leg3, c_leg4 = st.columns(4)
+        
+        lbl_tot = "🟢 Estoque Total" if st.session_state.vis_total else "⚪ Estoque Total"
+        lbl_cri = "🟠 Estoque Crítico" if st.session_state.vis_critico else "⚪ Estoque Crítico"
+        lbl_obs = "🟣 Estoque Obsoleto" if st.session_state.vis_obsoleto else "⚪ Estoque Obsoleto"
+        lbl_obr = "🔵 Estoque Obra" if st.session_state.vis_obra else "⚪ Estoque Obra"
+
         with c_leg1:
-            if st.button("● Estoque Total", key="btn_vis_total", use_container_width=True):
+            if st.button(lbl_tot, key="btn_vis_total", use_container_width=True):
                 st.session_state.vis_total = not st.session_state.vis_total
                 st.rerun()
         with c_leg2:
-            if st.button("● Estoque Crítico", key="btn_vis_critico", use_container_width=True):
+            if st.button(lbl_cri, key="btn_vis_critico", use_container_width=True):
                 st.session_state.vis_critico = not st.session_state.vis_critico
                 st.rerun()
         with c_leg3:
-            if st.button("● Estoque Obsoleto", key="btn_vis_obsoleto", use_container_width=True):
+            if st.button(lbl_obs, key="btn_vis_obsoleto", use_container_width=True):
                 st.session_state.vis_obsoleto = not st.session_state.vis_obsoleto
                 st.rerun()
         with c_leg4:
-            if st.button("● Estoque Obra", key="btn_vis_obra", use_container_width=True):
+            if st.button(lbl_obr, key="btn_vis_obra", use_container_width=True):
                 st.session_state.vis_obra = not st.session_state.vis_obra
                 st.rerun()
 
@@ -424,7 +430,6 @@ with aba_geral:
 
         fig_linha_estoque = go.Figure()
 
-        # Função auxiliar de visibilidade com base no session_state
         def get_vis(key):
             return True if st.session_state.get(key, False) else 'legendonly'
 
