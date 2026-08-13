@@ -143,7 +143,7 @@ def _chave_numerica(val):
 
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Estilização CSS Avançada (Com barra de rolagem interna para o Ranking)
+# 3. Estilização CSS Avançada
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -154,26 +154,20 @@ st.markdown("""
         background-color: #0f141c;
         animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
-    /* Torna o container do ranking rolável verticalmente com altura fixa elegante */
-    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker) {
-        max-height: 460px;
-        overflow-y: auto !important;
-        overflow-x: hidden !important;
-        padding-right: 5px;
-    }
-    /* Estilização da barra de rolagem para combinar com o tema escuro */
-    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker)::-webkit-scrollbar {
+    /* Estilização da barra de rolagem interna */
+    ::-webkit-scrollbar {
         width: 6px;
+        height: 6px;
     }
-    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker)::-webkit-scrollbar-track {
+    ::-webkit-scrollbar-track {
         background: #161c24;
         border-radius: 4px;
     }
-    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker)::-webkit-scrollbar-thumb {
+    ::-webkit-scrollbar-thumb {
         background: #232b36;
         border-radius: 4px;
     }
-    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker)::-webkit-scrollbar-thumb:hover {
+    ::-webkit-scrollbar-thumb:hover {
         background: #d85c27;
     }
 
@@ -779,13 +773,11 @@ with aba_geral:
             margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        # LINHA 1: RANKING DE UNIDADES COM SCROLL INTERNO vs COMPOSIÇÃO DE ESTOQUE (ROSCA)
+        # LINHA 1: RANKING COM SCROLL INTERNO vs COMPOSIÇÃO DE ESTOQUE (ROSCA)
         col_c1, col_c2 = st.columns([5, 5], gap="large")
 
         with col_c1:
             with st.container(border=True):
-                # Marcador CSS para ativar a barra de rolagem interna neste container específico
-                st.markdown('<div id="ranking-scroll-marker"></div>', unsafe_allow_html=True)
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 RANKING: VALOR EM ESTOQUE POR UNIDADE</div>", unsafe_allow_html=True)
 
                 df_rank = df_snapshot.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
@@ -794,23 +786,32 @@ with aba_geral:
 
                 df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
 
-                # Altura proporcional interna para ativar o scroll vertical com barras no tamanho padrão
+                # Altura proporcional para as barras não perderem o tamanho padrão
                 num_unidades = len(df_rank)
-                altura_interna = max(380, num_unidades * 32)
+                altura_grafico = max(350, num_unidades * 32)
 
                 fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h',
                                  color_discrete_sequence=['#e74c3c'], text='texto_formatado')
 
-                layout_bar_dinamico = dict(**layout_transparente)
-                layout_bar_dinamico['height'] = altura_interna
-                layout_bar_dinamico['hovermode'] = "y unified"
-
-                fig_bar.update_layout(**layout_bar_dinamico)
+                fig_bar.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#8c9ba5'),
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    height=altura_grafico,
+                    hovermode="y unified"
+                )
                 fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
                 fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
                 fig_bar.update_yaxes(title="", showgrid=False)
 
-                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False}, key="ranking_unidades_geral")
+                # Renderiza o gráfico dentro de um container com rolagem interna de tamanho fixo idêntico ao lado
+                chart_html = fig_bar.to_html(full_html=False, include_plotlyjs='cdn', config={'displayModeBar': False})
+                st.markdown(f"""
+                <div style="height: 380px; overflow-y: auto; overflow-x: hidden; padding-right: 5px;">
+                    {chart_html}
+                </div>
+                """, unsafe_allow_html=True)
 
         with col_c2:
             with st.container(border=True):
