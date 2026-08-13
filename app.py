@@ -143,7 +143,7 @@ def _chave_numerica(val):
 
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Estilização CSS Avançada
+# 3. Estilização CSS Avançada (Incluindo os botões customizados da legenda)
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -155,15 +155,17 @@ st.markdown("""
         animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
     .stButton > button {
-        background-color: #1a222d !important;
-        color: #ffffff !important;
-        border: 1px solid #333d4d !important;
-        border-radius: 6px !important;
-        transition: all 0.3s ease;
+        background-color: #161c24 !important;
+        color: #8c9ba5 !important;
+        border: 1px solid #232b36 !important;
+        border-radius: 8px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
     .stButton > button:hover {
         border-color: #d85c27 !important;
-        color: #d85c27 !important;
+        color: #ffffff !important;
+        transform: translateY(-2px);
     }
     .header-container {
         display: flex;
@@ -356,7 +358,7 @@ with aba_geral:
                 max_m = df_filtrado[df_filtrado['tmp_ano_num'] == max_a]['tmp_mes_num'].max()
                 st.session_state.filtro_periodo_grafico = f"{int(max_m):02d}/{int(max_a)}"
 
-        # --- LEGENDA INTELIGENTE COM FEEDBACK VISUAL DE ATIVO/INATIVO ---
+        # --- LEGENDA INTELIGENTE COM ESTILO DE BOTÃO ATIVO/INATIVO ---
         c_leg1, c_leg2, c_leg3, c_leg4 = st.columns(4)
         
         lbl_tot = "🟢 Estoque Total" if st.session_state.vis_total else "⚪ Estoque Total"
@@ -368,18 +370,29 @@ with aba_geral:
             if st.button(lbl_tot, key="btn_vis_total", use_container_width=True):
                 st.session_state.vis_total = not st.session_state.vis_total
                 st.rerun()
+            if st.session_state.vis_total:
+                st.markdown("<style>div.stButton > button[key='btn_vis_total'] { border: 1px solid #e74c3c !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
+
         with c_leg2:
             if st.button(lbl_cri, key="btn_vis_critico", use_container_width=True):
                 st.session_state.vis_critico = not st.session_state.vis_critico
                 st.rerun()
+            if st.session_state.vis_critico:
+                st.markdown("<style>div.stButton > button[key='btn_vis_critico'] { border: 1px solid #f39c12 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
+
         with c_leg3:
             if st.button(lbl_obs, key="btn_vis_obsoleto", use_container_width=True):
                 st.session_state.vis_obsoleto = not st.session_state.vis_obsoleto
                 st.rerun()
+            if st.session_state.vis_obsoleto:
+                st.markdown("<style>div.stButton > button[key='btn_vis_obsoleto'] { border: 1px solid #9b59b6 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
+
         with c_leg4:
             if st.button(lbl_obr, key="btn_vis_obra", use_container_width=True):
                 st.session_state.vis_obra = not st.session_state.vis_obra
                 st.rerun()
+            if st.session_state.vis_obra:
+                st.markdown("<style>div.stButton > button[key='btn_vis_obra'] { border: 1px solid #1abc9c !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
 
         # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA ---
         df_chart_base = df_filtrado.copy()
@@ -424,7 +437,7 @@ with aba_geral:
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#8c9ba5'),
             margin=dict(l=10, r=10, t=30, b=30),
-            showlegend=False,  # Desativada pois usamos nossa legenda inteligente customizada
+            showlegend=False,
             hovermode='x'
         )
 
