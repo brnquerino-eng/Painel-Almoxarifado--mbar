@@ -143,7 +143,7 @@ def _chave_numerica(val):
 
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Estilização CSS Avançada (Incluindo os botões customizados da legenda)
+# 3. Estilização CSS Avançada
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -358,20 +358,20 @@ with aba_geral:
                 max_m = df_filtrado[df_filtrado['tmp_ano_num'] == max_a]['tmp_mes_num'].max()
                 st.session_state.filtro_periodo_grafico = f"{int(max_m):02d}/{int(max_a)}"
 
-        # --- LEGENDA INTELIGENTE COM ESTILO DE BOTÃO ATIVO/INATIVO ---
+        # --- LEGENDA INTELIGENTE COM PADRÃO UNIFICADO (🟡 Ativo / ⚪ Inativo) ---
         c_leg1, c_leg2, c_leg3, c_leg4 = st.columns(4)
         
-        lbl_tot = "🟢 Estoque Total" if st.session_state.vis_total else "⚪ Estoque Total"
-        lbl_cri = "🟠 Estoque Crítico" if st.session_state.vis_critico else "⚪ Estoque Crítico"
-        lbl_obs = "🟣 Estoque Obsoleto" if st.session_state.vis_obsoleto else "⚪ Estoque Obsoleto"
-        lbl_obr = "🔵 Estoque Obra" if st.session_state.vis_obra else "⚪ Estoque Obra"
+        lbl_tot = "🟡 Estoque Total" if st.session_state.vis_total else "⚪ Estoque Total"
+        lbl_cri = "🟡 Estoque Crítico" if st.session_state.vis_critico else "⚪ Estoque Crítico"
+        lbl_obs = "🟡 Estoque Obsoleto" if st.session_state.vis_obsoleto else "⚪ Estoque Obsoleto"
+        lbl_obr = "🟡 Estoque Obra" if st.session_state.vis_obra else "⚪ Estoque Obra"
 
         with c_leg1:
             if st.button(lbl_tot, key="btn_vis_total", use_container_width=True):
                 st.session_state.vis_total = not st.session_state.vis_total
                 st.rerun()
             if st.session_state.vis_total:
-                st.markdown("<style>div.stButton > button[key='btn_vis_total'] { border: 1px solid #e74c3c !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
+                st.markdown("<style>div.stButton > button[key='btn_vis_total'] { border: 1px solid #f39c12 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
 
         with c_leg2:
             if st.button(lbl_cri, key="btn_vis_critico", use_container_width=True):
@@ -385,14 +385,14 @@ with aba_geral:
                 st.session_state.vis_obsoleto = not st.session_state.vis_obsoleto
                 st.rerun()
             if st.session_state.vis_obsoleto:
-                st.markdown("<style>div.stButton > button[key='btn_vis_obsoleto'] { border: 1px solid #9b59b6 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
+                st.markdown("<style>div.stButton > button[key='btn_vis_obsoleto'] { border: 1px solid #f39c12 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
 
         with c_leg4:
             if st.button(lbl_obr, key="btn_vis_obra", use_container_width=True):
                 st.session_state.vis_obra = not st.session_state.vis_obra
                 st.rerun()
             if st.session_state.vis_obra:
-                st.markdown("<style>div.stButton > button[key='btn_vis_obra'] { border: 1px solid #1abc9c !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
+                st.markdown("<style>div.stButton > button[key='btn_vis_obra'] { border: 1px solid #f39c12 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
 
         # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA ---
         df_chart_base = df_filtrado.copy()
