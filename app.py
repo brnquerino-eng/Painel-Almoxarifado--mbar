@@ -785,18 +785,21 @@ with aba_geral:
                 df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True)
 
                 df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
+                
+                # Adiciona espaçamento elegante entre o texto e a barra
+                df_rank['unidade_exibicao'] = df_rank['unidade_almoxarifado'] + "     "
 
                 num_unidades = len(df_rank)
                 altura_grafico = max(350, num_unidades * 32)
 
-                fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h',
+                fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h',
                                  color_discrete_sequence=['#e74c3c'], text='texto_formatado')
 
                 fig_bar.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
-                    margin=dict(l=160, r=15, t=10, b=10), # Margem esquerda expandida para acomodar nomes longos sem cortes
+                    margin=dict(l=175, r=15, t=10, b=10), # Margem esquerda generosa para evitar qualquer corte
                     height=altura_grafico,
                     hovermode="y unified"
                 )
