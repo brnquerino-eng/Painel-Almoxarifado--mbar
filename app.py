@@ -143,7 +143,7 @@ def _chave_numerica(val):
 
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Estilização CSS Avançada (Com botões compactos e elegantes)
+# 3. Estilização CSS Avançada (Com barra de rolagem interna para o Ranking)
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -154,6 +154,29 @@ st.markdown("""
         background-color: #0f141c;
         animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
+    /* Torna o container do ranking rolável verticalmente com altura fixa elegante */
+    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker) {
+        max-height: 460px;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        padding-right: 5px;
+    }
+    /* Estilização da barra de rolagem para combinar com o tema escuro */
+    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker)::-webkit-scrollbar {
+        width: 6px;
+    }
+    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker)::-webkit-scrollbar-track {
+        background: #161c24;
+        border-radius: 4px;
+    }
+    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker)::-webkit-scrollbar-thumb {
+        background: #232b36;
+        border-radius: 4px;
+    }
+    div[data-testid="stVerticalBlock"] > div:has(#ranking-scroll-marker)::-webkit-scrollbar-thumb:hover {
+        background: #d85c27;
+    }
+
     /* Botões compactos da legenda inteligente */
     .stButton > button {
         background-color: #161c24 !important;
@@ -756,29 +779,30 @@ with aba_geral:
             margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        # LINHA 1: RANKING DE UNIDADES ROLÁVEL vs COMPOSIÇÃO DE ESTOQUE (ROSCA SEM % NO HOVER)
+        # LINHA 1: RANKING DE UNIDADES COM SCROLL INTERNO vs COMPOSIÇÃO DE ESTOQUE (ROSCA)
         col_c1, col_c2 = st.columns([5, 5], gap="large")
 
         with col_c1:
             with st.container(border=True):
+                # Marcador CSS para ativar a barra de rolagem interna neste container específico
+                st.markdown('<div id="ranking-scroll-marker"></div>', unsafe_allow_html=True)
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 RANKING: VALOR EM ESTOQUE POR UNIDADE</div>", unsafe_allow_html=True)
 
                 df_rank = df_snapshot.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
                 df_rank = df_rank[df_rank['valor_saldo_atual'] > 0]
-                # Ordenação padrão crescente para o gráfico de barras horizontais do Plotly exibir o topo em cima
                 df_rank = df_rank.sort_values('valor_saldo_atual', ascending=True)
 
                 df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
 
-                # Altura dinâmica baseada na quantidade de unidades para habilitar o scroll natural
+                # Altura proporcional interna para ativar o scroll vertical com barras no tamanho padrão
                 num_unidades = len(df_rank)
-                altura_calculada = max(400, num_unidades * 32)
+                altura_interna = max(380, num_unidades * 32)
 
                 fig_bar = px.bar(df_rank, x='valor_saldo_atual', y='unidade_almoxarifado', orientation='h',
                                  color_discrete_sequence=['#e74c3c'], text='texto_formatado')
 
                 layout_bar_dinamico = dict(**layout_transparente)
-                layout_bar_dinamico['height'] = altura_calculada
+                layout_bar_dinamico['height'] = altura_interna
                 layout_bar_dinamico['hovermode'] = "y unified"
 
                 fig_bar.update_layout(**layout_bar_dinamico)
@@ -786,7 +810,7 @@ with aba_geral:
                 fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
                 fig_bar.update_yaxes(title="", showgrid=False)
 
-                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False, 'scrollZoom': True}, key="ranking_unidades_geral")
+                st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False}, key="ranking_unidades_geral")
 
         with col_c2:
             with st.container(border=True):
@@ -804,7 +828,6 @@ with aba_geral:
                 # Filtra apenas o que tem valor para não desenhar fatias zeradas
                 df_pizza = df_pizza[df_pizza['Valor'] > 0]
                 
-                # Cria a coluna com a formatação bonitinha brasileira para exibir na caixa (hover sem a porcentagem)
                 df_pizza['Valor_Formatado'] = df_pizza['Valor'].apply(fmt_brl)
                 
                 fig_rosca = go.Figure(data=[go.Pie(
@@ -816,14 +839,13 @@ with aba_geral:
                     textposition='outside',
                     insidetextorientation='horizontal', 
                     hovertext=df_pizza['Valor_Formatado'], 
-                    hovertemplate="<b>%{label}</b><br>%{hovertext}<extra></extra>", # Apenas Categoria e Valor formatado
+                    hovertemplate="<b>%{label}</b><br>%{hovertext}<extra></extra>",
                     textfont=dict(size=11)
                 )])
                 
                 # Texto central com o Valor Total (formatado)
                 texto_central = fmt_valor_milhoes(val_estoque) if val_estoque > 0 else "R$ 0,00"
                 
-                # Margens personalizadas para evitar o corte do texto
                 fig_rosca.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
