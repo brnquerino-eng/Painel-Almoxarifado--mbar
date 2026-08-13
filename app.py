@@ -795,6 +795,9 @@ with aba_geral:
                 # Filtra apenas o que tem valor para não desenhar fatias zeradas
                 df_pizza = df_pizza[df_pizza['Valor'] > 0]
                 
+                # Cria a coluna com a formatação bonitinha brasileira para exibir na caixa (hover)
+                df_pizza['Valor_Formatado'] = df_pizza['Valor'].apply(fmt_brl)
+                
                 fig_rosca = go.Figure(data=[go.Pie(
                     labels=df_pizza['Categoria'],
                     values=df_pizza['Valor'],
@@ -802,9 +805,10 @@ with aba_geral:
                     marker=dict(colors=df_pizza['Cor'], line=dict(color='#161c24', width=2)),
                     textinfo='label+percent',
                     textposition='outside',
-                    insidetextorientation='horizontal', # Mantém o texto reto para facilitar a leitura
-                    hoverinfo='label+value',
-                    textfont=dict(size=11) # Fonte controlada para caber melhor nas bordas
+                    insidetextorientation='horizontal', 
+                    hovertext=df_pizza['Valor_Formatado'], # <-- Chama a coluna formatada
+                    hovertemplate="<b>%{label}</b><br>%{hovertext}<br>%{percent}<extra></extra>", # <-- Personaliza a caixinha
+                    textfont=dict(size=11)
                 )])
                 
                 # Texto central com o Valor Total (formatado)
