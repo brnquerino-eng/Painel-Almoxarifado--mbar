@@ -801,7 +801,7 @@ with aba_geral:
                     font=dict(color='#8c9ba5'),
                     margin=dict(l=155, r=15, t=10, b=10), # Margem esquerda ajustada com precisão para l=145
                     height=altura_grafico,
-                    hovermode="y unified"
+                    hovermode=False
                 )
                 fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
                 fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", showticklabels=False, zeroline=False)
