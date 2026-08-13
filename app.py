@@ -97,7 +97,7 @@ if not df_completo.empty:
     max_ano_base = df_completo['tmp_ano_num'].max()
     max_mes_base = df_completo[df_completo['tmp_ano_num'] == max_ano_base]['tmp_mes_num'].max()
     
-    # Se for a primeira vez abrindo o app, define o período mais recente como o padrão do gráfico
+    # Inicialização automática no período mais recente
     if st.session_state.filtro_periodo_grafico is None:
         st.session_state.filtro_periodo_grafico = f"{int(max_mes_base):02d}/{int(max_ano_base)}"
 else:
@@ -498,25 +498,38 @@ def fmt_mes(val):
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- GRÁFICO DE TENDÊNCIA NO TOPO (ISOLADO EM FRAGMENTO) COM HOLOFOTE SEMPRE ATIVO ---
+    # --- GRÁFICO DE TENDÊNCIA NO TOPO COM SELETOR DE ESCOPO EM CASCATA ---
     @st.fragment
     def render_grafico_tendencia(df_f):
         if not df_f.empty:
             with st.container(border=True):
-                col_tg_title, col_tg_filters = st.columns([2.5, 2.5])
+                col_tg_title, col_tg_escopo, col_tg_unid, col_tg_ano = st.columns([1.8, 1.2, 2.0, 1.5])
                 with col_tg_title:
                     st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
                 
-                with col_tg_filters:
-                    col_u_f, col_a_f = st.columns(2)
-                    with col_u_f:
-                        unidades_disponiveis_grafico = sorted(df_f["unidade_almoxarifado"].dropna().unique().tolist())
-                        filtro_unidade_chart = st.multiselect("Unidades:", unidades_disponiveis_grafico, default=[], key="local_unit_chart_filter", placeholder="Todas")
-                    with col_a_f:
-                        anos_disponiveis_grafico = sorted(df_f["ano_referencia"].dropna().unique().tolist())
-                        filtro_ano_chart = st.multiselect("Anos:", anos_disponiveis_grafico, default=[], key="local_ano_chart_filter", placeholder="Todos")
+                with col_tg_escopo:
+                    tipo_escopo = st.selectbox("Escopo:", ["Todas", "Ativas", "Gerenciais"], key="local_scope_filter")
+                
+                with col_tg_unid:
+                    if tipo_escopo == "Ativas":
+                        opcoes_unid = unidades_ativas
+                    elif tipo_escopo == "Gerenciais":
+                        opcoes_unid = unidades_gerenciais
+                    else:
+                        opcoes_unid = unidades_opcoes
+                    
+                    filtro_unidade_chart = st.multiselect("Unidades:", opcoes_unid, default=[], key="local_unit_chart_filter", placeholder="Todas")
+                
+                with col_tg_ano:
+                    anos_disponiveis_grafico = sorted(df_f["ano_referencia"].dropna().unique().tolist())
+                    filtro_ano_chart = st.multiselect("Anos:", anos_disponiveis_grafico, default=[], key="local_ano_chart_filter", placeholder="Todos")
 
                 df_chart_base = df_f.copy()
+                if tipo_escopo == "Ativas":
+                    df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(unidades_ativas)]
+                elif tipo_escopo == "Gerenciais":
+                    df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(unidades_gerenciais)]
+
                 if filtro_unidade_chart:
                     df_chart_base = df_chart_base[df_chart_base["unidade_almoxarifado"].isin(filtro_unidade_chart)]
                 if filtro_ano_chart:
@@ -607,7 +620,7 @@ with aba_geral:
                         visible='legendonly', hoverinfo='none'
                     ))
 
-                # --- CAPTURA E RENDERIZAÇÃO GARANTIDA DO HOLOFOTE (RETÂNGULO) ---
+                # --- CAPTURA E RENDERIZAÇÃO DO HOLOFOTE MESTRE ---
                 sel_state = st.session_state.get("tendencia_geral", {})
                 pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
                 
@@ -617,7 +630,6 @@ with aba_geral:
                         st.session_state.filtro_periodo_grafico = x_hl
                         st.rerun()
 
-                # Desenha o retângulo se houver um período ativo (seja por clique ou pelo padrão inicial)
                 periodo_ativo = st.session_state.get("filtro_periodo_grafico")
                 if periodo_ativo:
                     match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == periodo_ativo].tolist()
@@ -639,7 +651,6 @@ with aba_geral:
                     on_select="rerun", selection_mode="points", key="tendencia_geral"
                 )
                 
-                # Rodapé de controle do filtro mestre
                 if st.session_state.get('filtro_periodo_grafico'):
                     col_b_info, col_b_acao = st.columns([3, 1])
                     with col_b_info:
