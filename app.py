@@ -796,7 +796,7 @@ with aba_geral:
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
-                    margin=dict(l=120, r=10, t=10, b=10), # Margem esquerda aumentada para exibir os nomes completos das unidades
+                    margin=dict(l=160, r=15, t=10, b=10), # Margem esquerda expandida para acomodar nomes longos sem cortes
                     height=altura_grafico,
                     hovermode="y unified"
                 )
