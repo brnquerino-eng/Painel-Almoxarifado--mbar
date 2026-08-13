@@ -774,7 +774,7 @@ with aba_geral:
         )
 
         # LINHA 1: RANKING COM SCROLL INTERNO vs COMPOSIÇÃO DE ESTOQUE (ROSCA)
-        col_c1, col_c2 = st.columns([5, 5], gap="large")
+        col_c1, col_c2 = st.columns([5, 5], gap="medium")
 
         with col_c1:
             with st.container(border=True):
