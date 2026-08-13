@@ -805,7 +805,7 @@ with aba_geral:
                 )
                 fig_bar.update_traces(textposition='auto', textfont=dict(color='white'))
                 fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
-                fig_bar.update_yaxes(title="", showgrid=False)
+                fig_bar.update_yaxes(title="", showgrid=False, tickfont=dict(size=10))
 
                 chart_html = fig_bar.to_html(full_html=True, include_plotlyjs='cdn', config={'displayModeBar': False})
                 chart_html = chart_html.replace('<body>', '<body style="background-color: #161c24; margin: 0; padding: 0;">')
