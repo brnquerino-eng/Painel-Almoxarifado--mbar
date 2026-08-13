@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+import time
 import pandas as pd
 import streamlit as st
 from supabase import create_client
@@ -7,6 +8,20 @@ import plotly.graph_objects as go
 
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
+
+# Colunas que a base sempre deve ter depois de carregar_dados(), sejam elas
+# vindas do Supabase (select) ou calculadas aqui (tmp_ano_num/tmp_mes_num).
+# Usado para blindar todo o resto do código contra KeyError quando a carga
+# falha totalmente (ex: erro de conexão) e não há dados para inferir colunas.
+COLUNAS_ESPERADAS = [
+    "valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno",
+    "unidade_almoxarifado", "mes_referencia", "ano_referencia",
+    "codigo_produto", "qtde_saldo_atual", "item_critico", "nome_local_estoque",
+    "tmp_ano_num", "tmp_mes_num",
+]
+
+def _df_vazio_padrao():
+    return pd.DataFrame(columns=COLUNAS_ESPERADAS)
 
 # Inicialização dos estados globais de controle do painel
 if 'chart_escopo' not in st.session_state:
@@ -44,11 +59,25 @@ def carregar_dados():
 
             all_data = []
 
-            def fetch_range(start_r, end_r):
-                res = supabase.table(table_name).select(
-                    "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
-                ).order("id").range(start_r, end_r).execute()
-                return res.data if res.data else []
+            def fetch_range(start_r, end_r, tentativas=3):
+                # CORREÇÃO: retry com backoff progressivo. Erros como
+                # ConnectionTerminated (HTTP/2) costumam ser transitórios —
+                # a conexão compartilhada entre as threads é derrubada pelo
+                # servidor sob carga, não um erro de lógica. Tentar de novo
+                # o lote que falhou é mais barato e mais robusto do que
+                # reduzir a paralelização de todos os lotes.
+                ultimo_erro = None
+                for tentativa in range(1, tentativas + 1):
+                    try:
+                        res = supabase.table(table_name).select(
+                            "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
+                        ).order("id").range(start_r, end_r).execute()
+                        return res.data if res.data else []
+                    except Exception as e:
+                        ultimo_erro = e
+                        if tentativa < tentativas:
+                            time.sleep(0.5 * tentativa)  # 0.5s, 1.0s, ...
+                raise ultimo_erro
 
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = [executor.submit(fetch_range, s, e) for s, e in ranges]
@@ -58,7 +87,7 @@ def carregar_dados():
                         all_data.extend(data)
 
             if not all_data:
-                return pd.DataFrame()
+                return _df_vazio_padrao()
 
             df = pd.DataFrame(all_data)
 
@@ -88,7 +117,10 @@ def carregar_dados():
             return df
     except Exception as e:
         st.error(f"Erro ao carregar dados do Supabase: {e}")
-        return pd.DataFrame()
+        # CORREÇÃO: DataFrame vazio, mas com as colunas esperadas já definidas.
+        # Protege qualquer trecho do código que acesse df_completo["coluna"]
+        # de um KeyError em cascata após a falha de carregamento.
+        return _df_vazio_padrao()
 
 df_completo = carregar_dados()
 
@@ -751,9 +783,6 @@ with aba_geral:
             max_y = df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100
             n_pontos = len(df_sku_tempo)
 
-            # CORREÇÃO: aplica o mesmo filtro codigo_produto != "" usado no card
-            # e no df_sku_trend acima, para não inflar a anotação "Total Período"
-            # com linhas de código de produto ausente/vazio.
             total_skus_grafico = df_snapshot[
                 (df_snapshot['qtde_saldo_atual'] > 0) & (df_snapshot['codigo_produto'] != "")
             ]['codigo_produto'].nunique()
@@ -811,8 +840,6 @@ with aba_detalhada:
     if not df_snapshot.empty:
         st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
 
-        # CORREÇÃO: SKUs_Ativos agora exclui codigo_produto == "" da mesma forma
-        # que o card e a anotação do gráfico, para os três números baterem entre si.
         df_tabela = df_snapshot.groupby('unidade_almoxarifado').agg(
             Valor_Estoque=('valor_saldo_atual', 'sum'),
             Valor_Compras=('valor_entrada_compras', 'sum'),
