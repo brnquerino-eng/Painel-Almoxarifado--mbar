@@ -608,7 +608,7 @@ with aba_geral:
     else:
         val_obra = 0.0
 
-    # --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE ---
+    # --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (COM LÓGICA YTD ACUMULADA) ---
     giro_mensal = 0.0
     giro_anual = 0.0
     cobertura_meses = 0.0
@@ -622,7 +622,23 @@ with aba_geral:
         df_giro['is_critico'] = df_giro['item_critico'] == '1-Sim'
         df_giro['is_obsoleto'] = df_giro['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)
 
-        monthly_groups = df_giro.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])
+        # Descobre o ano ativo e o mês teto baseado na seleção do gráfico ou no último mês disponível
+        if st.session_state.get('filtro_periodo_grafico'):
+            p_sel = st.session_state.filtro_periodo_grafico
+            m_str, a_str = p_sel.split('/')
+            ano_ativo_val = int(a_str)
+            mes_teto_val = int(m_str)
+        else:
+            ano_ativo_val = int(df_giro['tmp_ano_num'].max())
+            mes_teto_val = int(df_giro[df_giro['tmp_ano_num'] == ano_ativo_val]['tmp_mes_num'].max())
+
+        # Aplicação da regra YTD progressiva: restringe ao ano ativo e acumula do mês 1 até o mês teto selecionado
+        df_giro_ytd = df_giro[
+            (df_giro['tmp_ano_num'] == ano_ativo_val) & 
+            (df_giro['tmp_mes_num'] <= mes_teto_val)
+        ]
+
+        monthly_groups = df_giro_ytd.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])
         monthly_df = monthly_groups.apply(lambda g: pd.Series({
             'estoque_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'val_estoque'].sum(),
             'consumo_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'consumo_abs'].sum()
@@ -799,7 +815,7 @@ with aba_geral:
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
-                    margin=dict(l=155, r=15, t=10, b=10), # Margem esquerda ajustada com precisão para l=145
+                    margin=dict(l=155, r=15, t=10, b=10),
                     height=altura_grafico,
                     hovermode=False
                 )
@@ -824,7 +840,6 @@ with aba_geral:
                     'Valor': [val_critico, val_obsoleto, val_obra, val_demais],
                     'Cor': ['#f39c12', '#9b59b6', '#1abc9c', '#3498db']
                 })
-                # Filtra apenas o que tem valor para não desenhar fatias zeradas
                 df_pizza = df_pizza[df_pizza['Valor'] > 0]
                 
                 df_pizza['Valor_Formatado'] = df_pizza['Valor'].apply(fmt_brl)
@@ -842,7 +857,6 @@ with aba_geral:
                     textfont=dict(size=11)
                 )])
                 
-                # Texto central com o Valor Total (formatado)
                 texto_central = fmt_valor_milhoes(val_estoque) if val_estoque > 0 else "R$ 0,00"
                 
                 fig_rosca.update_layout(
@@ -871,9 +885,9 @@ with aba_geral:
 
             fig_linha = go.Figure()
             fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'],
-                                         name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
+                                           name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
             fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
-                                         name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+                                           name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
 
             fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
             fig_linha.update_xaxes(showgrid=False, zeroline=False)
