@@ -154,7 +154,7 @@ st.markdown("""
         background-color: #0f141c;
         animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
-    /* Estilização da barra de rolagem interna */
+    /* Estilização da barra de rolagem */
     ::-webkit-scrollbar {
         width: 6px;
         height: 6px;
@@ -786,7 +786,6 @@ with aba_geral:
 
                 df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
 
-                # Altura proporcional para as barras não perderem o tamanho padrão
                 num_unidades = len(df_rank)
                 altura_grafico = max(350, num_unidades * 32)
 
@@ -805,13 +804,10 @@ with aba_geral:
                 fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
                 fig_bar.update_yaxes(title="", showgrid=False)
 
-                # Renderiza o gráfico dentro de um container com rolagem interna de tamanho fixo idêntico ao lado
-                chart_html = fig_bar.to_html(full_html=False, include_plotlyjs='cdn', config={'displayModeBar': False})
-                st.markdown(f"""
-                <div style="height: 380px; overflow-y: auto; overflow-x: hidden; padding-right: 5px;">
-                    {chart_html}
-                </div>
-                """, unsafe_allow_html=True)
+                # Renderização correta com iframe nativo para garantir o fundo escuro e rolagem interna perfeita
+                chart_html = fig_bar.to_html(full_html=True, include_plotlyjs='cdn', config={'displayModeBar': False})
+                chart_html = chart_html.replace('<body>', '<body style="background-color: #161c24; margin: 0; padding: 0;">')
+                st.components.v1.html(chart_html, height=380, scrolling=True)
 
         with col_c2:
             with st.container(border=True):
