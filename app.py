@@ -9,10 +9,7 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Colunas que a base sempre deve ter depois de carregar_dados(), sejam elas
-# vindas do Supabase (select) ou calculadas aqui (tmp_ano_num/tmp_mes_num).
-# Usado para blindar todo o resto do código contra KeyError quando a carga
-# falha totalmente (ex: erro de conexão) e não há dados para inferir colunas.
+# Colunas que a base sempre deve ter depois de carregar_dados()
 COLUNAS_ESPERADAS = [
     "valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno",
     "unidade_almoxarifado", "mes_referencia", "ano_referencia",
@@ -60,12 +57,6 @@ def carregar_dados():
             all_data = []
 
             def fetch_range(start_r, end_r, tentativas=3):
-                # CORREÇÃO: retry com backoff progressivo. Erros como
-                # ConnectionTerminated (HTTP/2) costumam ser transitórios —
-                # a conexão compartilhada entre as threads é derrubada pelo
-                # servidor sob carga, não um erro de lógica. Tentar de novo
-                # o lote que falhou é mais barato e mais robusto do que
-                # reduzir a paralelização de todos os lotes.
                 ultimo_erro = None
                 for tentativa in range(1, tentativas + 1):
                     try:
@@ -76,7 +67,7 @@ def carregar_dados():
                     except Exception as e:
                         ultimo_erro = e
                         if tentativa < tentativas:
-                            time.sleep(0.5 * tentativa)  # 0.5s, 1.0s, ...
+                            time.sleep(0.5 * tentativa)
                 raise ultimo_erro
 
             with ThreadPoolExecutor(max_workers=4) as executor:
@@ -110,16 +101,12 @@ def carregar_dados():
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
-            # Criação de colunas numéricas auxiliares para identificar o período mais recente
             df['tmp_ano_num'] = pd.to_numeric(df['ano_referencia'], errors='coerce').fillna(0)
             df['tmp_mes_num'] = pd.to_numeric(df['mes_referencia'], errors='coerce').fillna(0)
 
             return df
     except Exception as e:
         st.error(f"Erro ao carregar dados do Supabase: {e}")
-        # CORREÇÃO: DataFrame vazio, mas com as colunas esperadas já definidas.
-        # Protege qualquer trecho do código que acesse df_completo["coluna"]
-        # de um KeyError em cascata após a falha de carregamento.
         return _df_vazio_padrao()
 
 df_completo = carregar_dados()
@@ -128,8 +115,7 @@ df_completo = carregar_dados()
 if not df_completo.empty:
     max_ano_base = df_completo['tmp_ano_num'].max()
     max_mes_base = df_completo[df_completo['tmp_ano_num'] == max_ano_base]['tmp_mes_num'].max()
-
-    # Inicialização automática no período mais recente
+    
     if st.session_state.filtro_periodo_grafico is None:
         st.session_state.filtro_periodo_grafico = f"{int(max_mes_base):02d}/{int(max_ano_base)}"
 else:
@@ -306,301 +292,294 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 5. CONTROLES DO GRÁFICO NO TOPO (COMANDO PRINCIPAL)
-# ==========================================
-with st.container(border=True):
-    col_tg_title, col_tg_escopo, col_tg_unid, col_tg_ano = st.columns([1.8, 1.2, 2.0, 1.5])
-    with col_tg_title:
-        st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
-
-    with col_tg_escopo:
-        st.selectbox("Escopo:", ["Todas", "Ativas", "Gerenciais"], key="chart_escopo")
-
-    with col_tg_unid:
-        if st.session_state.chart_escopo == "Ativas":
-            opcoes_unid = unidades_ativas
-        elif st.session_state.chart_escopo == "Gerenciais":
-            opcoes_unid = unidades_gerenciais
-        else:
-            opcoes_unid = unidades_opcoes
-
-        st.multiselect("Unidades:", opcoes_unid, key="chart_unidades", placeholder="Todas")
-
-    with col_tg_ano:
-        st.multiselect("Anos:", ano_opcoes, key="chart_anos", placeholder="Todos")
-
-# 6. Filtragem Síncrona Rigorosa
-df_filtrado = df_completo.copy()
-
-escopo_atual = st.session_state.get('chart_escopo', 'Todas')
-if escopo_atual == "Ativas":
-    df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"].isin(unidades_ativas)]
-elif escopo_atual == "Gerenciais":
-    df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"].isin(unidades_gerenciais)]
-
-unidades_sel = st.session_state.get('chart_unidades', [])
-if unidades_sel:
-    df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"].isin(unidades_sel)]
-
-anos_sel = st.session_state.get('chart_anos', [])
-if anos_sel:
-    df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(anos_sel)]
-
-# Validação e Correção Automática do Período Ativo para evitar conflito com filtros
-if st.session_state.get('filtro_periodo_grafico') and not df_filtrado.empty:
-    p_sel = st.session_state.filtro_periodo_grafico
-    m_str, a_str = p_sel.split('/')
-    chk_per = df_filtrado[(df_filtrado['tmp_ano_num'] == int(a_str)) & (df_filtrado['tmp_mes_num'] == int(m_str))]
-    if chk_per.empty:
-        max_a = df_filtrado['tmp_ano_num'].max()
-        max_m = df_filtrado[df_filtrado['tmp_ano_num'] == max_a]['tmp_mes_num'].max()
-        st.session_state.filtro_periodo_grafico = f"{int(max_m):02d}/{int(max_a)}"
-
-# 6.1 Resumo Inteligente no Topo
-if escopo_atual == "Todas":
-    texto_informativo = "Exibindo dados consolidados de **todas as unidades** (Ativas e Gerenciais)."
-elif escopo_atual == "Ativas":
-    texto_informativo = "Exibindo dados consolidados apenas das **unidades ativas**."
-else:
-    texto_informativo = "Exibindo dados consolidados apenas das **unidades gerenciais**."
-
-if st.session_state.get('filtro_periodo_grafico'):
-    texto_informativo += f" 🎯 **Período Ativo (Gráfico): {st.session_state.filtro_periodo_grafico}**"
-
-st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: 10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
-
-# 7. Criação do DataFrame de Snapshot (para os Cards e Top 10)
-df_snapshot = df_filtrado.copy()
-
-if st.session_state.get('filtro_periodo_grafico'):
-    p_sel = st.session_state.filtro_periodo_grafico
-    m_str, a_str = p_sel.split('/')
-    m_num, a_num = int(m_str), int(a_str)
-    df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == a_num) & (df_snapshot['tmp_mes_num'] == m_num)]
-else:
-    if st.session_state.get('chart_anos'):
-        anos_sel_num = [int(a) for a in st.session_state.chart_anos]
-        df_anos_sel = df_snapshot[df_snapshot['tmp_ano_num'].isin(anos_sel_num)]
-        if not df_anos_sel.empty:
-            m_ano = df_anos_sel['tmp_ano_num'].max()
-            m_mes = df_anos_sel[df_anos_sel['tmp_ano_num'] == m_ano]['tmp_mes_num'].max()
-            df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == m_ano) & (df_snapshot['tmp_mes_num'] == m_mes)]
-    else:
-        df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == max_ano_base) & (df_snapshot['tmp_mes_num'] == max_mes_base)]
-
-# 8. Somas e Contagens Dinâmicas baseadas no Snapshot Sincronizado
-def somar_coluna(dataframe, coluna):
-    if coluna not in dataframe.columns or dataframe.empty:
-        return 0.0
-    return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
-
-val_estoque = somar_coluna(df_snapshot, "valor_saldo_atual")
-
-if "qtde_saldo_atual" in df_snapshot.columns and "codigo_produto" in df_snapshot.columns:
-    df_skus_ativos = df_snapshot[
-        (df_snapshot["qtde_saldo_atual"] > 0) & (df_snapshot["codigo_produto"] != "")
-    ]
-    val_skus = df_skus_ativos["codigo_produto"].nunique()
-else:
-    val_skus = 0
-
-if "item_critico" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
-    df_criticos = df_snapshot[df_snapshot["item_critico"] == "1-Sim"]
-    val_critico = somar_coluna(df_criticos, "valor_saldo_atual")
-else:
-    val_critico = 0.0
-
-if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
-    df_obsoleto = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("Obsoleto", case=False, na=False)]
-    val_obsoleto = somar_coluna(df_obsoleto, "valor_saldo_atual")
-else:
-    val_obsoleto = 0.0
-
-if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
-    df_obra = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("obra", case=False, na=False)]
-    val_obra = somar_coluna(df_obra, "valor_saldo_atual")
-else:
-    val_obra = 0.0
-
-# --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE ---
-giro_mensal = 0.0
-giro_anual = 0.0
-cobertura_meses = 0.0
-cobertura_anos = 0.0
-
-if not df_filtrado.empty:
-    df_giro = df_filtrado.copy()
-    df_giro['consumo_abs'] = pd.to_numeric(df_giro['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
-    df_giro['val_estoque'] = pd.to_numeric(df_giro['valor_saldo_atual'], errors='coerce').fillna(0.0)
-
-    df_giro['is_critico'] = df_giro['item_critico'] == '1-Sim'
-    df_giro['is_obsoleto'] = df_giro['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)
-
-    monthly_groups = df_giro.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])
-    monthly_df = monthly_groups.apply(lambda g: pd.Series({
-        'estoque_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'val_estoque'].sum(),
-        'consumo_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'consumo_abs'].sum()
-    })).reset_index()
-
-    if not monthly_df.empty:
-        estoque_medio_op = monthly_df['estoque_op'].mean()
-        consumo_medio_mensal = monthly_df['consumo_op'].mean()
-        if estoque_medio_op > 0:
-            giro_mensal = consumo_medio_mensal / estoque_medio_op
-            giro_anual = giro_mensal * 12
-        if consumo_medio_mensal > 0:
-            cobertura_meses = estoque_medio_op / consumo_medio_mensal
-            cobertura_anos = cobertura_meses / 12
-
-def fmt_brl(val):
-    return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-def fmt_int(val):
-    return f"{val:,}".replace(',', '.')
-
-def fmt_pct(val):
-    return f"{val * 100:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "%"
-
-def fmt_dec(val):
-    return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
-
-def fmt_mes(val):
-    return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-# ==========================================
-# 9. SISTEMA DE ABAS NATIVO
+# 5. SISTEMA DE ABAS NATIVO (Criado primeiro para encaixar os filtros no gráfico)
 # ==========================================
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA ---
-    def render_grafico_tendencia():
-        with st.container(border=True):
-            df_chart_base = df_filtrado.copy()
+    # --- CONTROLES DO GRÁFICO DENTRO DO PRÓPRIO CARTÃO DE TENDÊNCIA ---
+    with st.container(border=True):
+        col_tg_title, col_tg_escopo, col_tg_unid, col_tg_ano = st.columns([1.8, 1.2, 2.0, 1.5])
+        with col_tg_title:
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 TENDÊNCIA: TOTAL VS CRÍTICO VS OBSOLETO VS OBRA</div>", unsafe_allow_html=True)
+        
+        with col_tg_escopo:
+            st.selectbox("Escopo:", ["Todas", "Ativas", "Gerenciais"], key="chart_escopo")
+        
+        with col_tg_unid:
+            if st.session_state.chart_escopo == "Ativas":
+                opcoes_unid = unidades_ativas
+            elif st.session_state.chart_escopo == "Gerenciais":
+                opcoes_unid = unidades_gerenciais
+            else:
+                opcoes_unid = unidades_opcoes
+            
+            st.multiselect("Unidades:", opcoes_unid, key="chart_unidades", placeholder="Todas")
+        
+        with col_tg_ano:
+            st.multiselect("Anos:", ano_opcoes, key="chart_anos", placeholder="Todos")
 
-            # Séries do Gráfico
-            df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_estoque_mes = df_estoque_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-            df_estoque_mes['Periodo'] = df_estoque_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
+        # 6. Filtragem Síncrona Rigorosa
+        df_filtrado = df_completo.copy()
 
-            df_critico_trend = df_chart_base[df_chart_base['item_critico'] == '1-Sim']
-            df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_critico_mes = df_critico_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-            df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
+        escopo_atual = st.session_state.get('chart_escopo', 'Todas')
+        if escopo_atual == "Ativas":
+            df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"].isin(unidades_ativas)]
+        elif escopo_atual == "Gerenciais":
+            df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"].isin(unidades_gerenciais)]
 
-            df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
-            df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_obsoleto_mes = df_obsoleto_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-            df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
+        unidades_sel = st.session_state.get('chart_unidades', [])
+        if unidades_sel:
+            df_filtrado = df_filtrado[df_filtrado["unidade_almoxarifado"].isin(unidades_sel)]
 
-            df_obra_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('obra', case=False, na=False)]
-            df_obra_mes = df_obra_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
-            df_obra_mes = df_obra_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-            df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
+        anos_sel = st.session_state.get('chart_anos', [])
+        if anos_sel:
+            df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(anos_sel)]
 
-            def fmt_valor_milhoes(val):
-                if val >= 1e9:
-                    return f"R$ {val/1e9:.1f}B".replace('.', ',')
-                elif val >= 1e6:
-                    return f"R$ {val/1e6:.1f}M".replace('.', ',')
-                else:
-                    return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+        # Validação e Correção Automática do Período Ativo para evitar conflito com filtros
+        if st.session_state.get('filtro_periodo_grafico') and not df_filtrado.empty:
+            p_sel = st.session_state.filtro_periodo_grafico
+            m_str, a_str = p_sel.split('/')
+            chk_per = df_filtrado[(df_filtrado['tmp_ano_num'] == int(a_str)) & (df_filtrado['tmp_mes_num'] == int(m_str))]
+            if chk_per.empty:
+                max_a = df_filtrado['tmp_ano_num'].max()
+                max_m = df_filtrado[df_filtrado['tmp_ano_num'] == max_a]['tmp_mes_num'].max()
+                st.session_state.filtro_periodo_grafico = f"{int(max_m):02d}/{int(max_a)}"
 
-            df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-            if not df_critico_mes.empty: df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-            if not df_obsoleto_mes.empty: df_obsoleto_mes['texto_labels'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
-            if not df_obra_mes.empty: df_obra_mes['texto_labels'] = df_obra_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA ---
+        df_chart_base = df_filtrado.copy()
 
-            max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
-            n_pontos_est = len(df_estoque_mes)
+        df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+        df_estoque_mes = df_estoque_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+        df_estoque_mes['Periodo'] = df_estoque_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
 
-            layout_linha_estoque = dict(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#8c9ba5'),
-                margin=dict(l=10, r=10, t=30, b=30),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                hovermode='x'
-            )
+        df_critico_trend = df_chart_base[df_chart_base['item_critico'] == '1-Sim']
+        df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+        df_critico_mes = df_critico_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+        df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
 
-            fig_linha_estoque = go.Figure()
+        df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
+        df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+        df_obsoleto_mes = df_obsoleto_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+        df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
 
+        df_obra_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('obra', case=False, na=False)]
+        df_obra_mes = df_obra_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
+        df_obra_mes = df_obra_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+        df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
+
+        def fmt_valor_milhoes(val):
+            if val >= 1e9:
+                return f"R$ {val/1e9:.1f}B".replace('.', ',')
+            elif val >= 1e6:
+                return f"R$ {val/1e6:.1f}M".replace('.', ',')
+            else:
+                return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+        df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+        if not df_critico_mes.empty: df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+        if not df_obsoleto_mes.empty: df_obsoleto_mes['texto_labels'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+        if not df_obra_mes.empty: df_obra_mes['texto_labels'] = df_obra_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
+
+        max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
+        n_pontos_est = len(df_estoque_mes)
+
+        layout_linha_estoque = dict(
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            font=dict(color='#8c9ba5'),
+            margin=dict(l=10, r=10, t=30, b=30),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode='x'
+        )
+
+        fig_linha_estoque = go.Figure()
+
+        fig_linha_estoque.add_trace(go.Scatter(
+            x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
+            name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
+            textposition='top center', textfont=dict(color='white', size=11),
+            line=dict(color='#e74c3c', width=3), marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
+            fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.08)', hoverinfo='none'
+        ))
+
+        if not df_critico_mes.empty:
             fig_linha_estoque.add_trace(go.Scatter(
-                x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
-                name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
-                textposition='top center', textfont=dict(color='white', size=11),
-                line=dict(color='#e74c3c', width=3), marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
-                fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.08)', hoverinfo='none'
+                x=df_critico_mes['Periodo'], y=df_critico_mes['valor_saldo_atual'],
+                name='Estoque Crítico', mode='lines+markers+text', text=df_critico_mes['texto_labels'],
+                textposition='bottom center', textfont=dict(color='#f39c12', size=11),
+                line=dict(color='#f39c12', width=2.5, dash='dash'), marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
+                visible='legendonly', hoverinfo='none'
             ))
 
-            if not df_critico_mes.empty:
-                fig_linha_estoque.add_trace(go.Scatter(
-                    x=df_critico_mes['Periodo'], y=df_critico_mes['valor_saldo_atual'],
-                    name='Estoque Crítico', mode='lines+markers+text', text=df_critico_mes['texto_labels'],
-                    textposition='bottom center', textfont=dict(color='#f39c12', size=11),
-                    line=dict(color='#f39c12', width=2.5, dash='dash'), marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
-                    visible='legendonly', hoverinfo='none'
-                ))
+        if not df_obsoleto_mes.empty:
+            fig_linha_estoque.add_trace(go.Scatter(
+                x=df_obsoleto_mes['Periodo'], y=df_obsoleto_mes['valor_saldo_atual'],
+                name='Estoque Obsoleto', mode='lines+markers+text', text=df_obsoleto_mes['texto_labels'],
+                textposition='top center', textfont=dict(color='#9b59b6', size=11),
+                line=dict(color='#9b59b6', width=2.5, dash='dot'), marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
+                visible='legendonly', hoverinfo='none'
+            ))
 
-            if not df_obsoleto_mes.empty:
-                fig_linha_estoque.add_trace(go.Scatter(
-                    x=df_obsoleto_mes['Periodo'], y=df_obsoleto_mes['valor_saldo_atual'],
-                    name='Estoque Obsoleto', mode='lines+markers+text', text=df_obsoleto_mes['texto_labels'],
-                    textposition='top center', textfont=dict(color='#9b59b6', size=11),
-                    line=dict(color='#9b59b6', width=2.5, dash='dot'), marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
-                    visible='legendonly', hoverinfo='none'
-                ))
+        if not df_obra_mes.empty:
+            fig_linha_estoque.add_trace(go.Scatter(
+                x=df_obra_mes['Periodo'], y=df_obra_mes['valor_saldo_atual'],
+                name='Estoque Obra', mode='lines+markers+text', text=df_obra_mes['texto_labels'],
+                textposition='bottom center', textfont=dict(color='#1abc9c', size=11),
+                line=dict(color='#1abc9c', width=2.5, dash='longdash'), marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
+                visible='legendonly', hoverinfo='none'
+            ))
 
-            if not df_obra_mes.empty:
-                fig_linha_estoque.add_trace(go.Scatter(
-                    x=df_obra_mes['Periodo'], y=df_obra_mes['valor_saldo_atual'],
-                    name='Estoque Obra', mode='lines+markers+text', text=df_obra_mes['texto_labels'],
-                    textposition='bottom center', textfont=dict(color='#1abc9c', size=11),
-                    line=dict(color='#1abc9c', width=2.5, dash='longdash'), marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
-                    visible='legendonly', hoverinfo='none'
-                ))
+        sel_state = st.session_state.get("tendencia_geral", {})
+        pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
 
-            # --- CAPTURA E RENDERIZAÇÃO DO HOLOFOTE MESTRE ---
-            sel_state = st.session_state.get("tendencia_geral", {})
-            pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
+        if pontos_clicados:
+            x_hl = pontos_clicados[0]["x"]
+            if st.session_state.get("filtro_periodo_grafico") != x_hl:
+                st.session_state.filtro_periodo_grafico = x_hl
+                st.rerun()
 
-            if pontos_clicados:
-                x_hl = pontos_clicados[0]["x"]
-                if st.session_state.get("filtro_periodo_grafico") != x_hl:
-                    st.session_state.filtro_periodo_grafico = x_hl
+        periodo_ativo = st.session_state.get("filtro_periodo_grafico")
+        if periodo_ativo:
+            match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == periodo_ativo].tolist()
+            if match_idx:
+                idx = match_idx[0]
+                fig_linha_estoque.add_shape(
+                    type="rect",
+                    x0=idx - 0.25, x1=idx + 0.25,
+                    y0=0, y1=1, yref="paper",
+                    fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
+                )
+
+        fig_linha_estoque.update_layout(**layout_linha_estoque, showlegend=True)
+        fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
+        fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
+
+        st.plotly_chart(
+            fig_linha_estoque, use_container_width=True, config={'displayModeBar': False},
+            on_select="rerun", selection_mode="points", key="tendencia_geral"
+        )
+        
+        if st.session_state.get('filtro_periodo_grafico'):
+            col_b_info, col_b_acao = st.columns([3, 1])
+            with col_b_info:
+                st.markdown(f"<span style='color: #d85c27; font-size: 12px;'>📌 Período fixado pelo gráfico: <b>{st.session_state.filtro_periodo_grafico}</b></span>", unsafe_allow_html=True)
+            with col_b_acao:
+                if st.button("🔄 Limpar Filtro do Gráfico", use_container_width=True):
+                    st.session_state.filtro_periodo_grafico = None
                     st.rerun()
 
-            periodo_ativo = st.session_state.get("filtro_periodo_grafico")
-            if periodo_ativo:
-                match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == periodo_ativo].tolist()
-                if match_idx:
-                    idx = match_idx[0]
-                    fig_linha_estoque.add_shape(
-                        type="rect",
-                        x0=idx - 0.25, x1=idx + 0.25,
-                        y0=0, y1=1, yref="paper",
-                        fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
-                    )
+    # 6.1 Resumo Inteligente Logo Abaixo do Gráfico
+    if escopo_atual == "Todas":
+        texto_informativo = "Exibindo dados consolidados de **todas as unidades** (Ativas e Gerenciais)."
+    elif escopo_atual == "Ativas":
+        texto_informativo = "Exibindo dados consolidados apenas das **unidades ativas**."
+    else:
+        texto_informativo = "Exibindo dados consolidados apenas das **unidades gerenciais**."
 
-            fig_linha_estoque.update_layout(**layout_linha_estoque, showlegend=True)
-            fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-            fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
+    if st.session_state.get('filtro_periodo_grafico'):
+        texto_informativo += f" 🎯 **Período Ativo (Gráfico): {st.session_state.filtro_periodo_grafico}**"
 
-            st.plotly_chart(
-                fig_linha_estoque, use_container_width=True, config={'displayModeBar': False},
-                on_select="rerun", selection_mode="points", key="tendencia_geral"
-            )
+    st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: 10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
-            if st.session_state.get('filtro_periodo_grafico'):
-                col_b_info, col_b_acao = st.columns([3, 1])
-                with col_b_info:
-                    st.markdown(f"<span style='color: #d85c27; font-size: 12px;'>📌 Período fixado pelo gráfico: <b>{st.session_state.filtro_periodo_grafico}</b></span>", unsafe_allow_html=True)
-                with col_b_acao:
-                    if st.button("🔄 Limpar Filtro do Gráfico", use_container_width=True):
-                        st.session_state.filtro_periodo_grafico = None
-                        st.rerun()
+    # 7. Criação do DataFrame de Snapshot (para os Cards e Top 10)
+    df_snapshot = df_filtrado.copy()
 
-    render_grafico_tendencia()
+    if st.session_state.get('filtro_periodo_grafico'):
+        p_sel = st.session_state.filtro_periodo_grafico
+        m_str, a_str = p_sel.split('/')
+        m_num, a_num = int(m_str), int(a_str)
+        df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == a_num) & (df_snapshot['tmp_mes_num'] == m_num)]
+    else:
+        if st.session_state.get('chart_anos'):
+            anos_sel_num = [int(a) for a in st.session_state.chart_anos]
+            df_anos_sel = df_snapshot[df_snapshot['tmp_ano_num'].isin(anos_sel_num)]
+            if not df_anos_sel.empty:
+                m_ano = df_anos_sel['tmp_ano_num'].max()
+                m_mes = df_anos_sel[df_anos_sel['tmp_ano_num'] == m_ano]['tmp_mes_num'].max()
+                df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == m_ano) & (df_snapshot['tmp_mes_num'] == m_mes)]
+        else:
+            df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == max_ano_base) & (df_snapshot['tmp_mes_num'] == max_mes_base)]
+
+    # 8. Somas e Contagens Dinâmicas baseadas no Snapshot Sincronizado
+    def somar_coluna(dataframe, coluna):
+        if coluna not in dataframe.columns or dataframe.empty:
+            return 0.0
+        return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
+
+    val_estoque = somar_coluna(df_snapshot, "valor_saldo_atual")
+
+    if "qtde_saldo_atual" in df_snapshot.columns and "codigo_produto" in df_snapshot.columns:
+        df_skus_ativos = df_snapshot[
+            (df_snapshot["qtde_saldo_atual"] > 0) & (df_snapshot["codigo_produto"] != "")
+        ]
+        val_skus = df_skus_ativos["codigo_produto"].nunique()
+    else:
+        val_skus = 0
+
+    if "item_critico" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
+        df_criticos = df_snapshot[df_snapshot["item_critico"] == "1-Sim"]
+        val_critico = somar_coluna(df_criticos, "valor_saldo_atual")
+    else:
+        val_critico = 0.0
+
+    if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
+        df_obsoleto = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("Obsoleto", case=False, na=False)]
+        val_obsoleto = somar_coluna(df_obsoleto, "valor_saldo_atual")
+    else:
+        val_obsoleto = 0.0
+
+    if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
+        df_obra = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("obra", case=False, na=False)]
+        val_obra = somar_coluna(df_obra, "valor_saldo_atual")
+    else:
+        val_obra = 0.0
+
+    # --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE ---
+    giro_mensal = 0.0
+    giro_anual = 0.0
+    cobertura_meses = 0.0
+    cobertura_anos = 0.0
+
+    if not df_filtrado.empty:
+        df_giro = df_filtrado.copy()
+        df_giro['consumo_abs'] = pd.to_numeric(df_giro['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
+        df_giro['val_estoque'] = pd.to_numeric(df_giro['valor_saldo_atual'], errors='coerce').fillna(0.0)
+
+        df_giro['is_critico'] = df_giro['item_critico'] == '1-Sim'
+        df_giro['is_obsoleto'] = df_giro['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)
+
+        monthly_groups = df_giro.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])
+        monthly_df = monthly_groups.apply(lambda g: pd.Series({
+            'estoque_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'val_estoque'].sum(),
+            'consumo_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'consumo_abs'].sum()
+        })).reset_index()
+
+        if not monthly_df.empty:
+            estoque_medio_op = monthly_df['estoque_op'].mean()
+            consumo_medio_mensal = monthly_df['consumo_op'].mean()
+            if estoque_medio_op > 0:
+                giro_mensal = consumo_medio_mensal / estoque_medio_op
+                giro_anual = giro_mensal * 12
+            if consumo_medio_mensal > 0:
+                cobertura_meses = estoque_medio_op / consumo_medio_mensal
+                cobertura_anos = cobertura_meses / 12
+
+    def fmt_brl(val):
+        return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+    def fmt_int(val):
+        return f"{val:,}".replace(',', '.')
+
+    def fmt_pct(val):
+        return f"{val * 100:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "%"
+
+    def fmt_dec(val):
+        return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
+
+    def fmt_mes(val):
+        return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
     st.markdown("<br>", unsafe_allow_html=True)
 
     # --- LINHA FINANCEIRA ---
