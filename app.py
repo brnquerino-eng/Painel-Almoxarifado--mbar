@@ -796,7 +796,7 @@ with aba_geral:
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
-                    margin=dict(l=10, r=10, t=10, b=10),
+                    margin=dict(l=120, r=10, t=10, b=10), # Margem esquerda aumentada para exibir os nomes completos das unidades
                     height=altura_grafico,
                     hovermode="y unified"
                 )
@@ -804,7 +804,6 @@ with aba_geral:
                 fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", zeroline=False)
                 fig_bar.update_yaxes(title="", showgrid=False)
 
-                # Renderização correta com iframe nativo para garantir o fundo escuro e rolagem interna perfeita
                 chart_html = fig_bar.to_html(full_html=True, include_plotlyjs='cdn', config={'displayModeBar': False})
                 chart_html = chart_html.replace('<body>', '<body style="background-color: #161c24; margin: 0; padding: 0;">')
                 st.components.v1.html(chart_html, height=380, scrolling=True)
