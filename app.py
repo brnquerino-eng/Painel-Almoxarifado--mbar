@@ -745,7 +745,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # 10. GRÁFICOS INTERATIVOS SECUNDÁRIOS
+    # 10. GRÁFICOS INTERATIVOS SECUNDÁRIOS - NOVA DISPOSIÇÃO
     st.markdown("<br>", unsafe_allow_html=True)
 
     if not df_filtrado.empty:
@@ -756,32 +756,10 @@ with aba_geral:
             margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        col_g1, col_g2 = st.columns([6, 4], gap="large")
+        # LINHA 1: TOP 10 vs COMPOSIÇÃO DE ESTOQUE (ROSCA)
+        col_c1, col_c2 = st.columns([5, 5], gap="large")
 
-        with col_g1:
-            with st.container(border=True):
-                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
-
-                df_trend = df_filtrado.copy()
-                df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
-                df_tempo = df_tempo.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-                df_tempo['Periodo'] = df_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
-
-                df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
-
-                fig_linha = go.Figure()
-                fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'],
-                                             name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
-                fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
-                                             name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
-
-                fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
-                fig_linha.update_xaxes(showgrid=False, zeroline=False)
-                fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
-
-                st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False}, key="compras_consumo_geral")
-
-        with col_g2:
+        with col_c1:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 TOP 10: MAIOR VALOR EM ESTOQUE</div>", unsafe_allow_html=True)
 
@@ -800,6 +778,68 @@ with aba_geral:
                 fig_bar.update_yaxes(title="", showgrid=False)
 
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False}, key="top10_geral")
+
+        with col_c2:
+            with st.container(border=True):
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🍩 COMPOSIÇÃO DO ESTOQUE (VALOR)</div>", unsafe_allow_html=True)
+                
+                # Cálculo do 'Demais Estoque'
+                val_demais = val_estoque - (val_critico + val_obsoleto + val_obra)
+                if val_demais < 0: val_demais = 0  # Prevenção contra flutuações decimais
+                
+                df_pizza = pd.DataFrame({
+                    'Categoria': ['Estoque Crítico', 'Estoque Obsoleto', 'Estoque Obra', 'Demais Estoque'],
+                    'Valor': [val_critico, val_obsoleto, val_obra, val_demais],
+                    'Cor': ['#f39c12', '#9b59b6', '#1abc9c', '#3498db']
+                })
+                # Filtra apenas o que tem valor para não desenhar fatias zeradas
+                df_pizza = df_pizza[df_pizza['Valor'] > 0]
+                
+                fig_rosca = go.Figure(data=[go.Pie(
+                    labels=df_pizza['Categoria'],
+                    values=df_pizza['Valor'],
+                    hole=0.65,
+                    marker=dict(colors=df_pizza['Cor'], line=dict(color='#161c24', width=2)),
+                    textinfo='label+percent',
+                    textposition='outside',
+                    insidetextorientation='radial',
+                    hoverinfo='label+value'
+                )])
+                
+                # Texto central com o Valor Total (formatado)
+                texto_central = fmt_valor_milhoes(val_estoque) if val_estoque > 0 else "R$ 0,00"
+                
+                fig_rosca.update_layout(
+                    **layout_transparente, 
+                    showlegend=False,
+                    annotations=[dict(text=f"<b>TOTAL</b><br><span style='font-size:20px'>{texto_central}</span>", x=0.5, y=0.5, font_size=14, font_color='white', showarrow=False)]
+                )
+                
+                st.plotly_chart(fig_rosca, use_container_width=True, config={'displayModeBar': False}, key="rosca_composicao")
+
+        # LINHA 2: EVOLUÇÃO DE COMPRAS VS CONSUMO (LARGURA TOTAL)
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
+
+            df_trend = df_filtrado.copy()
+            df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
+            df_tempo = df_tempo.sort_values(['tmp_ano_num', 'tmp_mes_num'])
+            df_tempo['Periodo'] = df_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
+
+            df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
+
+            fig_linha = go.Figure()
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'],
+                                         name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
+                                         name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+
+            fig_linha.update_layout(**layout_transparente, hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1))
+            fig_linha.update_xaxes(showgrid=False, zeroline=False)
+            fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
+
+            st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False}, key="compras_consumo_geral")
 
         # 11. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
         st.markdown("<br>", unsafe_allow_html=True)
