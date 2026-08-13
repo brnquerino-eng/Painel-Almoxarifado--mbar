@@ -143,7 +143,7 @@ def _chave_numerica(val):
 
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Estilização CSS Avançada
+# 3. Estilização CSS Avançada (Com botões compactos e elegantes)
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -154,11 +154,15 @@ st.markdown("""
         background-color: #0f141c;
         animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
+    /* Botões compactos da legenda inteligente */
     .stButton > button {
         background-color: #161c24 !important;
         color: #8c9ba5 !important;
         border: 1px solid #232b36 !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
+        font-size: 11px !important;
+        padding: 2px 8px !important;
+        min-height: 32px !important;
         font-weight: 600 !important;
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
@@ -358,7 +362,7 @@ with aba_geral:
                 max_m = df_filtrado[df_filtrado['tmp_ano_num'] == max_a]['tmp_mes_num'].max()
                 st.session_state.filtro_periodo_grafico = f"{int(max_m):02d}/{int(max_a)}"
 
-        # --- LEGENDA INTELIGENTE COM PADRÃO UNIFICADO (🟡 Ativo / ⚪ Inativo) ---
+        # --- LEGENDA INTELIGENTE COMPACTA (🟡 Ativo / ⚪ Inativo) ---
         c_leg1, c_leg2, c_leg3, c_leg4 = st.columns(4)
         
         lbl_tot = "🟡 Estoque Total" if st.session_state.vis_total else "⚪ Estoque Total"
