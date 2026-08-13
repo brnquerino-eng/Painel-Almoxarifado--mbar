@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import time
 import pandas as pd
+import numpy as np
 import streamlit as st
 from supabase import create_client
 import plotly.express as px
@@ -886,7 +887,6 @@ with aba_geral:
             fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
                                            name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
 
-            # Aplicando o Holofote Sincronizado (Mesmo retângulo de destaque do mestre)
             periodo_ativo = st.session_state.get("filtro_periodo_grafico")
             if periodo_ativo and not df_tempo.empty:
                 match_idx_tempo = df_tempo.index[df_tempo['Periodo'] == periodo_ativo].tolist()
@@ -966,7 +966,6 @@ with aba_geral:
                 hoverinfo='none'
             ))
 
-            # Aplicando o Holofote Sincronizado no Gráfico de SKUs também
             if periodo_ativo and not df_sku_tempo.empty:
                 match_idx_sku = df_sku_tempo.index[df_sku_tempo['Periodo'] == periodo_ativo].tolist()
                 if match_idx_sku:
@@ -983,6 +982,145 @@ with aba_geral:
             fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y * 1.15], showticklabels=False)
 
             st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False}, key="skus_geral")
+
+
+        # ==========================================
+        # 12. NOVA OPÇÃO 1: GRÁFICO DE DISPERSÃO (GIRO VS COBERTURA POR UNIDADE)
+        # ==========================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🎯 MATRIZ DE EFICIÊNCIA: GIRO (X) VS COBERTURA EM MESES (Y) POR UNIDADE</div>", unsafe_allow_html=True)
+
+            # Preparação dos dados para a Dispersão YTD
+            df_sc_ytd = df_giro_ytd.copy() if 'df_giro_ytd' in locals() and not df_giro_ytd.empty else df_filtrado.copy()
+            
+            if not df_sc_ytd.empty:
+                df_sc_mensal = df_sc_ytd.groupby(['unidade_almoxarifado', 'ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
+                    est_op=('valor_saldo_atual', lambda x: x[~((df_sc_ytd.loc[x.index, 'item_critico'] == '1-Sim') | (df_sc_ytd.loc[x.index, 'nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)))].sum()),
+                    con_op=('valor_saida_cons_interno', lambda x: x[~((df_sc_ytd.loc[x.index, 'item_critico'] == '1-Sim') | (df_sc_ytd.loc[x.index, 'nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)))].abs().sum()),
+                    val_total=('valor_saldo_atual', 'sum')
+                ).reset_index()
+
+                df_unidade_metricas = df_sc_mensal.groupby('unidade_almoxarifado').agg(
+                    Estoque_Medio=('est_op', 'mean'),
+                    Consumo_Medio=('con_op', 'mean'),
+                    Valor_Total_Estoque=('val_total', 'mean')
+                ).reset_index()
+
+                df_unidade_metricas['Giro_Anual'] = np.where(
+                    df_unidade_metricas['Estoque_Medio'] > 0,
+                    (df_unidade_metricas['Consumo_Medio'] / df_unidade_metricas['Estoque_Medio']) * 12,
+                    0
+                )
+                df_unidade_metricas['Cobertura_Meses'] = np.where(
+                    df_unidade_metricas['Consumo_Medio'] > 0,
+                    df_unidade_metricas['Estoque_Medio'] / df_unidade_metricas['Consumo_Medio'],
+                    0
+                )
+                
+                df_unidade_metricas = df_unidade_metricas[df_unidade_metricas['Valor_Total_Estoque'] > 0]
+
+                fig_disp = px.scatter(
+                    df_unidade_metricas,
+                    x='Giro_Anual',
+                    y='Cobertura_Meses',
+                    size='Valor_Total_Estoque',
+                    text='unidade_almoxarifado',
+                    color='Giro_Anual',
+                    color_continuous_scale='Oranges',
+                    hover_data=['Estoque_Medio', 'Consumo_Medio']
+                )
+
+                fig_disp.update_traces(textposition='top center', textfont=dict(color='white', size=10))
+                fig_disp.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#8c9ba5'),
+                    margin=dict(l=40, r=40, t=30, b=30),
+                    height=400,
+                    showlegend=False
+                )
+                fig_disp.update_xaxes(title="Giro Anualizado (x)", showgrid=True, gridcolor='#232b36', zeroline=False)
+                fig_disp.update_yaxes(title="Cobertura Média (Meses)", showgrid=True, gridcolor='#232b36', zeroline=False)
+
+                st.plotly_chart(fig_disp, use_container_width=True, config={'displayModeBar': False}, key="dispersao_giro_cobertura")
+
+
+        # ==========================================
+        # 13. NOVA OPÇÃO 2: GRÁFICO DE DUPLO EIXO (EVOLUÇÃO TEMPORAL: GIRO VS COBERTURA)
+        # ==========================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL (BARRAS) VS COBERTURA (LINHA)</div>", unsafe_allow_html=True)
+
+            if not df_filtrado.empty:
+                df_duplo_base = df_filtrado.copy()
+                df_duplo_base['consumo_abs'] = pd.to_numeric(df_duplo_base['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
+                df_duplo_base['val_estoque'] = pd.to_numeric(df_duplo_base['valor_saldo_atual'], errors='coerce').fillna(0.0)
+
+                mask_op_duplo = ~(
+                    (df_duplo_base['item_critico'] == '1-Sim') | 
+                    (df_duplo_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))
+                )
+
+                df_duplo_base['estoque_op'] = df_duplo_base['val_estoque'] * mask_op_duplo
+                df_duplo_base['consumo_op'] = df_duplo_base['consumo_abs'] * mask_op_duplo
+
+                df_duplo = df_duplo_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
+                    est_op=('estoque_op', 'sum'),
+                    con_op=('consumo_op', 'sum')
+                ).reset_index().sort_values(['tmp_ano_num', 'tmp_mes_num'])
+
+                df_duplo['Periodo'] = df_duplo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_duplo['ano_referencia'].astype(str)
+                df_duplo['Giro_Mensal'] = np.where(df_duplo['est_op'] > 0, df_duplo['con_op'] / df_duplo['est_op'], 0)
+                df_duplo['Cobertura_Meses'] = np.where(df_duplo['con_op'] > 0, df_duplo['est_op'] / df_duplo['con_op'], 0)
+
+                fig_duplo = go.Figure()
+
+                # Barras para o Giro Mensal
+                fig_duplo.add_trace(go.Bar(
+                    x=df_duplo['Periodo'],
+                    y=df_duplo['Giro_Mensal'],
+                    name='Giro Mensal',
+                    marker_color='#3498db',
+                    opacity=0.85
+                ))
+
+                # Linha para a Cobertura em Meses no Eixo Y secundário
+                fig_duplo.add_trace(go.Scatter(
+                    x=df_duplo['Periodo'],
+                    y=df_duplo['Cobertura_Meses'],
+                    name='Cobertura (Meses)',
+                    mode='lines+markers',
+                    line=dict(color='#e74c3c', width=3),
+                    yaxis='y2'
+                ))
+
+                if periodo_ativo and not df_duplo.empty:
+                    match_idx_duplo = df_duplo.index[df_duplo['Periodo'] == periodo_ativo].tolist()
+                    if match_idx_duplo:
+                        idx_d = match_idx_duplo[0]
+                        fig_duplo.add_shape(
+                            type="rect",
+                            x0=idx_d - 0.25, x1=idx_d + 0.25,
+                            y0=0, y1=1, yref="paper",
+                            fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
+                        )
+
+                fig_duplo.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#8c9ba5'),
+                    margin=dict(l=40, r=40, t=30, b=30),
+                    height=400,
+                    hovermode='x unified',
+                    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
+                    yaxis=dict(title="Giro Mensal (x)", showgrid=True, gridcolor='#232b36', zeroline=False),
+                    yaxis2=dict(title="Cobertura (Meses)", overlaying='y', side='right', showgrid=False, zeroline=False)
+                )
+                fig_duplo.update_xaxes(showgrid=False, zeroline=False)
+
+                st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
     else:
         st.info("Nenhum dado encontrado para os filtros selecionados.")
