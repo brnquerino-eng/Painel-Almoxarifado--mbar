@@ -9,16 +9,15 @@ import plotly.graph_objects as go
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
 
-# Colunas que a base sempre deve ter depois de carregar_dados()
-COLUNAS_ESPERADAS = [
-    "valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno",
-    "unidade_almoxarifado", "mes_referencia", "ano_referencia",
-    "codigo_produto", "qtde_saldo_atual", "item_critico", "nome_local_estoque",
-    "tmp_ano_num", "tmp_mes_num",
-]
-
-def _df_vazio_padrao():
-    return pd.DataFrame(columns=COLUNAS_ESPERADAS)
+# Inicialização dos estados globais de visibilidade da legenda (Memória Eterna)
+if 'vis_total' not in st.session_state:
+    st.session_state.vis_total = True
+if 'vis_critico' not in st.session_state:
+    st.session_state.vis_critico = False
+if 'vis_obsoleto' not in st.session_state:
+    st.session_state.vis_obsoleto = False
+if 'vis_obra' not in st.session_state:
+    st.session_state.vis_obra = False
 
 # Inicialização dos estados globais de controle do painel
 if 'chart_escopo' not in st.session_state:
@@ -30,6 +29,17 @@ if 'chart_anos' not in st.session_state:
 if 'filtro_periodo_grafico' not in st.session_state:
     st.session_state.filtro_periodo_grafico = None
 
+# Colunas esperadas para blindagem contra falhas de conexão
+COLUNAS_ESPERADAS = [
+    "valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno",
+    "unidade_almoxarifado", "mes_referencia", "ano_referencia",
+    "codigo_produto", "qtde_saldo_atual", "item_critico", "nome_local_estoque",
+    "tmp_ano_num", "tmp_mes_num",
+]
+
+def _df_vazio_padrao():
+    return pd.DataFrame(columns=COLUNAS_ESPERADAS)
+
 # 1. Conexão direta e segura com o Supabase
 @st.cache_resource
 def conectar_supabase():
@@ -40,7 +50,7 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance Otimizada e Estável (Conexões Controladas)
+# 2. Performance Otimizada e Estável com Retry Progressivo
 @st.cache_data()
 def carregar_dados():
     try:
@@ -292,7 +302,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 5. SISTEMA DE ABAS NATIVO (Criado primeiro para encaixar os filtros no gráfico)
+# 5. SISTEMA DE ABAS NATIVO
 # ==========================================
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
@@ -336,7 +346,7 @@ with aba_geral:
         if anos_sel:
             df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(anos_sel)]
 
-        # Validação e Correção Automática do Período Ativo para evitar conflito com filtros
+        # Validação e Correção Automática do Período Ativo
         if st.session_state.get('filtro_periodo_grafico') and not df_filtrado.empty:
             p_sel = st.session_state.filtro_periodo_grafico
             m_str, a_str = p_sel.split('/')
@@ -345,6 +355,25 @@ with aba_geral:
                 max_a = df_filtrado['tmp_ano_num'].max()
                 max_m = df_filtrado[df_filtrado['tmp_ano_num'] == max_a]['tmp_mes_num'].max()
                 st.session_state.filtro_periodo_grafico = f"{int(max_m):02d}/{int(max_a)}"
+
+        # --- LEGENDA INTELIGENTE COM MEMÓRIA (Substitui a nativa do Plotly) ---
+        c_leg1, c_leg2, c_leg3, c_leg4 = st.columns(4)
+        with c_leg1:
+            if st.button("● Estoque Total", key="btn_vis_total", use_container_width=True):
+                st.session_state.vis_total = not st.session_state.vis_total
+                st.rerun()
+        with c_leg2:
+            if st.button("● Estoque Crítico", key="btn_vis_critico", use_container_width=True):
+                st.session_state.vis_critico = not st.session_state.vis_critico
+                st.rerun()
+        with c_leg3:
+            if st.button("● Estoque Obsoleto", key="btn_vis_obsoleto", use_container_width=True):
+                st.session_state.vis_obsoleto = not st.session_state.vis_obsoleto
+                st.rerun()
+        with c_leg4:
+            if st.button("● Estoque Obra", key="btn_vis_obra", use_container_width=True):
+                st.session_state.vis_obra = not st.session_state.vis_obra
+                st.rerun()
 
         # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA ---
         df_chart_base = df_filtrado.copy()
@@ -389,18 +418,23 @@ with aba_geral:
             paper_bgcolor='rgba(0,0,0,0)',
             font=dict(color='#8c9ba5'),
             margin=dict(l=10, r=10, t=30, b=30),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            showlegend=False,  # Desativada pois usamos nossa legenda inteligente customizada
             hovermode='x'
         )
 
         fig_linha_estoque = go.Figure()
+
+        # Função auxiliar de visibilidade com base no session_state
+        def get_vis(key):
+            return True if st.session_state.get(key, False) else 'legendonly'
 
         fig_linha_estoque.add_trace(go.Scatter(
             x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
             name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
             textposition='top center', textfont=dict(color='white', size=11),
             line=dict(color='#e74c3c', width=3), marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
-            fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.08)', hoverinfo='none'
+            fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.08)', hoverinfo='none',
+            visible=get_vis('vis_total')
         ))
 
         if not df_critico_mes.empty:
@@ -409,7 +443,7 @@ with aba_geral:
                 name='Estoque Crítico', mode='lines+markers+text', text=df_critico_mes['texto_labels'],
                 textposition='bottom center', textfont=dict(color='#f39c12', size=11),
                 line=dict(color='#f39c12', width=2.5, dash='dash'), marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
-                visible='legendonly', hoverinfo='none'
+                hoverinfo='none', visible=get_vis('vis_critico')
             ))
 
         if not df_obsoleto_mes.empty:
@@ -418,7 +452,7 @@ with aba_geral:
                 name='Estoque Obsoleto', mode='lines+markers+text', text=df_obsoleto_mes['texto_labels'],
                 textposition='top center', textfont=dict(color='#9b59b6', size=11),
                 line=dict(color='#9b59b6', width=2.5, dash='dot'), marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
-                visible='legendonly', hoverinfo='none'
+                hoverinfo='none', visible=get_vis('vis_obsoleto')
             ))
 
         if not df_obra_mes.empty:
@@ -427,7 +461,7 @@ with aba_geral:
                 name='Estoque Obra', mode='lines+markers+text', text=df_obra_mes['texto_labels'],
                 textposition='bottom center', textfont=dict(color='#1abc9c', size=11),
                 line=dict(color='#1abc9c', width=2.5, dash='longdash'), marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
-                visible='legendonly', hoverinfo='none'
+                hoverinfo='none', visible=get_vis('vis_obra')
             ))
 
         sel_state = st.session_state.get("tendencia_geral", {})
@@ -451,7 +485,7 @@ with aba_geral:
                     fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
                 )
 
-        fig_linha_estoque.update_layout(**layout_linha_estoque, showlegend=True)
+        fig_linha_estoque.update_layout(**layout_linha_estoque)
         fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
         fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
 
