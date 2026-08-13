@@ -5,6 +5,7 @@ import streamlit as st
 from supabase import create_client
 import plotly.express as px
 import plotly.graph_objects as go
+import re
 
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
@@ -352,8 +353,8 @@ with aba_geral:
         with col_tg_ano:
             st.multiselect("Anos:", ano_opcoes, key="chart_anos", placeholder="Todos")
 
-        # 6. Filtragem Síncrona Rigorosa
-        df_filtrado = df_completo.copy()
+        # 6. Filtragem Síncrona Rigorosa (Sem cópias desnecessárias na memória)
+        df_filtrado = df_completo
 
         escopo_atual = st.session_state.get('chart_escopo', 'Todas')
         if escopo_atual == "Ativas":
@@ -416,7 +417,7 @@ with aba_geral:
                 st.markdown("<style>div.stButton > button[key='btn_vis_obra'] { border: 1px solid #f39c12 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
 
         # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA ---
-        df_chart_base = df_filtrado.copy()
+        df_chart_base = df_filtrado
 
         df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
         df_estoque_mes = df_estoque_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
@@ -503,10 +504,11 @@ with aba_geral:
                 hoverinfo='none', visible=get_vis('vis_obra')
             ))
 
+        # 🛡️ Proteção do clique do gráfico (Anti-Quebra)
         sel_state = st.session_state.get("tendencia_geral", {})
         pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
 
-        if pontos_clicados:
+        if pontos_clicados and isinstance(pontos_clicados, list) and len(pontos_clicados) > 0 and "x" in pontos_clicados[0]:
             x_hl = pontos_clicados[0]["x"]
             if st.session_state.get("filtro_periodo_grafico") != x_hl:
                 st.session_state.filtro_periodo_grafico = x_hl
@@ -556,7 +558,7 @@ with aba_geral:
     st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: 10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
     # 7. Criação do DataFrame de Snapshot (para os Cards e Unidades)
-    df_snapshot = df_filtrado.copy()
+    df_snapshot = df_filtrado
 
     if st.session_state.get('filtro_periodo_grafico'):
         p_sel = st.session_state.filtro_periodo_grafico
@@ -608,20 +610,13 @@ with aba_geral:
     else:
         val_obra = 0.0
 
-    # --- CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (COM LÓGICA YTD ACUMULADA) ---
+    # --- ⚡ CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (VETORIZADO E YTD ACUMULADO) ---
     giro_mensal = 0.0
     giro_anual = 0.0
     cobertura_meses = 0.0
     cobertura_anos = 0.0
 
     if not df_filtrado.empty:
-        df_giro = df_filtrado.copy()
-        df_giro['consumo_abs'] = pd.to_numeric(df_giro['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
-        df_giro['val_estoque'] = pd.to_numeric(df_giro['valor_saldo_atual'], errors='coerce').fillna(0.0)
-
-        df_giro['is_critico'] = df_giro['item_critico'] == '1-Sim'
-        df_giro['is_obsoleto'] = df_giro['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)
-
         # Descobre o ano ativo e o mês teto baseado na seleção do gráfico ou no último mês disponível
         if st.session_state.get('filtro_periodo_grafico'):
             p_sel = st.session_state.filtro_periodo_grafico
@@ -629,24 +624,39 @@ with aba_geral:
             ano_ativo_val = int(a_str)
             mes_teto_val = int(m_str)
         else:
-            ano_ativo_val = int(df_giro['tmp_ano_num'].max())
-            mes_teto_val = int(df_giro[df_giro['tmp_ano_num'] == ano_ativo_val]['tmp_mes_num'].max())
+            ano_ativo_val = int(df_filtrado['tmp_ano_num'].max())
+            mes_teto_val = int(df_filtrado[df_filtrado['tmp_ano_num'] == ano_ativo_val]['tmp_mes_num'].max())
 
-        # Aplicação da regra YTD progressiva: restringe ao ano ativo e acumula do mês 1 até o mês teto selecionado
-        df_giro_ytd = df_giro[
-            (df_giro['tmp_ano_num'] == ano_ativo_val) & 
-            (df_giro['tmp_mes_num'] <= mes_teto_val)
-        ]
+        # Aplicação da regra YTD progressiva: restringe ao ano ativo e acumula do mês 1 até o mês teto
+        df_giro_ytd = df_filtrado[
+            (df_filtrado['tmp_ano_num'] == ano_ativo_val) & 
+            (df_filtrado['tmp_mes_num'] <= mes_teto_val)
+        ].copy() # Cópia necessária aqui para manipularmos apenas a matriz vetorizada do YTD sem gerar Warnings
 
-        monthly_groups = df_giro_ytd.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])
-        monthly_df = monthly_groups.apply(lambda g: pd.Series({
-            'estoque_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'val_estoque'].sum(),
-            'consumo_op': g.loc[~(g['is_critico'] | g['is_obsoleto']), 'consumo_abs'].sum()
-        })).reset_index()
+        # Vetorização de alta performance (Sem '.apply()', cálculo nativo Pandas)
+        df_giro_ytd['consumo_abs'] = pd.to_numeric(df_giro_ytd['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
+        df_giro_ytd['val_estoque'] = pd.to_numeric(df_giro_ytd['valor_saldo_atual'], errors='coerce').fillna(0.0)
+
+        # Máscara de Itens Operacionais (Tudo que NÃO é crítico e NÃO é obsoleto)
+        mask_operacional = ~(
+            (df_giro_ytd['item_critico'] == '1-Sim') | 
+            (df_giro_ytd['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))
+        )
+
+        # Aplica a máscara diretamente nas colunas (Multiplica o valor por 1 ou 0)
+        df_giro_ytd['estoque_op'] = df_giro_ytd['val_estoque'] * mask_operacional
+        df_giro_ytd['consumo_op'] = df_giro_ytd['consumo_abs'] * mask_operacional
+
+        # Agrupamento ultrarrápido nativo do C
+        monthly_df = df_giro_ytd.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
+            estoque_op=('estoque_op', 'sum'),
+            consumo_op=('consumo_op', 'sum')
+        ).reset_index()
 
         if not monthly_df.empty:
             estoque_medio_op = monthly_df['estoque_op'].mean()
             consumo_medio_mensal = monthly_df['consumo_op'].mean()
+            
             if estoque_medio_op > 0:
                 giro_mensal = consumo_medio_mensal / estoque_medio_op
                 giro_anual = giro_mensal * 12
@@ -824,7 +834,8 @@ with aba_geral:
                 fig_bar.update_yaxes(title="", showgrid=False, tickfont=dict(size=10))
 
                 chart_html = fig_bar.to_html(full_html=True, include_plotlyjs='cdn', config={'displayModeBar': False})
-                chart_html = chart_html.replace('<body>', '<body style="background-color: #161c24; margin: 0; padding: 0;">')
+                # 🛡️ Anti-quebra: Usando Regex para substituir a tag body com segurança, independentemente de atualizações futuras do Plotly
+                chart_html = re.sub(r'<body[^>]*>', '<body style="background-color: #161c24; margin: 0; padding: 0;">', chart_html)
                 st.components.v1.html(chart_html, height=380, scrolling=True)
 
         with col_c2:
@@ -876,7 +887,7 @@ with aba_geral:
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
 
-            df_trend = df_filtrado.copy()
+            df_trend = df_filtrado
             df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
             df_tempo = df_tempo.sort_values(['tmp_ano_num', 'tmp_mes_num'])
             df_tempo['Periodo'] = df_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
@@ -902,7 +913,7 @@ with aba_geral:
 
             df_sku_trend = df_filtrado[
                 (df_filtrado["qtde_saldo_atual"] > 0) & (df_filtrado["codigo_produto"] != "")
-            ].copy()
+            ]
 
             df_sku_tempo = df_sku_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['codigo_produto'].nunique().reset_index()
             df_sku_tempo = df_sku_tempo.sort_values(['tmp_ano_num', 'tmp_mes_num'])
