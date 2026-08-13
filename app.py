@@ -850,6 +850,7 @@ with aba_geral:
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
                     margin=dict(l=80, r=80, t=30, b=30), 
+                    height=380,
                     showlegend=False,
                     annotations=[dict(text=f"<b>TOTAL</b><br><span style='font-size:20px'>{texto_central}</span>", x=0.5, y=0.5, font_size=14, font_color='white', showarrow=False)]
                 )
