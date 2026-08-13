@@ -786,8 +786,8 @@ with aba_geral:
 
                 df_rank['texto_formatado'] = df_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e6:.1f}M".replace('.', ','))
                 
-                # Espaçamento refinado e equilibrado na medida certa
-                df_rank['unidade_exibicao'] = df_rank['unidade_almoxarifado'] + "  "
+                # Ajuste cirúrgico do espaçamento interno do texto
+                df_rank['unidade_exibicao'] = df_rank['unidade_almoxarifado'] + " "
 
                 num_unidades = len(df_rank)
                 altura_grafico = max(350, num_unidades * 32)
@@ -799,7 +799,7 @@ with aba_geral:
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
-                    margin=dict(l=130, r=15, t=10, b=10), # Margem otimizada para puxar os nomes mais para a esquerda com segurança
+                    margin=dict(l=145, r=15, t=10, b=10), # Margem esquerda ajustada com precisão para l=145
                     height=altura_grafico,
                     hovermode="y unified"
                 )
