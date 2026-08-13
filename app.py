@@ -779,7 +779,7 @@ with aba_geral:
 
                 st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False}, key="top10_geral")
 
-      with col_c2:
+        with col_c2:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🍩 COMPOSIÇÃO DO ESTOQUE (VALOR)</div>", unsafe_allow_html=True)
                 
@@ -810,19 +810,19 @@ with aba_geral:
                 # Texto central com o Valor Total (formatado)
                 texto_central = fmt_valor_milhoes(val_estoque) if val_estoque > 0 else "R$ 0,00"
                 
-                # Substituímos o layout_transparente aqui por margens personalizadas
+                # Margens personalizadas para evitar o corte do texto
                 fig_rosca.update_layout(
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)',
                     font=dict(color='#8c9ba5'),
-                    margin=dict(l=80, r=80, t=30, b=30), # <-- A MÁGICA ESTÁ AQUI: Mais respiro para os textos não cortarem
+                    margin=dict(l=80, r=80, t=30, b=30), 
                     showlegend=False,
                     annotations=[dict(text=f"<b>TOTAL</b><br><span style='font-size:20px'>{texto_central}</span>", x=0.5, y=0.5, font_size=14, font_color='white', showarrow=False)]
                 )
                 
                 st.plotly_chart(fig_rosca, use_container_width=True, config={'displayModeBar': False}, key="rosca_composicao")
-        
-      # LINHA 2: EVOLUÇÃO DE COMPRAS VS CONSUMO (LARGURA TOTAL)
+
+        # LINHA 2: EVOLUÇÃO DE COMPRAS VS CONSUMO (LARGURA TOTAL)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
