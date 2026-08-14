@@ -1103,7 +1103,7 @@ with aba_geral:
 
                 df_duplo['Periodo'] = df_duplo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_duplo['ano_referencia'].astype(str)
                 df_duplo['Giro_Mensal'] = np.where(df_duplo['est_op'] > 0, df_duplo['con_op'] / df_duplo['est_op'], 0)
-                df_duplo['Cobertura_Meses'] = np.where(df_duplo['con_op'] > 0, df_duplo['est_op'] / df_duplo['con_op'], 0)
+                df_duplo['Cobertura_Meses'] = np.where(df_duplo['con_op'] > 0, df_duplo['est_op'] / df_duplo['con_op'], np.nan)
 
                 fig_duplo = go.Figure()
 
