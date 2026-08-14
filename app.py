@@ -320,7 +320,7 @@ st.markdown("""
     .trend-box {
         display: flex;
         align-items: center;
-        padding: 3px 7px;
+        padding: 3px 8px;
         border-radius: 5px;
         font-size: 11px;
         font-weight: bold;
@@ -328,15 +328,15 @@ st.markdown("""
         white-space: nowrap;
     }
     .trend-up {
-        background-color: rgba(231, 76, 60, 0.18);
+        background-color: rgba(231, 76, 60, 0.2);
         color: #e74c3c;
     }
     .trend-down {
-        background-color: rgba(46, 204, 113, 0.18);
+        background-color: rgba(46, 204, 113, 0.2);
         color: #2ecc71;
     }
     .trend-neutral {
-        background-color: rgba(140, 155, 165, 0.18);
+        background-color: rgba(140, 155, 165, 0.2);
         color: #8c9ba5;
     }
 </style>
@@ -713,24 +713,24 @@ with aba_geral:
                 cobertura_anos = cobertura_meses / 12
 
         # Cálculo do Giro/Cobertura do Mês Anterior Exato para as Setas
-        if m_teto_prev := (mes_teto_val - 1 if mes_teto_val > 1 else 12):
-            ano_prev_giro = ano_ativo_val if mes_teto_val > 1 else ano_ativo_val - 1
-            df_giro_prev = df_filtrado[
-                (df_filtrado['tmp_ano_num'] == ano_prev_giro) & 
-                (df_filtrado['tmp_mes_num'] <= m_teto_prev)
-            ].copy()
-            if not df_giro_prev.empty:
-                df_giro_prev['consumo_abs'] = pd.to_numeric(df_giro_prev['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
-                df_giro_prev['val_estoque'] = pd.to_numeric(df_giro_prev['valor_saldo_atual'], errors='coerce').fillna(0.0)
-                mask_op_prev = ~((df_giro_prev['item_critico'] == '1-Sim') | (df_giro_prev['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)))
-                df_giro_prev['estoque_op'] = df_giro_prev['val_estoque'] * mask_op_prev
-                df_giro_prev['consumo_op'] = df_giro_prev['consumo_abs'] * mask_op_prev
-                m_prev_df = df_giro_prev.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(estoque_op=('estoque_op', 'sum'), consumo_op=('consumo_op', 'sum')).reset_index()
-                if not m_prev_df.empty:
-                    est_med_p = m_prev_df['estoque_op'].mean()
-                    con_med_p = m_prev_df['consumo_op'].mean()
-                    if est_med_p > 0: giro_mensal_prev = con_med_p / est_med_p
-                    if con_med_p > 0: cobertura_meses_prev = est_med_p / con_med_p
+        m_teto_prev = mes_teto_val - 1 if mes_teto_val > 1 else 12
+        ano_prev_giro = ano_ativo_val if mes_teto_val > 1 else ano_ativo_val - 1
+        df_giro_prev = df_filtrado[
+            (df_filtrado['tmp_ano_num'] == ano_prev_giro) & 
+            (df_filtrado['tmp_mes_num'] <= m_teto_prev)
+        ].copy()
+        if not df_giro_prev.empty:
+            df_giro_prev['consumo_abs'] = pd.to_numeric(df_giro_prev['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
+            df_giro_prev['val_estoque'] = pd.to_numeric(df_giro_prev['valor_saldo_atual'], errors='coerce').fillna(0.0)
+            mask_op_prev = ~((df_giro_prev['item_critico'] == '1-Sim') | (df_giro_prev['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)))
+            df_giro_prev['estoque_op'] = df_giro_prev['val_estoque'] * mask_op_prev
+            df_giro_prev['consumo_op'] = df_giro_prev['consumo_abs'] * mask_op_prev
+            m_prev_df = df_giro_prev.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(estoque_op=('estoque_op', 'sum'), consumo_op=('consumo_op', 'sum')).reset_index()
+            if not m_prev_df.empty:
+                est_med_p = m_prev_df['estoque_op'].mean()
+                con_med_p = m_prev_df['consumo_op'].mean()
+                if est_med_p > 0: giro_mensal_prev = con_med_p / est_med_p
+                if con_med_p > 0: cobertura_meses_prev = est_med_p / con_med_p
 
     # Funções de formatação de valores
     def fmt_brl(val): return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -738,7 +738,7 @@ with aba_geral:
     def fmt_dec(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
     def fmt_mes(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-    # Função geradora de Cards com Tendência (Setinha)
+    # Função geradora de Cards com Tendência (Setinha Inteligente por Inversão de Cor)
     def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font_size="21px", invert_color=False):
         if val_ant == 0 and val_atual == 0:
             pct_str = "0,0%"
@@ -746,25 +746,23 @@ with aba_geral:
             arrow = "➖"
         elif val_ant == 0:
             pct_str = "100,0%"
-            trend_class = "trend-up"
+            trend_class = "trend-down" if invert_color else "trend-up"
             arrow = "🔺"
         else:
             pct = ((val_atual - val_ant) / val_ant) * 100
             pct_str = f"{abs(pct):.1f}%".replace('.', ',')
             if pct > 0:
                 if invert_color:
-                    trend_class = "trend-down" # Verde para bom quando sobe (ex: Giro)
-                    arrow = "🔺"
+                    trend_class = "trend-down"  # Subir é bom (Verde)
                 else:
-                    trend_class = "trend-up" # Vermelho para alerta quando sobe
-                    arrow = "🔺"
+                    trend_class = "trend-up"    # Subir é ruim/alerta (Vermelho)
+                arrow = "🔺"
             elif pct < 0:
                 if invert_color:
-                    trend_class = "trend-up" # Vermelho para alerta quando desce (ex: Giro)
-                    arrow = "🔻"
+                    trend_class = "trend-up"    # Descer é ruim (Vermelho)
                 else:
-                    trend_class = "trend-down" # Verde para bom quando desce
-                    arrow = "🔻"
+                    trend_class = "trend-down"  # Descer é bom/economia (Verde)
+                arrow = "🔻"
             else:
                 trend_class = "trend-neutral"
                 arrow = "➖"
@@ -804,7 +802,7 @@ with aba_geral:
     with c6: st.markdown(render_card("📤", "icon-consumo", "CONSUMO", fmt_brl(val_consumo), val_consumo, val_consumo_prev, "18px"), unsafe_allow_html=True)
     with c7: st.markdown(render_card("🏷️", "icon-skus", "SKUs ÚNICOS", fmt_int(val_skus), val_skus, val_skus_prev, "21px"), unsafe_allow_html=True)
     
-    # Cálculo de tendência para o Giro (Invertido: subir giro é bom = verde)
+    # Cálculo de tendência para o Giro (Invertido: subir giro é excelente = verde)
     giro_ant_val = giro_mensal_prev
     giro_atual_val = giro_mensal
     if giro_ant_val == 0 and giro_atual_val == 0:
@@ -841,7 +839,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # Cálculo de tendência para Cobertura (Subir cobertura geralmente significa estoque parado = alerta vermelho)
+    # Cálculo de tendência para Cobertura (Subir cobertura significa estoque parado = alerta vermelho)
     cob_ant_val = cobertura_meses_prev
     cob_atual_val = cobertura_meses
     if cob_ant_val == 0 and cob_atual_val == 0:
