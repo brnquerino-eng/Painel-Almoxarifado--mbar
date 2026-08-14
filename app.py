@@ -264,8 +264,14 @@ st.markdown("""
     }
     .card-header {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
+        justify-content: space-between;
         gap: 12px;
+    }
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
     }
     .icon-box {
         width: 32px;
@@ -299,7 +305,7 @@ st.markdown("""
         font-weight: bold;
         text-align: center;
         font-family: monospace;
-        margin-top: 8px;
+        margin-top: 12px;
         white-space: nowrap;
     }
     .section-title {
@@ -310,6 +316,28 @@ st.markdown("""
         letter-spacing: 0.5px;
         border-left: 3px solid #d85c27;
         padding-left: 10px;
+    }
+    .trend-box {
+        display: flex;
+        align-items: center;
+        padding: 2px 5px;
+        border-radius: 4px;
+        font-size: 9px;
+        font-weight: bold;
+        font-family: monospace;
+        white-space: nowrap;
+    }
+    .trend-up {
+        background-color: rgba(231, 76, 60, 0.15);
+        color: #e74c3c;
+    }
+    .trend-down {
+        background-color: rgba(46, 204, 113, 0.15);
+        color: #2ecc71;
+    }
+    .trend-neutral {
+        background-color: rgba(140, 155, 165, 0.15);
+        color: #8c9ba5;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -560,26 +588,54 @@ with aba_geral:
 
     st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: 10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
-    # 7. Criação do DataFrame de Snapshot
+    # 7. Criação do DataFrame de Snapshot Atual e Anterior
     df_snapshot = df_filtrado
+    df_snapshot_prev = pd.DataFrame(columns=df_filtrado.columns)
 
     if st.session_state.get('filtro_periodo_grafico'):
         p_sel = st.session_state.filtro_periodo_grafico
         m_str, a_str = p_sel.split('/')
         m_num, a_num = int(m_str), int(a_str)
-        df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == a_num) & (df_snapshot['tmp_mes_num'] == m_num)]
+        
+        # Snapshot Atual
+        df_snapshot = df_filtrado[(df_filtrado['tmp_ano_num'] == a_num) & (df_filtrado['tmp_mes_num'] == m_num)]
+        
+        # Mês Anterior
+        if m_num == 1:
+            m_prev, a_prev = 12, a_num - 1
+        else:
+            m_prev, a_prev = m_num - 1, a_num
+        df_snapshot_prev = df_filtrado[(df_filtrado['tmp_ano_num'] == a_prev) & (df_filtrado['tmp_mes_num'] == m_prev)]
+
     else:
         if st.session_state.get('chart_anos'):
             anos_sel_num = [int(a) for a in st.session_state.chart_anos]
-            df_anos_sel = df_snapshot[df_snapshot['tmp_ano_num'].isin(anos_sel_num)]
+            df_anos_sel = df_filtrado[df_filtrado['tmp_ano_num'].isin(anos_sel_num)]
             if not df_anos_sel.empty:
                 m_ano = df_anos_sel['tmp_ano_num'].max()
                 m_mes = df_anos_sel[df_anos_sel['tmp_ano_num'] == m_ano]['tmp_mes_num'].max()
-                df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == m_ano) & (df_snapshot['tmp_mes_num'] == m_mes)]
+                
+                # Snapshot Atual
+                df_snapshot = df_filtrado[(df_filtrado['tmp_ano_num'] == m_ano) & (df_filtrado['tmp_mes_num'] == m_mes)]
+                
+                # Mês Anterior
+                if m_mes == 1:
+                    m_prev, a_prev = 12, m_ano - 1
+                else:
+                    m_prev, a_prev = m_mes - 1, m_ano
+                df_snapshot_prev = df_filtrado[(df_filtrado['tmp_ano_num'] == a_prev) & (df_filtrado['tmp_mes_num'] == m_prev)]
         else:
-            df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == max_ano_base) & (df_snapshot['tmp_mes_num'] == max_mes_base)]
+            # Snapshot Atual
+            df_snapshot = df_filtrado[(df_filtrado['tmp_ano_num'] == max_ano_base) & (df_filtrado['tmp_mes_num'] == max_mes_base)]
+            
+            # Mês Anterior
+            if max_mes_base == 1:
+                m_prev, a_prev = 12, max_ano_base - 1
+            else:
+                m_prev, a_prev = max_mes_base - 1, max_ano_base
+            df_snapshot_prev = df_filtrado[(df_filtrado['tmp_ano_num'] == a_prev) & (df_filtrado['tmp_mes_num'] == m_prev)]
 
-    # 8. Somas e Contagens Dinâmicas
+    # 8. Somas e Contagens Dinâmicas (Mês Atual)
     def somar_coluna(dataframe, coluna):
         if coluna not in dataframe.columns or dataframe.empty:
             return 0.0
@@ -587,43 +643,31 @@ with aba_geral:
 
     val_estoque = somar_coluna(df_snapshot, "valor_saldo_atual")
     val_compras = somar_coluna(df_snapshot, "valor_entrada_compras")
-    
-    if "valor_saida_cons_interno" in df_snapshot.columns:
-        val_consumo = pd.to_numeric(df_snapshot["valor_saida_cons_interno"], errors='coerce').fillna(0.0).abs().sum()
-    else:
-        val_consumo = 0.0
+    val_consumo = pd.to_numeric(df_snapshot["valor_saida_cons_interno"], errors='coerce').fillna(0.0).abs().sum() if "valor_saida_cons_interno" in df_snapshot.columns else 0.0
 
     if "qtde_saldo_atual" in df_snapshot.columns and "codigo_produto" in df_snapshot.columns:
-        df_skus_ativos = df_snapshot[
-            (df_snapshot["qtde_saldo_atual"] > 0) & (df_snapshot["codigo_produto"] != "")
-        ]
-        val_skus = df_skus_ativos["codigo_produto"].nunique()
-    else:
-        val_skus = 0
+        val_skus = df_snapshot[(df_snapshot["qtde_saldo_atual"] > 0) & (df_snapshot["codigo_produto"] != "")]["codigo_produto"].nunique()
+    else: val_skus = 0
 
-    if "item_critico" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
-        df_criticos = df_snapshot[df_snapshot["item_critico"] == "1-Sim"]
-        val_critico = somar_coluna(df_criticos, "valor_saldo_atual")
-    else:
-        val_critico = 0.0
+    val_critico = somar_coluna(df_snapshot[df_snapshot.get("item_critico", "") == "1-Sim"], "valor_saldo_atual") if not df_snapshot.empty else 0.0
+    val_obsoleto = somar_coluna(df_snapshot[df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)], "valor_saldo_atual") if not df_snapshot.empty else 0.0
+    val_obra = somar_coluna(df_snapshot[df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)], "valor_saldo_atual") if not df_snapshot.empty else 0.0
 
-    if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
-        df_obsoleto = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("Obsoleto", case=False, na=False)]
-        val_obsoleto = somar_coluna(df_obsoleto, "valor_saldo_atual")
-    else:
-        val_obsoleto = 0.0
+    # 8.1 Somas e Contagens Dinâmicas (Mês Anterior para Tendência)
+    val_estoque_prev = somar_coluna(df_snapshot_prev, "valor_saldo_atual")
+    val_compras_prev = somar_coluna(df_snapshot_prev, "valor_entrada_compras")
+    val_consumo_prev = pd.to_numeric(df_snapshot_prev["valor_saida_cons_interno"], errors='coerce').fillna(0.0).abs().sum() if "valor_saida_cons_interno" in df_snapshot_prev.columns else 0.0
 
-    if "nome_local_estoque" in df_snapshot.columns and "valor_saldo_atual" in df_snapshot.columns:
-        df_obra = df_snapshot[df_snapshot["nome_local_estoque"].astype(str).str.contains("obra", case=False, na=False)]
-        val_obra = somar_coluna(df_obra, "valor_saldo_atual")
-    else:
-        val_obra = 0.0
+    if "qtde_saldo_atual" in df_snapshot_prev.columns and "codigo_produto" in df_snapshot_prev.columns:
+        val_skus_prev = df_snapshot_prev[(df_snapshot_prev["qtde_saldo_atual"] > 0) & (df_snapshot_prev["codigo_produto"] != "")]["codigo_produto"].nunique()
+    else: val_skus_prev = 0
+
+    val_critico_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("item_critico", "") == "1-Sim"], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
+    val_obsoleto_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
+    val_obra_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
 
     # --- ⚡ CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (YTD) ---
-    giro_mensal = 0.0
-    giro_anual = 0.0
-    cobertura_meses = 0.0
-    cobertura_anos = 0.0
+    giro_mensal, giro_anual, cobertura_meses, cobertura_anos = 0.0, 0.0, 0.0, 0.0
 
     if not df_filtrado.empty:
         if st.session_state.get('filtro_periodo_grafico'):
@@ -667,17 +711,48 @@ with aba_geral:
                 cobertura_meses = estoque_medio_op / consumo_medio_mensal
                 cobertura_anos = cobertura_meses / 12
 
-    def fmt_brl(val):
-        return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    # Funções de formatação de valores
+    def fmt_brl(val): return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    def fmt_int(val): return f"{val:,}".replace(',', '.')
+    def fmt_dec(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
+    def fmt_mes(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
-    def fmt_int(val):
-        return f"{val:,}".replace(',', '.')
-
-    def fmt_dec(val):
-        return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
-
-    def fmt_mes(val):
-        return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+    # Função geradora de Cards com Tendência (Setinha)
+    def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font_size="21px"):
+        if val_ant == 0 and val_atual == 0:
+            pct_str = "0,0%"
+            trend_class = "trend-neutral"
+            arrow = "➖"
+        elif val_ant == 0:
+            pct_str = "100,0%"
+            trend_class = "trend-up"
+            arrow = "🔺"
+        else:
+            pct = ((val_atual - val_ant) / val_ant) * 100
+            pct_str = f"{abs(pct):.1f}%".replace('.', ',')
+            if pct > 0:
+                trend_class = "trend-up"
+                arrow = "🔺"
+            elif pct < 0:
+                trend_class = "trend-down"
+                arrow = "🔻"
+            else:
+                trend_class = "trend-neutral"
+                arrow = "➖"
+                
+        html = f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="header-left">
+                    <div class="icon-box {icon_class}">{icon}</div>
+                    <div class="card-title">{title}</div>
+                </div>
+                <div class="trend-box {trend_class}">{arrow} {pct_str}</div>
+            </div>
+            <div class="card-value" style="font-size: {font_size};">{val_formatado}</div>
+        </div>
+        """
+        return html
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -685,49 +760,10 @@ with aba_geral:
     st.markdown("<div class='section-title'>💼 LINHA FINANCEIRA</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
 
-    with c1:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-estoque">📦</div>
-                <div class="card-title">(R$) TOTAL EM ESTOQUE</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_estoque)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c2:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-critico">⚠️</div>
-                <div class="card-title">(R$) ESTOQUE CRÍTICO</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_critico)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c3:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-obsoleto">🗑️</div>
-                <div class="card-title">(R$) ESTOQUE OBSOLETO</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_obsoleto)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c4:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-obra">🏗️</div>
-                <div class="card-title">(R$) ESTOQUE OBRA</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_obra)}</div>
-        </div>
-        """, unsafe_allow_html=True)
+    with c1: st.markdown(render_card("📦", "icon-estoque", "(R$) TOTAL EM ESTOQUE", fmt_brl(val_estoque), val_estoque, val_estoque_prev), unsafe_allow_html=True)
+    with c2: st.markdown(render_card("⚠️", "icon-critico", "(R$) ESTOQUE CRÍTICO", fmt_brl(val_critico), val_critico, val_critico_prev), unsafe_allow_html=True)
+    with c3: st.markdown(render_card("🗑️", "icon-obsoleto", "(R$) ESTOQUE OBSOLETO", fmt_brl(val_obsoleto), val_obsoleto, val_obsoleto_prev), unsafe_allow_html=True)
+    with c4: st.markdown(render_card("🏗️", "icon-obra", "(R$) ESTOQUE OBRA", fmt_brl(val_obra), val_obra, val_obra_prev), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -735,45 +771,18 @@ with aba_geral:
     st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
     c5, c6, c7, c8, c9 = st.columns(5)
 
-    with c5:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-compras">📥</div>
-                <div class="card-title">(R$) TOTAL DE COMPRAS</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_compras)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c6:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-consumo">📤</div>
-                <div class="card-title">(R$) TOTAL DE CONSUMO</div>
-            </div>
-            <div class="card-value">{fmt_brl(val_consumo)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
-    with c7:
-        st.markdown(f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="icon-box icon-skus">🏷️</div>
-                <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
-            </div>
-            <div class="card-value" style="font-size: 26px;">{fmt_int(val_skus)}</div>
-        </div>
-        """, unsafe_allow_html=True)
-
+    with c5: st.markdown(render_card("📥", "icon-compras", "(R$) TOTAL DE COMPRAS", fmt_brl(val_compras), val_compras, val_compras_prev), unsafe_allow_html=True)
+    with c6: st.markdown(render_card("📤", "icon-consumo", "(R$) TOTAL DE CONSUMO", fmt_brl(val_consumo), val_consumo, val_consumo_prev), unsafe_allow_html=True)
+    with c7: st.markdown(render_card("🏷️", "icon-skus", "TOTAL DE SKUs ÚNICOS", fmt_int(val_skus), val_skus, val_skus_prev, "26px"), unsafe_allow_html=True)
+    
     with c8:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
-                <div class="icon-box icon-giro">🔄</div>
-                <div class="card-title">GIRO DE ESTOQUE</div>
+                <div class="header-left">
+                    <div class="icon-box icon-giro">🔄</div>
+                    <div class="card-title">GIRO DE ESTOQUE</div>
+                </div>
             </div>
             <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
                 <div style="text-align: center; flex: 1;">
@@ -793,8 +802,10 @@ with aba_geral:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
-                <div class="icon-box icon-cobertura">⏳</div>
-                <div class="card-title">COBERTURA DE ESTOQUE</div>
+                <div class="header-left">
+                    <div class="icon-box icon-cobertura">⏳</div>
+                    <div class="card-title">COBERTURA DE ESTOQUE</div>
+                </div>
             </div>
             <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
                 <div style="text-align: center; flex: 1;">
