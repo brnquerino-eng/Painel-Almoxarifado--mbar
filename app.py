@@ -295,7 +295,7 @@ st.markdown("""
     }
     .card-value {
         color: #ffffff;
-        font-size: 16px;
+        font-size: 21px; 
         font-weight: bold;
         text-align: center;
         font-family: monospace;
@@ -690,7 +690,7 @@ with aba_geral:
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-estoque">📦</div>
-                <div class="card-title">VALOR TOTAL EM ESTOQUE</div>
+                <div class="card-title">(R$) TOTAL EM ESTOQUE</div>
             </div>
             <div class="card-value">{fmt_brl(val_estoque)}</div>
         </div>
@@ -701,7 +701,7 @@ with aba_geral:
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-critico">⚠️</div>
-                <div class="card-title">ESTOQUE CRÍTICO (1-SIM)</div>
+                <div class="card-title">(R$) ESTOQUE CRÍTICO</div>
             </div>
             <div class="card-value">{fmt_brl(val_critico)}</div>
         </div>
@@ -712,7 +712,7 @@ with aba_geral:
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-obsoleto">🗑️</div>
-                <div class="card-title">ESTOQUE OBSOLETO</div>
+                <div class="card-title">(R$) ESTOQUE OBSOLETO</div>
             </div>
             <div class="card-value">{fmt_brl(val_obsoleto)}</div>
         </div>
@@ -723,7 +723,7 @@ with aba_geral:
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-obra">🏗️</div>
-                <div class="card-title">ESTOQUE OBRA</div>
+                <div class="card-title">(R$) ESTOQUE OBRA</div>
             </div>
             <div class="card-value">{fmt_brl(val_obra)}</div>
         </div>
@@ -740,7 +740,7 @@ with aba_geral:
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-compras">📥</div>
-                <div class="card-title">VALOR TOTAL DE COMPRAS</div>
+                <div class="card-title">(R$) TOTAL DE COMPRAS</div>
             </div>
             <div class="card-value">{fmt_brl(val_compras)}</div>
         </div>
@@ -751,7 +751,7 @@ with aba_geral:
         <div class="card-box">
             <div class="card-header">
                 <div class="icon-box icon-consumo">📤</div>
-                <div class="card-title">VALOR TOTAL DE CONSUMO</div>
+                <div class="card-title">(R$) TOTAL DE CONSUMO</div>
             </div>
             <div class="card-value">{fmt_brl(val_consumo)}</div>
         </div>
@@ -764,7 +764,7 @@ with aba_geral:
                 <div class="icon-box icon-skus">🏷️</div>
                 <div class="card-title">TOTAL DE SKUs ÚNICOS</div>
             </div>
-            <div class="card-value">{fmt_int(val_skus)}</div>
+            <div class="card-value" style="font-size: 26px;">{fmt_int(val_skus)}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -778,12 +778,12 @@ with aba_geral:
             <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
                 <div style="text-align: center; flex: 1;">
                     <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL</span><br>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_mensal)}</span>
+                    <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_mensal)}</span>
                 </div>
                 <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
                 <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO</span><br>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUAL</span><br>
+                    <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
                 </div>
             </div>
         </div>
@@ -798,13 +798,13 @@ with aba_geral:
             </div>
             <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
                 <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL (MESES)</span><br>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_meses)}</span>
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL</span><br>
+                    <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_meses)}</span>
                 </div>
                 <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
                 <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUALIZADO (ANOS)</span><br>
-                    <span style="font-size: 20px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_anos)}</span>
+                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUAL</span><br>
+                    <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_anos)}</span>
                 </div>
             </div>
         </div>
