@@ -1166,7 +1166,9 @@ with aba_geral:
                             type="rect",
                             x0=idx_d - 0.25, x1=idx_d + 0.25,
                             y0=0, y1=1, yref="paper",
-                            fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)", layer="below")
+                            fillcolor="rgba(216, 92, 39, 0.18)",
+                            line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"),
+                            layer="below"
                         )
 
                 fig_duplo.update_layout(
