@@ -294,7 +294,7 @@ st.markdown("""
     .icon-cobertura { background-color: #2a2211; color: #e67e22; }
     .card-title {
         color: #8c9ba5;
-        font-size: 10px;
+        font-size: 11px;
         font-weight: bold;
         letter-spacing: 0.5px;
         line-height: 1.2;
@@ -760,10 +760,10 @@ with aba_geral:
     st.markdown("<div class='section-title'>💼 LINHA FINANCEIRA</div>", unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
 
-    with c1: st.markdown(render_card("📦", "icon-estoque", "(R$) TOTAL EM ESTOQUE", fmt_brl(val_estoque), val_estoque, val_estoque_prev), unsafe_allow_html=True)
-    with c2: st.markdown(render_card("⚠️", "icon-critico", "(R$) ESTOQUE CRÍTICO", fmt_brl(val_critico), val_critico, val_critico_prev), unsafe_allow_html=True)
-    with c3: st.markdown(render_card("🗑️", "icon-obsoleto", "(R$) ESTOQUE OBSOLETO", fmt_brl(val_obsoleto), val_obsoleto, val_obsoleto_prev), unsafe_allow_html=True)
-    with c4: st.markdown(render_card("🏗️", "icon-obra", "(R$) ESTOQUE OBRA", fmt_brl(val_obra), val_obra, val_obra_prev), unsafe_allow_html=True)
+    with c1: st.markdown(render_card("📦", "icon-estoque", "(R$) ESTOQUE", fmt_brl(val_estoque), val_estoque, val_estoque_prev), unsafe_allow_html=True)
+    with c2: st.markdown(render_card("⚠️", "icon-critico", "(R$) EST. CRÍTICO", fmt_brl(val_critico), val_critico, val_critico_prev), unsafe_allow_html=True)
+    with c3: st.markdown(render_card("🗑️", "icon-obsoleto", "(R$) EST. OBSOLETO", fmt_brl(val_obsoleto), val_obsoleto, val_obsoleto_prev), unsafe_allow_html=True)
+    with c4: st.markdown(render_card("🏗️", "icon-obra", "(R$) EST. OBRA", fmt_brl(val_obra), val_obra, val_obra_prev), unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -771,9 +771,9 @@ with aba_geral:
     st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
     c5, c6, c7, c8, c9 = st.columns(5)
 
-    with c5: st.markdown(render_card("📥", "icon-compras", "(R$) TOTAL DE COMPRAS", fmt_brl(val_compras), val_compras, val_compras_prev), unsafe_allow_html=True)
-    with c6: st.markdown(render_card("📤", "icon-consumo", "(R$) TOTAL DE CONSUMO", fmt_brl(val_consumo), val_consumo, val_consumo_prev), unsafe_allow_html=True)
-    with c7: st.markdown(render_card("🏷️", "icon-skus", "TOTAL DE SKUs ÚNICOS", fmt_int(val_skus), val_skus, val_skus_prev, "26px"), unsafe_allow_html=True)
+    with c5: st.markdown(render_card("📥", "icon-compras", "(R$) COMPRAS", fmt_brl(val_compras), val_compras, val_compras_prev, "18px"), unsafe_allow_html=True)
+    with c6: st.markdown(render_card("📤", "icon-consumo", "(R$) CONSUMO", fmt_brl(val_consumo), val_consumo, val_consumo_prev, "18px"), unsafe_allow_html=True)
+    with c7: st.markdown(render_card("🏷️", "icon-skus", "SKUs ÚNICOS", fmt_int(val_skus), val_skus, val_skus_prev, "18px"), unsafe_allow_html=True)
     
     with c8:
         st.markdown(f"""
@@ -786,12 +786,12 @@ with aba_geral:
             </div>
             <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
                 <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL</span><br>
+                    <span style="font-size: 11px; color: #8c9ba5; font-weight: bold; letter-spacing: 0.5px;">MENSAL</span><br>
                     <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_mensal)}</span>
                 </div>
                 <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
                 <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUAL</span><br>
+                    <span style="font-size: 11px; color: #8c9ba5; font-weight: bold; letter-spacing: 0.5px;">ANUAL</span><br>
                     <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
                 </div>
             </div>
@@ -809,12 +809,12 @@ with aba_geral:
             </div>
             <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
                 <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">MENSAL</span><br>
+                    <span style="font-size: 11px; color: #8c9ba5; font-weight: bold; letter-spacing: 0.5px;">MENSAL</span><br>
                     <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_meses)}</span>
                 </div>
                 <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
                 <div style="text-align: center; flex: 1;">
-                    <span style="font-size: 10px; color: #8c9ba5; letter-spacing: 0.5px;">ANUAL</span><br>
+                    <span style="font-size: 11px; color: #8c9ba5; font-weight: bold; letter-spacing: 0.5px;">ANUAL</span><br>
                     <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_anos)}</span>
                 </div>
             </div>
