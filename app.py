@@ -1181,7 +1181,7 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
-     # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (RANKING PERFEITO)
+     # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (COM ALTURA FIXA E SCROLL)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
@@ -1191,7 +1191,7 @@ with aba_geral:
                 Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
             ).reset_index()
 
-            # Ordenar da menor para maior para alinhar corretamente no eixo Y do Plotly (maior compra no topo)
+            # Ordenação do maior para o menor
             df_diag = df_diag.sort_values('Compras', ascending=True)
             ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
             
@@ -1227,8 +1227,8 @@ with aba_geral:
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='#8c9ba5'),
-                margin=dict(l=150, r=20, t=20, b=20),
-                height=max(400, len(df_diag) * 40),
+                margin=dict(l=130, r=20, t=20, b=20),
+                height=420,  # Altura fixa igual ao ranking da sua imagem para gerar o scroll nativo
                 showlegend=True,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title="")
             )
