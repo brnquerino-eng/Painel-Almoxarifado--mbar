@@ -1078,7 +1078,7 @@ with aba_geral:
 
             st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False}, key="skus_geral")
 
-# EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (LÓGICA YTD ACUMULADA IGUAL AOS CARDS)
+        # EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (LÓGICA YTD ACUMULADA IGUAL AOS CARDS)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (DUPLA LINHA)</div>", unsafe_allow_html=True)
@@ -1166,7 +1166,7 @@ with aba_geral:
                             type="rect",
                             x0=idx_d - 0.25, x1=idx_d + 0.25,
                             y0=0, y1=1, yref="paper",
-                            fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
+                            fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)", layer="below")
                         )
 
                 fig_duplo.update_layout(
@@ -1181,77 +1181,125 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
- # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (LAYOUT DEFINITIVO COM SCROLL INTERNO)
+        # ================= SEÇÃO LADO A LADO: COMPRAS VS CONSUMO & SKUs =================
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.container(border=True):
-            # 1. CABEÇALHO E LEGENDA FIXOS (Ficam travados no topo, fora da barra de rolagem)
-            st.markdown("""
-                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;'>
-                    <div style='color: #ffffff; font-size: 14px; font-weight: bold; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>
-                    <div style='display: flex; gap: 15px; font-size: 12px; color: #8c9ba5; align-items: center; padding-right: 15px;'>
-                        <span><span style='color: #f39c12; font-size: 14px;'>■</span> Consumo</span>
-                        <span><span style='color: #e74c3c; font-size: 14px;'>■</span> Compras</span>
+        
+        col_esq, col_dir = st.columns(2)
+
+        # ---------------- COLUNA ESQUERDA: COMPRAS VS CONSUMO ----------------
+        with col_esq:
+            with st.container(border=True):
+                # Cabeçalho e Legenda Estática Fixos no Topo
+                st.markdown("""
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;'>
+                        <div style='color: #ffffff; font-size: 13px; font-weight: bold; border-left: 3px solid #d85c27; padding-left: 8px;'>📊 COMPRAS VS CONSUMO</div>
+                        <div style='display: flex; gap: 10px; font-size: 11px; color: #8c9ba5; align-items: center; padding-right: 10px;'>
+                            <span><span style='color: #f39c12; font-size: 13px;'>■</span> Consumo</span>
+                            <span><span style='color: #e74c3c; font-size: 13px;'>■</span> Compras</span>
+                        </div>
                     </div>
-                </div>
-            """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
 
-            # 2. ÁREA DO GRÁFICO COM SCROLL (Container interno sem borda)
-            with st.container(height=380, border=False):
-                df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
-                    Compras=('valor_entrada_compras', 'sum'),
-                    Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
-                ).reset_index()
+                # Área com Scroll Interno
+                with st.container(height=380, border=False):
+                    df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
+                        Compras=('valor_entrada_compras', 'sum'),
+                        Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
+                    ).reset_index()
 
-                # Ordenação estrita do maior para o menor valor de compras
-                df_diag = df_diag.sort_values('Compras', ascending=True)
-                ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
-                
-                df_diag['Compras_Label'] = df_diag['Compras'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
-                df_diag['Consumo_Label'] = df_diag['Consumo'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                    df_diag = df_diag.sort_values('Compras', ascending=True)
+                    ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
+                    
+                    df_diag['Compras_Label'] = df_diag['Compras'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                    df_diag['Consumo_Label'] = df_diag['Consumo'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
-                df_diag_melted = df_diag.melt(
-                    id_vars=['unidade_almoxarifado', 'Compras_Label', 'Consumo_Label'], 
-                    value_vars=['Compras', 'Consumo'],
-                    var_name='Métrica', 
-                    value_name='Valor'
-                )
-                
-                # Garantir ordem das barras (Consumo embaixo, Compras em vermelho por cima)
-                df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Consumo', 'Compras'], ordered=True)
-                df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
+                    df_diag_melted = df_diag.melt(
+                        id_vars=['unidade_almoxarifado', 'Compras_Label', 'Consumo_Label'], 
+                        value_vars=['Compras', 'Consumo'],
+                        var_name='Métrica', 
+                        value_name='Valor'
+                    )
+                    
+                    df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Consumo', 'Compras'], ordered=True)
+                    df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
+                    df_diag_melted['Texto_Barra'] = np.where(df_diag_melted['Métrica'] == 'Compras', df_diag_melted['Compras_Label'], df_diag_melted['Consumo_Label'])
 
-                df_diag_melted['Texto_Barra'] = np.where(df_diag_melted['Métrica'] == 'Compras', df_diag_melted['Compras_Label'], df_diag_melted['Consumo_Label'])
+                    fig_diag = px.bar(
+                        df_diag_melted,
+                        x='Valor',
+                        y='unidade_almoxarifado',
+                        color='Métrica',
+                        barmode='group',
+                        orientation='h',
+                        text='Texto_Barra',
+                        color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#f39c12'},
+                        category_orders={'unidade_almoxarifado': ordem_unidades}
+                    )
+                    
+                    fig_diag.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#8c9ba5'),
+                        margin=dict(l=110, r=10, t=10, b=10),
+                        height=max(350, len(df_diag) * 50),
+                        showlegend=False
+                    )
+                    
+                    fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
+                    fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=10), categoryorder='array', categoryarray=ordem_unidades)
+                    fig_diag.update_traces(textposition='outside', textfont=dict(size=9, color='#8c9ba5'))
 
-                fig_diag = px.bar(
-                    df_diag_melted,
-                    x='Valor',
-                    y='unidade_almoxarifado',
-                    color='Métrica',
-                    barmode='group',
-                    orientation='h',
-                    text='Texto_Barra',
-                    color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#f39c12'},
-                    category_orders={'unidade_almoxarifado': ordem_unidades}
-                )
-                
-                # Altura dinâmica do gráfico para gerar a rolagem na sub-caixa
-                altura_grafico = max(350, len(df_diag) * 50)
+                    st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diag_compras_consumo_lado")
 
-                fig_diag.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#8c9ba5'),
-                    margin=dict(l=130, r=20, t=10, b=10),
-                    height=altura_grafico,  
-                    showlegend=False  # Legenda nativa desligada
-                )
-                
-                fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
-                fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=11), categoryorder='array', categoryarray=ordem_unidades)
-                fig_diag.update_traces(textposition='outside', textfont=dict(size=10, color='#8c9ba5'))
+        # ---------------- COLUNA DIREITA: RANKING DE SKUS ----------------
+        with col_dir:
+            with st.container(border=True):
+                # Cabeçalho Fixo para SKUs
+                st.markdown("""
+                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;'>
+                        <div style='color: #ffffff; font-size: 13px; font-weight: bold; border-left: 3px solid #3498db; padding-left: 8px;'>📦 RANKING DE SKUs POR UNIDADE</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
-                st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diagnostico_ranking_horizontal")
-            
+                # Área com Scroll Interno para SKUs
+                with st.container(height=380, border=False):
+                    # Filtra apenas as linhas com saldo de quantidade > 0 e que possuem código preenchido
+                    df_skus_ativos = df_snapshot[(df_snapshot["qtde_saldo_atual"] > 0) & (df_snapshot["codigo_produto"] != "")]
+                    
+                    df_skus = df_skus_ativos.groupby('unidade_almoxarifado').agg(
+                        Total_SKUs=('codigo_produto', 'nunique')
+                    ).reset_index()
+
+                    df_skus = df_skus.sort_values('Total_SKUs', ascending=True)
+                    ordem_skus = df_skus['unidade_almoxarifado'].tolist()
+                    
+                    df_skus['SKUs_Label'] = df_skus['Total_SKUs'].apply(lambda x: f"{x:,.0f} SKUs".replace(',', '.'))
+
+                    fig_sku = px.bar(
+                        df_skus,
+                        x='Total_SKUs',
+                        y='unidade_almoxarifado',
+                        orientation='h',
+                        text='SKUs_Label',
+                        color_discrete_sequence=['#3498db'],
+                        category_orders={'unidade_almoxarifado': ordem_skus}
+                    )
+                    
+                    fig_sku.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='#8c9ba5'),
+                        margin=dict(l=110, r=10, t=10, b=10),
+                        height=max(350, len(df_skus) * 50),
+                        showlegend=False
+                    )
+                    
+                    fig_sku.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
+                    fig_sku.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=10), categoryorder='array', categoryarray=ordem_skus)
+                    fig_sku.update_traces(textposition='outside', textfont=dict(size=9, color='#8c9ba5'))
+
+                    st.plotly_chart(fig_sku, use_container_width=True, config={'displayModeBar': False}, key="ranking_skus_lado")
+
 with aba_detalhada:
     if not df_snapshot.empty:
         st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
