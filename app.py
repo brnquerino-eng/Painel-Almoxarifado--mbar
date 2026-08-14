@@ -320,23 +320,23 @@ st.markdown("""
     .trend-box {
         display: flex;
         align-items: center;
-        padding: 2px 5px;
-        border-radius: 4px;
-        font-size: 9px;
+        padding: 3px 7px;
+        border-radius: 5px;
+        font-size: 11px;
         font-weight: bold;
         font-family: monospace;
         white-space: nowrap;
     }
     .trend-up {
-        background-color: rgba(231, 76, 60, 0.15);
+        background-color: rgba(231, 76, 60, 0.18);
         color: #e74c3c;
     }
     .trend-down {
-        background-color: rgba(46, 204, 113, 0.15);
+        background-color: rgba(46, 204, 113, 0.18);
         color: #2ecc71;
     }
     .trend-neutral {
-        background-color: rgba(140, 155, 165, 0.15);
+        background-color: rgba(140, 155, 165, 0.18);
         color: #8c9ba5;
     }
 </style>
@@ -666,8 +666,9 @@ with aba_geral:
     val_obsoleto_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
     val_obra_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
 
-    # --- ⚡ CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (YTD) ---
+    # --- ⚡ CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (YTD E ANTERIOR) ---
     giro_mensal, giro_anual, cobertura_meses, cobertura_anos = 0.0, 0.0, 0.0, 0.0
+    giro_mensal_prev, cobertura_meses_prev = 0.0, 0.0
 
     if not df_filtrado.empty:
         if st.session_state.get('filtro_periodo_grafico'):
@@ -711,6 +712,26 @@ with aba_geral:
                 cobertura_meses = estoque_medio_op / consumo_medio_mensal
                 cobertura_anos = cobertura_meses / 12
 
+        # Cálculo do Giro/Cobertura do Mês Anterior Exato para as Setas
+        if m_teto_prev := (mes_teto_val - 1 if mes_teto_val > 1 else 12):
+            ano_prev_giro = ano_ativo_val if mes_teto_val > 1 else ano_ativo_val - 1
+            df_giro_prev = df_filtrado[
+                (df_filtrado['tmp_ano_num'] == ano_prev_giro) & 
+                (df_filtrado['tmp_mes_num'] <= m_teto_prev)
+            ].copy()
+            if not df_giro_prev.empty:
+                df_giro_prev['consumo_abs'] = pd.to_numeric(df_giro_prev['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
+                df_giro_prev['val_estoque'] = pd.to_numeric(df_giro_prev['valor_saldo_atual'], errors='coerce').fillna(0.0)
+                mask_op_prev = ~((df_giro_prev['item_critico'] == '1-Sim') | (df_giro_prev['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)))
+                df_giro_prev['estoque_op'] = df_giro_prev['val_estoque'] * mask_op_prev
+                df_giro_prev['consumo_op'] = df_giro_prev['consumo_abs'] * mask_op_prev
+                m_prev_df = df_giro_prev.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(estoque_op=('estoque_op', 'sum'), consumo_op=('consumo_op', 'sum')).reset_index()
+                if not m_prev_df.empty:
+                    est_med_p = m_prev_df['estoque_op'].mean()
+                    con_med_p = m_prev_df['consumo_op'].mean()
+                    if est_med_p > 0: giro_mensal_prev = con_med_p / est_med_p
+                    if con_med_p > 0: cobertura_meses_prev = est_med_p / con_med_p
+
     # Funções de formatação de valores
     def fmt_brl(val): return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
     def fmt_int(val): return f"{val:,}".replace(',', '.')
@@ -718,7 +739,7 @@ with aba_geral:
     def fmt_mes(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
     # Função geradora de Cards com Tendência (Setinha)
-    def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font_size="21px"):
+    def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font_size="21px", invert_color=False):
         if val_ant == 0 and val_atual == 0:
             pct_str = "0,0%"
             trend_class = "trend-neutral"
@@ -731,11 +752,19 @@ with aba_geral:
             pct = ((val_atual - val_ant) / val_ant) * 100
             pct_str = f"{abs(pct):.1f}%".replace('.', ',')
             if pct > 0:
-                trend_class = "trend-up"
-                arrow = "🔺"
+                if invert_color:
+                    trend_class = "trend-down" # Verde para bom quando sobe (ex: Giro)
+                    arrow = "🔺"
+                else:
+                    trend_class = "trend-up" # Vermelho para alerta quando sobe
+                    arrow = "🔺"
             elif pct < 0:
-                trend_class = "trend-down"
-                arrow = "🔻"
+                if invert_color:
+                    trend_class = "trend-up" # Vermelho para alerta quando desce (ex: Giro)
+                    arrow = "🔻"
+                else:
+                    trend_class = "trend-down" # Verde para bom quando desce
+                    arrow = "🔻"
             else:
                 trend_class = "trend-neutral"
                 arrow = "➖"
@@ -771,10 +800,23 @@ with aba_geral:
     st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
     c5, c6, c7, c8, c9 = st.columns(5)
 
-    with c5: st.markdown(render_card("📥", "icon-compras", "(R$) COMPRAS", fmt_brl(val_compras), val_compras, val_compras_prev, "18px"), unsafe_allow_html=True)
-    with c6: st.markdown(render_card("📤", "icon-consumo", "(R$) CONSUMO", fmt_brl(val_consumo), val_consumo, val_consumo_prev, "18px"), unsafe_allow_html=True)
-    with c7: st.markdown(render_card("🏷️", "icon-skus", "SKUs ÚNICOS", fmt_int(val_skus), val_skus, val_skus_prev, "18px"), unsafe_allow_html=True)
+    with c5: st.markdown(render_card("📥", "icon-compras", "COMPRAS", fmt_brl(val_compras), val_compras, val_compras_prev, "18px"), unsafe_allow_html=True)
+    with c6: st.markdown(render_card("📤", "icon-consumo", "CONSUMO", fmt_brl(val_consumo), val_consumo, val_consumo_prev, "18px"), unsafe_allow_html=True)
+    with c7: st.markdown(render_card("🏷️", "icon-skus", "SKUs ÚNICOS", fmt_int(val_skus), val_skus, val_skus_prev, "21px"), unsafe_allow_html=True)
     
+    # Cálculo de tendência para o Giro (Invertido: subir giro é bom = verde)
+    giro_ant_val = giro_mensal_prev
+    giro_atual_val = giro_mensal
+    if giro_ant_val == 0 and giro_atual_val == 0:
+        giro_pct_str, giro_trend, giro_arr = "0,0%", "trend-neutral", "➖"
+    elif giro_ant_val == 0:
+        giro_pct_str, giro_trend, giro_arr = "100,0%", "trend-down", "🔺"
+    else:
+        g_pct = ((giro_atual_val - giro_ant_val) / giro_ant_val) * 100
+        giro_pct_str = f"{abs(g_pct):.1f}%".replace('.', ',')
+        giro_trend = "trend-down" if g_pct > 0 else ("trend-up" if g_pct < 0 else "trend-neutral")
+        giro_arr = "🔺" if g_pct > 0 else ("🔻" if g_pct < 0 else "➖")
+
     with c8:
         st.markdown(f"""
         <div class="card-box">
@@ -783,20 +825,34 @@ with aba_geral:
                     <div class="icon-box icon-giro">🔄</div>
                     <div class="card-title">GIRO DE ESTOQUE</div>
                 </div>
+                <div class="trend-box {giro_trend}">{giro_arr} {giro_pct_str}</div>
             </div>
             <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
                 <div style="text-align: center; flex: 1;">
                     <span style="font-size: 11px; color: #8c9ba5; font-weight: bold; letter-spacing: 0.5px;">MENSAL</span><br>
-                    <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_mensal)}</span>
+                    <span style="font-size: 19px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_mensal)}</span>
                 </div>
                 <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
                 <div style="text-align: center; flex: 1;">
                     <span style="font-size: 11px; color: #8c9ba5; font-weight: bold; letter-spacing: 0.5px;">ANUAL</span><br>
-                    <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
+                    <span style="font-size: 19px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_dec(giro_anual)}</span>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
+
+    # Cálculo de tendência para Cobertura (Subir cobertura geralmente significa estoque parado = alerta vermelho)
+    cob_ant_val = cobertura_meses_prev
+    cob_atual_val = cobertura_meses
+    if cob_ant_val == 0 and cob_atual_val == 0:
+        cob_pct_str, cob_trend, cob_arr = "0,0%", "trend-neutral", "➖"
+    elif cob_ant_val == 0:
+        cob_pct_str, cob_trend, cob_arr = "100,0%", "trend-up", "🔺"
+    else:
+        c_pct = ((cob_atual_val - cob_ant_val) / cob_ant_val) * 100
+        cob_pct_str = f"{abs(c_pct):.1f}%".replace('.', ',')
+        cob_trend = "trend-up" if c_pct > 0 else ("trend-down" if c_pct < 0 else "trend-neutral")
+        cob_arr = "🔺" if c_pct > 0 else ("🔻" if c_pct < 0 else "➖")
 
     with c9:
         st.markdown(f"""
@@ -804,18 +860,19 @@ with aba_geral:
             <div class="card-header">
                 <div class="header-left">
                     <div class="icon-box icon-cobertura">⏳</div>
-                    <div class="card-title">COBERTURA DE ESTOQUE</div>
+                    <div class="card-title">COB. ESTOQUE</div>
                 </div>
+                <div class="trend-box {cob_trend}">{cob_arr} {cob_pct_str}</div>
             </div>
             <div style="display: flex; justify-content: space-around; align-items: center; margin-top: 8px;">
                 <div style="text-align: center; flex: 1;">
                     <span style="font-size: 11px; color: #8c9ba5; font-weight: bold; letter-spacing: 0.5px;">MENSAL</span><br>
-                    <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_meses)}</span>
+                    <span style="font-size: 19px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_meses)}</span>
                 </div>
                 <div style="height: 35px; width: 1px; background-color: #232b36;"></div>
                 <div style="text-align: center; flex: 1;">
                     <span style="font-size: 11px; color: #8c9ba5; font-weight: bold; letter-spacing: 0.5px;">ANUAL</span><br>
-                    <span style="font-size: 21px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_anos)}</span>
+                    <span style="font-size: 19px; font-weight: bold; color: #ffffff; font-family: monospace;">{fmt_mes(cobertura_anos)}</span>
                 </div>
             </div>
         </div>
