@@ -275,6 +275,7 @@ st.markdown("""
         align-items: center;
         justify-content: center;
         font-size: 14px;
+        flex-shrink: 0;
     }
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
     .icon-critico { background-color: #2a1515; color: #e74c3c; }
@@ -287,17 +288,19 @@ st.markdown("""
     .icon-cobertura { background-color: #2a2211; color: #e67e22; }
     .card-title {
         color: #8c9ba5;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: bold;
         letter-spacing: 0.5px;
+        line-height: 1.2;
     }
     .card-value {
         color: #ffffff;
-        font-size: 21px;
+        font-size: 16px;
         font-weight: bold;
         text-align: center;
         font-family: monospace;
         margin-top: 8px;
+        white-space: nowrap;
     }
     .section-title {
         color: #ffffff;
