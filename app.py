@@ -1181,74 +1181,76 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
-   # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (CONTAINER FIXO, LEGENDA ESTÁTICA E SCROLL)
+ # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (LAYOUT DEFINITIVO COM SCROLL INTERNO)
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.container(border=True, height=390):
-            # Cabeçalho e Legenda fixos no topo (não rolam junto com o gráfico)
+        with st.container(border=True):
+            # 1. CABEÇALHO E LEGENDA FIXOS (Ficam travados no topo, fora da barra de rolagem)
             st.markdown("""
-                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;'>
+                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;'>
                     <div style='color: #ffffff; font-size: 14px; font-weight: bold; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>
-                    <div style='display: flex; gap: 15px; font-size: 12px; color: #8c9ba5; align-items: center;'>
+                    <div style='display: flex; gap: 15px; font-size: 12px; color: #8c9ba5; align-items: center; padding-right: 15px;'>
                         <span><span style='color: #f39c12; font-size: 14px;'>■</span> Consumo</span>
                         <span><span style='color: #e74c3c; font-size: 14px;'>■</span> Compras</span>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
 
-            df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
-                Compras=('valor_entrada_compras', 'sum'),
-                Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
-            ).reset_index()
+            # 2. ÁREA DO GRÁFICO COM SCROLL (Container interno sem borda)
+            with st.container(height=380, border=False):
+                df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
+                    Compras=('valor_entrada_compras', 'sum'),
+                    Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
+                ).reset_index()
 
-            # Ordenação estrita do maior para o menor valor de compras
-            df_diag = df_diag.sort_values('Compras', ascending=True)
-            ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
-            
-            df_diag['Compras_Label'] = df_diag['Compras'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
-            df_diag['Consumo_Label'] = df_diag['Consumo'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                # Ordenação estrita do maior para o menor valor de compras
+                df_diag = df_diag.sort_values('Compras', ascending=True)
+                ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
+                
+                df_diag['Compras_Label'] = df_diag['Compras'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                df_diag['Consumo_Label'] = df_diag['Consumo'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
-            df_diag_melted = df_diag.melt(
-                id_vars=['unidade_almoxarifado', 'Compras_Label', 'Consumo_Label'], 
-                value_vars=['Compras', 'Consumo'],
-                var_name='Métrica', 
-                value_name='Valor'
-            )
-            
-            # Garantir ordem das barras (Consumo embaixo, Compras em vermelho por cima)
-            df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Consumo', 'Compras'], ordered=True)
-            df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
+                df_diag_melted = df_diag.melt(
+                    id_vars=['unidade_almoxarifado', 'Compras_Label', 'Consumo_Label'], 
+                    value_vars=['Compras', 'Consumo'],
+                    var_name='Métrica', 
+                    value_name='Valor'
+                )
+                
+                # Garantir ordem das barras (Consumo embaixo, Compras em vermelho por cima)
+                df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Consumo', 'Compras'], ordered=True)
+                df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
 
-            df_diag_melted['Texto_Barra'] = np.where(df_diag_melted['Métrica'] == 'Compras', df_diag_melted['Compras_Label'], df_diag_melted['Consumo_Label'])
+                df_diag_melted['Texto_Barra'] = np.where(df_diag_melted['Métrica'] == 'Compras', df_diag_melted['Compras_Label'], df_diag_melted['Consumo_Label'])
 
-            fig_diag = px.bar(
-                df_diag_melted,
-                x='Valor',
-                y='unidade_almoxarifado',
-                color='Métrica',
-                barmode='group',
-                orientation='h',
-                text='Texto_Barra',
-                color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#f39c12'},
-                category_orders={'unidade_almoxarifado': ordem_unidades}
-            )
-            
-            # Altura dinâmica do gráfico para forçar a barra de rolagem interna perfeitamente
-            altura_grafico = max(320, len(df_diag) * 50)
+                fig_diag = px.bar(
+                    df_diag_melted,
+                    x='Valor',
+                    y='unidade_almoxarifado',
+                    color='Métrica',
+                    barmode='group',
+                    orientation='h',
+                    text='Texto_Barra',
+                    color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#f39c12'},
+                    category_orders={'unidade_almoxarifado': ordem_unidades}
+                )
+                
+                # Altura dinâmica do gráfico para gerar a rolagem na sub-caixa
+                altura_grafico = max(350, len(df_diag) * 50)
 
-            fig_diag.update_layout(
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#8c9ba5'),
-                margin=dict(l=130, r=20, t=10, b=10),
-                height=altura_grafico,  
-                showlegend=False  # Desativada no Plotly para usar a legenda fixa no HTML superior
-            )
-            
-            fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
-            fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=11), categoryorder='array', categoryarray=ordem_unidades)
-            fig_diag.update_traces(textposition='outside', textfont=dict(size=10, color='#8c9ba5'))
+                fig_diag.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='#8c9ba5'),
+                    margin=dict(l=130, r=20, t=10, b=10),
+                    height=altura_grafico,  
+                    showlegend=False  # Legenda nativa desligada
+                )
+                
+                fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
+                fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=11), categoryorder='array', categoryarray=ordem_unidades)
+                fig_diag.update_traces(textposition='outside', textfont=dict(size=10, color='#8c9ba5'))
 
-            st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diagnostico_ranking_horizontal")
+                st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diagnostico_ranking_horizontal")
             
 with aba_detalhada:
     if not df_snapshot.empty:
