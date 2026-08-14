@@ -1040,17 +1040,17 @@ with aba_geral:
                     showlegend=False
                 )
                 fig_disp.update_xaxes(title="Giro Anualizado (x)", showgrid=True, gridcolor='#232b36', zeroline=False)
-                fig_disp.update_yaxes(title="Cobertura Média (Meses)", showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, 36]) # Limitado para evitar distorção de outliers
+                fig_disp.update_yaxes(title="Cobertura Média (Meses)", showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, 36])
 
                 st.plotly_chart(fig_disp, use_container_width=True, config={'displayModeBar': False}, key="dispersao_giro_cobertura")
 
 
         # ==========================================
-        # 13. GRÁFICO DE DUPLO EIXO (GIRO VS COBERTURA NO TEMPO)
+        # 13. GRÁFICO DE DUPLO EIXO (GIRO VS COBERTURA EM DUAS LINHAS COM MARCADORES)
         # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL (BARRAS) VS COBERTURA (LINHA)</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (DUPLA LINHA)</div>", unsafe_allow_html=True)
 
             if not df_filtrado.empty:
                 df_duplo_base = df_filtrado.copy()
@@ -1076,20 +1076,24 @@ with aba_geral:
 
                 fig_duplo = go.Figure()
 
-                fig_duplo.add_trace(go.Bar(
+                # Linha 1: Giro Mensal (Eixo Y principal)
+                fig_duplo.add_trace(go.Scatter(
                     x=df_duplo['Periodo'],
                     y=df_duplo['Giro_Mensal'],
                     name='Giro Mensal',
-                    marker_color='#3498db',
-                    opacity=0.85
+                    mode='lines+markers',
+                    line=dict(color='#3498db', width=3),
+                    marker=dict(size=8, color='#3498db', line=dict(color='#ffffff', width=2))
                 ))
 
+                # Linha 2: Cobertura em Meses (Eixo Y secundário - Y2)
                 fig_duplo.add_trace(go.Scatter(
                     x=df_duplo['Periodo'],
                     y=df_duplo['Cobertura_Meses'],
                     name='Cobertura (Meses)',
                     mode='lines+markers',
                     line=dict(color='#e74c3c', width=3),
+                    marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
                     yaxis='y2'
                 ))
 
@@ -1105,12 +1109,9 @@ with aba_geral:
                         )
 
                 fig_duplo.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#8c9ba5'),
-                    margin=dict(l=40, r=40, t=30, b=30),
-                    height=400,
+                    **layout_transparente,
                     hovermode='x unified',
+                    height=400,
                     legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
                     yaxis=dict(title="Giro Mensal (x)", showgrid=True, gridcolor='#232b36', zeroline=False),
                     yaxis2=dict(title="Cobertura (Meses)", overlaying='y', side='right', showgrid=False, zeroline=False)
@@ -1121,7 +1122,7 @@ with aba_geral:
 
 
         # ==========================================
-        # 14. NOVA OPÇÃO 3: TREEMAP EXECUTIVO (CONCENTRAÇÃO POR UNIDADE)
+        # 14. TREEMAP EXECUTIVO (CONCENTRAÇÃO POR UNIDADE)
         # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
@@ -1149,7 +1150,7 @@ with aba_geral:
 
 
         # ==========================================
-        # 15. NOVA OPÇÃO 4: BARRAS AGRUPADAS (ESTOQUE VS COMPRAS VS CONSUMO)
+        # 15. BARRAS AGRUPADAS (ESTOQUE VS COMPRAS VS CONSUMO)
         # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
