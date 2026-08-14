@@ -1104,6 +1104,9 @@ with aba_geral:
                 df_duplo['Periodo'] = df_duplo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_duplo['ano_referencia'].astype(str)
                 df_duplo['Giro_Mensal'] = np.where(df_duplo['est_op'] > 0, df_duplo['con_op'] / df_duplo['est_op'], 0)
                 df_duplo['Cobertura_Meses'] = np.where(df_duplo['con_op'] > 0, df_duplo['est_op'] / df_duplo['con_op'], cobertura_meses)
+               df_duplo['Giro_Texto'] = df_duplo['Giro_Mensal'].apply(lambda x: f"{x:,.2f}x".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                df_duplo['Cob_Texto'] = df_duplo['Cobertura_Meses'].apply(lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
+
                 fig_duplo = go.Figure()
 
                 fig_duplo.add_trace(go.Scatter(
@@ -1112,17 +1115,21 @@ with aba_geral:
                     name='Giro Mensal',
                     mode='lines+markers',
                     line=dict(color='#3498db', width=3),
-                    marker=dict(size=8, color='#3498db', line=dict(color='#ffffff', width=2))
+                    marker=dict(size=8, color='#3498db', line=dict(color='#ffffff', width=2)),
+                    customdata=df_duplo['Giro_Texto'],
+                    hovertemplate='Giro: %{customdata}<extra></extra>'
                 ))
 
                 fig_duplo.add_trace(go.Scatter(
                     x=df_duplo['Periodo'],
                     y=df_duplo['Cobertura_Meses'],
-                    name='Cobertura (Meses)',
+                    name='Cobertura',
                     mode='lines+markers',
                     line=dict(color='#e74c3c', width=3),
                     marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
-                    yaxis='y2'
+                    yaxis='y2',
+                    customdata=df_duplo['Cob_Texto'],
+                    hovertemplate='Cobertura: %{customdata} meses<extra></extra>'
                 ))
 
                 if periodo_ativo and not df_duplo.empty:
