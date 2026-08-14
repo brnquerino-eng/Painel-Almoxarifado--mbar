@@ -1181,9 +1181,9 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
-     # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (COM ALTURA FIXA E SCROLL)
+    # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (COM SCROLL DE ~6 UNIDADES VISÍVEIS)
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.container(border=True):
+        with st.container(border=True, height=390):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
 
             df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
@@ -1223,12 +1223,15 @@ with aba_geral:
                 category_orders={'unidade_almoxarifado': ordem_unidades}
             )
             
+            # Altura do gráfico proporcional para forçar o scroll bonito dentro do container de 390px
+            altura_grafico = max(350, len(df_diag) * 50)
+
             fig_diag.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='#8c9ba5'),
                 margin=dict(l=130, r=20, t=20, b=20),
-                height=420,  # Altura fixa igual ao ranking da sua imagem para gerar o scroll nativo
+                height=altura_grafico,  
                 showlegend=True,
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title="")
             )
