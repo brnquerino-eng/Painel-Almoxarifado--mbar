@@ -1137,13 +1137,13 @@ with aba_geral:
                         )
 
                 fig_duplo.update_layout(
-                    **layout_transparente,
-                    hovermode='x unified',
-                    height=400,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-                    yaxis=dict(title="Giro Mensal (x)", showgrid=True, gridcolor='#232b36', zeroline=False),
-                    yaxis2=dict(title="Cobertura (Meses)", overlaying='y', side='right', showgrid=False, zeroline=False)
-                )
+    **layout_transparente,
+    hovermode='x unified',
+    height=400,
+    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
+    yaxis=dict(title="", showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False),
+    yaxis2=dict(title="", overlaying='y', side='right', showgrid=False, zeroline=False, showticklabels=False)
+)
                 fig_duplo.update_xaxes(showgrid=False, zeroline=False)
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
