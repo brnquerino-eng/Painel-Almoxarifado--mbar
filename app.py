@@ -21,7 +21,7 @@ if 'vis_obsoleto' not in st.session_state:
 if 'vis_obra' not in st.session_state:
     st.session_state.vis_obra = False
 
-# Inicialização dos estados globais de controle do painel (Padrão inicial em "Ativas")
+# Inicialização dos estados globais de controle do painel
 if 'chart_escopo' not in st.session_state:
     st.session_state.chart_escopo = "Ativas"
 if 'chart_unidades' not in st.session_state:
@@ -123,7 +123,7 @@ def carregar_dados():
 
 df_completo = carregar_dados()
 
-# Identificação automática do último mês e ano disponíveis na base inteira
+# Identificação automática do último mês e ano disponíveis
 if not df_completo.empty:
     max_ano_base = df_completo['tmp_ano_num'].max()
     max_mes_base = df_completo[df_completo['tmp_ano_num'] == max_ano_base]['tmp_mes_num'].max()
@@ -502,7 +502,7 @@ with aba_geral:
                 hoverinfo='none', visible=get_vis('vis_obra')
             ))
 
-        # 🛡️ Proteção do clique do gráfico (Anti-Quebra)
+        # Proteção do clique do gráfico
         sel_state = st.session_state.get("tendencia_geral", {})
         pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
 
@@ -542,7 +542,7 @@ with aba_geral:
                     st.session_state.filtro_periodo_grafico = None
                     st.rerun()
 
-    # 6.1 Resumo Inteligente Logo Abaixo do Gráfico
+    # Resumo Inteligente Logo Abaixo do Gráfico
     if escopo_atual == "Todas":
         texto_informativo = "Exibindo dados consolidados de **todas as unidades** (Ativas e Gerenciais)."
     elif escopo_atual == "Ativas":
@@ -555,7 +555,7 @@ with aba_geral:
 
     st.markdown(f"<p style='color: #8c9ba5; font-size: 14px; margin-top: 10px; margin-bottom: 20px;'>{texto_informativo}</p>", unsafe_allow_html=True)
 
-    # 7. Criação do DataFrame de Snapshot (para os Cards e Unidades)
+    # 7. Criação do DataFrame de Snapshot
     df_snapshot = df_filtrado
 
     if st.session_state.get('filtro_periodo_grafico'):
@@ -574,7 +574,7 @@ with aba_geral:
         else:
             df_snapshot = df_snapshot[(df_snapshot['tmp_ano_num'] == max_ano_base) & (df_snapshot['tmp_mes_num'] == max_mes_base)]
 
-    # 8. Somas e Contagens Dinâmicas baseadas no Snapshot Sincronizado
+    # 8. Somas e Contagens Dinâmicas
     def somar_coluna(dataframe, coluna):
         if coluna not in dataframe.columns or dataframe.empty:
             return 0.0
@@ -608,7 +608,7 @@ with aba_geral:
     else:
         val_obra = 0.0
 
-    # --- ⚡ CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (VETORIZADO E YTD ACUMULADO) ---
+    # --- ⚡ CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (YTD) ---
     giro_mensal = 0.0
     giro_anual = 0.0
     cobertura_meses = 0.0
@@ -661,9 +661,6 @@ with aba_geral:
 
     def fmt_int(val):
         return f"{val:,}".replace(',', '.')
-
-    def fmt_pct(val):
-        return f"{val * 100:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "%"
 
     def fmt_dec(val):
         return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
@@ -780,7 +777,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    # 10. GRÁFICOS INTERATIVOS SECUNDÁRIOS - NOVA DISPOSIÇÃO
+    # 10. GRÁFICOS SECUNDÁRIOS
     st.markdown("<br>", unsafe_allow_html=True)
 
     if not df_filtrado.empty:
@@ -791,7 +788,7 @@ with aba_geral:
             margin=dict(l=10, r=10, t=10, b=10)
         )
 
-        # LINHA 1: RANKING COM SCROLL INTERNO vs COMPOSIÇÃO DE ESTOQUE (ROSCA)
+        # LINHA 1: RANKING POR UNIDADE VS COMPOSIÇÃO DE ESTOQUE (ROSCA)
         col_c1, col_c2 = st.columns([5, 5], gap="medium")
 
         with col_c1:
@@ -869,7 +866,7 @@ with aba_geral:
                 
                 st.plotly_chart(fig_rosca, use_container_width=True, config={'displayModeBar': False}, key="rosca_composicao")
 
-        # LINHA 2: EVOLUÇÃO DE COMPRAS VS CONSUMO (COM HOLOFOTE SINCRONIZADO)
+        # EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
@@ -887,7 +884,6 @@ with aba_geral:
             fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'],
                                            name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
 
-            periodo_ativo = st.session_state.get("filtro_periodo_grafico")
             if periodo_ativo and not df_tempo.empty:
                 match_idx_tempo = df_tempo.index[df_tempo['Periodo'] == periodo_ativo].tolist()
                 if match_idx_tempo:
@@ -905,7 +901,7 @@ with aba_geral:
 
             st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False}, key="compras_consumo_geral")
 
-        # 11. EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (COM HOLOFOTE SINCRONIZADO)
+        # EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -983,71 +979,7 @@ with aba_geral:
 
             st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False}, key="skus_geral")
 
-
-        # ==========================================
-        # 12. GRÁFICO DE DISPERSÃO (GIRO VS COBERTURA)
-        # ==========================================
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🎯 MATRIZ DE EFICIÊNCIA: GIRO (X) VS COBERTURA EM MESES (Y) POR UNIDADE</div>", unsafe_allow_html=True)
-
-            df_sc_ytd = df_giro_ytd.copy() if 'df_giro_ytd' in locals() and not df_giro_ytd.empty else df_filtrado.copy()
-            
-            if not df_sc_ytd.empty:
-                df_sc_mensal = df_sc_ytd.groupby(['unidade_almoxarifado', 'ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
-                    est_op=('valor_saldo_atual', lambda x: x[~((df_sc_ytd.loc[x.index, 'item_critico'] == '1-Sim') | (df_sc_ytd.loc[x.index, 'nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)))].sum()),
-                    con_op=('valor_saida_cons_interno', lambda x: x[~((df_sc_ytd.loc[x.index, 'item_critico'] == '1-Sim') | (df_sc_ytd.loc[x.index, 'nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)))].abs().sum()),
-                    val_total=('valor_saldo_atual', 'sum')
-                ).reset_index()
-
-                df_unidade_metricas = df_sc_mensal.groupby('unidade_almoxarifado').agg(
-                    Estoque_Medio=('est_op', 'mean'),
-                    Consumo_Medio=('con_op', 'mean'),
-                    Valor_Total_Estoque=('val_total', 'mean')
-                ).reset_index()
-
-                df_unidade_metricas['Giro_Anual'] = np.where(
-                    df_unidade_metricas['Estoque_Medio'] > 0,
-                    (df_unidade_metricas['Consumo_Medio'] / df_unidade_metricas['Estoque_Medio']) * 12,
-                    0
-                )
-                df_unidade_metricas['Cobertura_Meses'] = np.where(
-                    df_unidade_metricas['Consumo_Medio'] > 0,
-                    df_unidade_metricas['Estoque_Medio'] / df_unidade_metricas['Consumo_Medio'],
-                    0
-                )
-                
-                df_unidade_metricas = df_unidade_metricas[df_unidade_metricas['Valor_Total_Estoque'] > 0]
-
-                fig_disp = px.scatter(
-                    df_unidade_metricas,
-                    x='Giro_Anual',
-                    y='Cobertura_Meses',
-                    size='Valor_Total_Estoque',
-                    text='unidade_almoxarifado',
-                    color='Giro_Anual',
-                    color_continuous_scale='Oranges',
-                    hover_data=['Estoque_Medio', 'Consumo_Medio']
-                )
-
-                fig_disp.update_traces(textposition='top center', textfont=dict(color='white', size=10))
-                fig_disp.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#8c9ba5'),
-                    margin=dict(l=40, r=40, t=30, b=30),
-                    height=400,
-                    showlegend=False
-                )
-                fig_disp.update_xaxes(title="Giro Anualizado (x)", showgrid=True, gridcolor='#232b36', zeroline=False)
-                fig_disp.update_yaxes(title="Cobertura Média (Meses)", showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, 36])
-
-                st.plotly_chart(fig_disp, use_container_width=True, config={'displayModeBar': False}, key="dispersao_giro_cobertura")
-
-
-        # ==========================================
-        # 13. GRÁFICO DE DUPLO EIXO (GIRO VS COBERTURA EM DUAS LINHAS COM MARCADORES)
-        # ==========================================
+        # EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (DUPLA LINHA)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (DUPLA LINHA)</div>", unsafe_allow_html=True)
@@ -1076,7 +1008,6 @@ with aba_geral:
 
                 fig_duplo = go.Figure()
 
-                # Linha 1: Giro Mensal (Eixo Y principal)
                 fig_duplo.add_trace(go.Scatter(
                     x=df_duplo['Periodo'],
                     y=df_duplo['Giro_Mensal'],
@@ -1086,7 +1017,6 @@ with aba_geral:
                     marker=dict(size=8, color='#3498db', line=dict(color='#ffffff', width=2))
                 ))
 
-                # Linha 2: Cobertura em Meses (Eixo Y secundário - Y2)
                 fig_duplo.add_trace(go.Scatter(
                     x=df_duplo['Periodo'],
                     y=df_duplo['Cobertura_Meses'],
@@ -1120,38 +1050,7 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
-
-        # ==========================================
-        # 14. TREEMAP EXECUTIVO (CONCENTRAÇÃO POR UNIDADE)
-        # ==========================================
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🗺️ TREEMAP EXECUTIVO: CONCENTRAÇÃO DE ESTOQUE POR UNIDADE</div>", unsafe_allow_html=True)
-
-            df_tree = df_snapshot.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
-            df_tree = df_tree[df_tree['valor_saldo_atual'] > 0]
-
-            if not df_tree.empty:
-                fig_tree = px.treemap(
-                    df_tree,
-                    path=['unidade_almoxarifado'],
-                    values='valor_saldo_atual',
-                    color='valor_saldo_atual',
-                    color_continuous_scale='Reds'
-                )
-                fig_tree.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#8c9ba5'),
-                    margin=dict(l=10, r=10, t=10, b=10),
-                    height=380
-                )
-                st.plotly_chart(fig_tree, use_container_width=True, config={'displayModeBar': False}, key="treemap_estoque")
-
-
-        # ==========================================
-        # 15. BARRAS AGRUPADAS (ESTOQUE VS COMPRAS VS CONSUMO)
-        # ==========================================
+        # DIAGNÓSTICO OPERACIONAL: ESTOQUE VS COMPRAS VS CONSUMO
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 DIAGNÓSTICO OPERACIONAL: ESTOQUE VS COMPRAS VS CONSUMO POR UNIDADE</div>", unsafe_allow_html=True)
