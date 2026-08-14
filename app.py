@@ -1181,7 +1181,7 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
-       # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (RANKING RANKING)
+      # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (RANKING AJUSTADO)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
@@ -1191,10 +1191,9 @@ with aba_geral:
                 Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
             ).reset_index()
 
-            # Ordenar da maior para menor compra
+            # Ordenar da menor para maior para inverter a ordem natural do Plotly horizontal (maior no topo)
             df_diag = df_diag.sort_values('Compras', ascending=True)
             
-            # Preparar formato para as labels nas barras
             df_diag['Compras_Label'] = df_diag['Compras'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
             df_diag['Consumo_Label'] = df_diag['Consumo'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
@@ -1205,7 +1204,10 @@ with aba_geral:
                 value_name='Valor'
             )
             
-            # Ajustar label baseado na métrica para aparecer na barra
+            # Forçar ordem categórica para garantir Compras acima de Consumo nas barras agrupadas
+            df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Consumo', 'Compras'], ordered=True)
+            df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
+
             df_diag_melted['Texto_Barra'] = np.where(df_diag_melted['Métrica'] == 'Compras', df_diag_melted['Compras_Label'], df_diag_melted['Consumo_Label'])
 
             fig_diag = px.bar(
@@ -1216,7 +1218,7 @@ with aba_geral:
                 barmode='group',
                 orientation='h',
                 text='Texto_Barra',
-                color_discrete_map={'Compras': '#f39c12', 'Consumo': '#3498db'}
+                color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#3498db'}
             )
             
             fig_diag.update_layout(
@@ -1226,14 +1228,11 @@ with aba_geral:
                 margin=dict(l=150, r=20, t=20, b=20),
                 height=max(400, len(df_diag) * 40),
                 showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title="")
             )
             
-            # Remover eixos e números
             fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
             fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=11))
-            
-            # Ajustar texto nas barras
             fig_diag.update_traces(textposition='outside', textfont=dict(size=10, color='#8c9ba5'))
 
             st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diagnostico_ranking_horizontal")
