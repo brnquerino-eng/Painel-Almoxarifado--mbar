@@ -753,15 +753,15 @@ with aba_geral:
             pct_str = f"{abs(pct):.1f}%".replace('.', ',')
             if pct > 0:
                 if invert_color:
-                    trend_class = "trend-down"  # Subir é bom (Verde)
+                    trend_class = "trend-down"  # Subir consumo é bom (Verde)
                 else:
-                    trend_class = "trend-up"    # Subir é ruim/alerta (Vermelho)
+                    trend_class = "trend-up"    # Subir custo/estoque é ruim (Vermelho)
                 arrow = "🔺"
             elif pct < 0:
                 if invert_color:
-                    trend_class = "trend-up"    # Descer é ruim (Vermelho)
+                    trend_class = "trend-up"    # Cair consumo é ruim/parado (Vermelho)
                 else:
-                    trend_class = "trend-down"  # Descer é bom/economia (Verde)
+                    trend_class = "trend-down"  # Cair custo/estoque é bom (Verde)
                 arrow = "🔻"
             else:
                 trend_class = "trend-neutral"
@@ -799,7 +799,7 @@ with aba_geral:
     c5, c6, c7, c8, c9 = st.columns(5)
 
     with c5: st.markdown(render_card("📥", "icon-compras", "COMPRAS", fmt_brl(val_compras), val_compras, val_compras_prev, "18px"), unsafe_allow_html=True)
-    with c6: st.markdown(render_card("📤", "icon-consumo", "CONSUMO", fmt_brl(val_consumo), val_consumo, val_consumo_prev, "18px"), unsafe_allow_html=True)
+    with c6: st.markdown(render_card("📤", "icon-consumo", "CONSUMO", fmt_brl(val_consumo), val_consumo, val_consumo_prev, "18px", invert_color=True), unsafe_allow_html=True)
     with c7: st.markdown(render_card("🏷️", "icon-skus", "SKUs ÚNICOS", fmt_int(val_skus), val_skus, val_skus_prev, "21px"), unsafe_allow_html=True)
     
     # Cálculo de tendência para o Giro (Invertido: subir giro é excelente = verde)
