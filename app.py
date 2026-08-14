@@ -1181,7 +1181,7 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
-      # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (RANKING AJUSTADO)
+     # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (RANKING PERFEITO)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
@@ -1191,8 +1191,9 @@ with aba_geral:
                 Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
             ).reset_index()
 
-            # Ordenar da menor para maior para inverter a ordem natural do Plotly horizontal (maior no topo)
+            # Ordenar da menor para maior para alinhar corretamente no eixo Y do Plotly (maior compra no topo)
             df_diag = df_diag.sort_values('Compras', ascending=True)
+            ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
             
             df_diag['Compras_Label'] = df_diag['Compras'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
             df_diag['Consumo_Label'] = df_diag['Consumo'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
@@ -1204,7 +1205,7 @@ with aba_geral:
                 value_name='Valor'
             )
             
-            # Forçar ordem categórica para garantir Compras acima de Consumo nas barras agrupadas
+            # Garantir ordem das barras (Consumo embaixo, Compras em cima)
             df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Consumo', 'Compras'], ordered=True)
             df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
 
@@ -1218,7 +1219,8 @@ with aba_geral:
                 barmode='group',
                 orientation='h',
                 text='Texto_Barra',
-                color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#3498db'}
+                color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#f39c12'},
+                category_orders={'unidade_almoxarifado': ordem_unidades}
             )
             
             fig_diag.update_layout(
@@ -1232,7 +1234,7 @@ with aba_geral:
             )
             
             fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
-            fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=11))
+            fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=11), categoryorder='array', categoryarray=ordem_unidades)
             fig_diag.update_traces(textposition='outside', textfont=dict(size=10, color='#8c9ba5'))
 
             st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diagnostico_ranking_horizontal")
