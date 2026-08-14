@@ -1078,7 +1078,7 @@ with aba_geral:
 
             st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False}, key="skus_geral")
 
-        # EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (DUPLA LINHA)
+# EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (LÓGICA YTD ACUMULADA IGUAL AOS CARDS)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (DUPLA LINHA)</div>", unsafe_allow_html=True)
@@ -1096,14 +1096,40 @@ with aba_geral:
                 df_duplo_base['estoque_op'] = df_duplo_base['val_estoque'] * mask_op_duplo
                 df_duplo_base['consumo_op'] = df_duplo_base['consumo_abs'] * mask_op_duplo
 
-                df_duplo = df_duplo_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
+                # Agrupamento base mensal
+                monthly_raw = df_duplo_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
                     est_op=('estoque_op', 'sum'),
                     con_op=('consumo_op', 'sum')
                 ).reset_index().sort_values(['tmp_ano_num', 'tmp_mes_num'])
 
-                df_duplo['Periodo'] = df_duplo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_duplo['ano_referencia'].astype(str)
-                df_duplo['Giro_Mensal'] = np.where(df_duplo['est_op'] > 0, df_duplo['con_op'] / df_duplo['est_op'], 0)
-                df_duplo['Cobertura_Meses'] = np.where(df_duplo['con_op'] > 0, df_duplo['est_op'] / df_duplo['con_op'], cobertura_meses)
+                # Cálculo acumulado YTD (Jan até o mês X de cada ano) idêntico aos cartões
+                giro_mensal_lista = []
+                cobertura_lista = []
+                periodos_lista = []
+
+                for _, row in monthly_raw.iterrows():
+                    ano_alvo = row['tmp_ano_num']
+                    mes_alvo = row['tmp_mes_num']
+                    
+                    # Filtra do mesmo ano até o mês atual da linha (YTD)
+                    sub_ytd = monthly_raw[(monthly_raw['tmp_ano_num'] == ano_alvo) & (monthly_raw['tmp_mes_num'] <= mes_alvo)]
+                    
+                    est_medio_ytd = sub_ytd['est_op'].mean()
+                    con_medio_ytd = sub_ytd['con_op'].mean()
+                    
+                    g_m = (con_medio_ytd / est_medio_ytd) if est_medio_ytd > 0 else 0.0
+                    c_m = (est_medio_ytd / con_medio_ytd) if con_medio_ytd > 0 else 0.0
+                    
+                    giro_mensal_lista.append(g_m)
+                    cobertura_lista.append(c_m)
+                    periodos_lista.append(f"{int(mes_alvo):02d}/{int(ano_alvo)}")
+
+                df_duplo = pd.DataFrame({
+                    'Periodo': periodos_lista,
+                    'Giro_Mensal': giro_mensal_lista,
+                    'Cobertura_Meses': cobertura_lista
+                })
+
                 df_duplo['Giro_Texto'] = df_duplo['Giro_Mensal'].apply(lambda x: f"{x:,.2f}x".replace(',', 'X').replace('.', ',').replace('X', '.'))
                 df_duplo['Cob_Texto'] = df_duplo['Cobertura_Meses'].apply(lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
@@ -1144,13 +1170,13 @@ with aba_geral:
                         )
 
                 fig_duplo.update_layout(
-    **layout_transparente,
-    hovermode='x unified',
-    height=400,
-    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-    yaxis=dict(title="", showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False),
-    yaxis2=dict(title="", overlaying='y', side='right', showgrid=False, zeroline=False, showticklabels=False)
-)
+                    **layout_transparente,
+                    hovermode='x unified',
+                    height=400,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
+                    yaxis=dict(title="", showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False),
+                    yaxis2=dict(title="", overlaying='y', side='right', showgrid=False, zeroline=False, showticklabels=False)
+                )
                 fig_duplo.update_xaxes(showgrid=False, zeroline=False)
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
