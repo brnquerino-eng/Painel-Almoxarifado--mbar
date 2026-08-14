@@ -1181,17 +1181,26 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
-    # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (COM SCROLL DE ~6 UNIDADES VISÍVEIS)
+   # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (CONTAINER FIXO, LEGENDA ESTÁTICA E SCROLL)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True, height=390):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
+            # Cabeçalho e Legenda fixos no topo (não rolam junto com o gráfico)
+            st.markdown("""
+                <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;'>
+                    <div style='color: #ffffff; font-size: 14px; font-weight: bold; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>
+                    <div style='display: flex; gap: 15px; font-size: 12px; color: #8c9ba5; align-items: center;'>
+                        <span><span style='color: #f39c12; font-size: 14px;'>■</span> Consumo</span>
+                        <span><span style='color: #e74c3c; font-size: 14px;'>■</span> Compras</span>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
 
             df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
                 Compras=('valor_entrada_compras', 'sum'),
                 Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
             ).reset_index()
 
-            # Ordenação do maior para o menor
+            # Ordenação estrita do maior para o menor valor de compras
             df_diag = df_diag.sort_values('Compras', ascending=True)
             ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
             
@@ -1205,7 +1214,7 @@ with aba_geral:
                 value_name='Valor'
             )
             
-            # Garantir ordem das barras (Consumo embaixo, Compras em cima)
+            # Garantir ordem das barras (Consumo embaixo, Compras em vermelho por cima)
             df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Consumo', 'Compras'], ordered=True)
             df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
 
@@ -1223,17 +1232,16 @@ with aba_geral:
                 category_orders={'unidade_almoxarifado': ordem_unidades}
             )
             
-            # Altura do gráfico proporcional para forçar o scroll bonito dentro do container de 390px
-            altura_grafico = max(350, len(df_diag) * 50)
+            # Altura dinâmica do gráfico para forçar a barra de rolagem interna perfeitamente
+            altura_grafico = max(320, len(df_diag) * 50)
 
             fig_diag.update_layout(
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='#8c9ba5'),
-                margin=dict(l=130, r=20, t=20, b=20),
+                margin=dict(l=130, r=20, t=10, b=10),
                 height=altura_grafico,  
-                showlegend=True,
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title="")
+                showlegend=False  # Desativada no Plotly para usar a legenda fixa no HTML superior
             )
             
             fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
