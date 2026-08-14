@@ -1181,49 +1181,63 @@ with aba_geral:
 
                 st.plotly_chart(fig_duplo, use_container_width=True, config={'displayModeBar': False}, key="duplo_eixo_giro_cobertura")
 
-        # DIAGNÓSTICO OPERACIONAL: ESTOQUE VS COMPRAS VS CONSUMO
+       # DIAGNÓSTICO OPERACIONAL: COMPRAS VS CONSUMO (RANKING RANKING)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 DIAGNÓSTICO OPERACIONAL: ESTOQUE VS COMPRAS VS CONSUMO POR UNIDADE</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 RANKING OPERACIONAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
 
             df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
-                Estoque=('valor_saldo_atual', 'sum'),
                 Compras=('valor_entrada_compras', 'sum'),
                 Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
             ).reset_index()
 
-            if not df_diag.empty:
-                df_diag_melted = df_diag.melt(
-                    id_vars='unidade_almoxarifado', 
-                    value_vars=['Estoque', 'Compras', 'Consumo'],
-                    var_name='Métrica', 
-                    value_name='Valor'
-                )
+            # Ordenar da maior para menor compra
+            df_diag = df_diag.sort_values('Compras', ascending=True)
+            
+            # Preparar formato para as labels nas barras
+            df_diag['Compras_Label'] = df_diag['Compras'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
+            df_diag['Consumo_Label'] = df_diag['Consumo'].apply(lambda x: f"R$ {x/1e3:,.0f}k".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
-                fig_diag = px.bar(
-                    df_diag_melted,
-                    x='unidade_almoxarifado',
-                    y='Valor',
-                    color='Métrica',
-                    barmode='group',
-                    color_discrete_map={'Estoque': '#e74c3c', 'Compras': '#f39c12', 'Consumo': '#3498db'}
-                )
-                fig_diag.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color='#8c9ba5'),
-                    margin=dict(l=10, r=10, t=30, b=50),
-                    height=400,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-                )
-                fig_diag.update_xaxes(title="", tickangle=-30, showgrid=False, zeroline=False)
-                fig_diag.update_yaxes(title="Valor (R$)", showgrid=True, gridcolor='#232b36', zeroline=False)
+            df_diag_melted = df_diag.melt(
+                id_vars=['unidade_almoxarifado', 'Compras_Label', 'Consumo_Label'], 
+                value_vars=['Compras', 'Consumo'],
+                var_name='Métrica', 
+                value_name='Valor'
+            )
+            
+            # Ajustar label baseado na métrica para aparecer na barra
+            df_diag_melted['Texto_Barra'] = np.where(df_diag_melted['Métrica'] == 'Compras', df_diag_melted['Compras_Label'], df_diag_melted['Consumo_Label'])
 
-                st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diagnostico_barras_agrupadas")
+            fig_diag = px.bar(
+                df_diag_melted,
+                x='Valor',
+                y='unidade_almoxarifado',
+                color='Métrica',
+                barmode='group',
+                orientation='h',
+                text='Texto_Barra',
+                color_discrete_map={'Compras': '#f39c12', 'Consumo': '#3498db'}
+            )
+            
+            fig_diag.update_layout(
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                font=dict(color='#8c9ba5'),
+                margin=dict(l=150, r=20, t=20, b=20),
+                height=max(400, len(df_diag) * 40),
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            
+            # Remover eixos e números
+            fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
+            fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=11))
+            
+            # Ajustar texto nas barras
+            fig_diag.update_traces(textposition='outside', textfont=dict(size=10, color='#8c9ba5'))
 
-    else:
-        st.info("Nenhum dado encontrado para os filtros selecionados.")
-
+            st.plotly_chart(fig_diag, use_container_width=True, config={'displayModeBar': False}, key="diagnostico_ranking_horizontal")
+            
 with aba_detalhada:
     if not df_snapshot.empty:
         st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
