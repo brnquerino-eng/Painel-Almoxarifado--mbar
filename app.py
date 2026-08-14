@@ -280,6 +280,8 @@ st.markdown("""
     .icon-critico { background-color: #2a1515; color: #e74c3c; }
     .icon-obsoleto { background-color: #2a2a2a; color: #9b59b6; }
     .icon-obra { background-color: #1a2a2a; color: #1abc9c; }
+    .icon-compras { background-color: #2a2211; color: #f39c12; }
+    .icon-consumo { background-color: #2a1515; color: #e74c3c; }
     .icon-skus { background-color: #1a222d; color: #3498db; }
     .icon-giro { background-color: #221a2d; color: #9b59b6; }
     .icon-cobertura { background-color: #2a2211; color: #e67e22; }
@@ -581,6 +583,12 @@ with aba_geral:
         return pd.to_numeric(dataframe[coluna], errors='coerce').fillna(0.0).sum()
 
     val_estoque = somar_coluna(df_snapshot, "valor_saldo_atual")
+    val_compras = somar_coluna(df_snapshot, "valor_entrada_compras")
+    
+    if "valor_saida_cons_interno" in df_snapshot.columns:
+        val_consumo = pd.to_numeric(df_snapshot["valor_saida_cons_interno"], errors='coerce').fillna(0.0).abs().sum()
+    else:
+        val_consumo = 0.0
 
     if "qtde_saldo_atual" in df_snapshot.columns and "codigo_produto" in df_snapshot.columns:
         df_skus_ativos = df_snapshot[
@@ -720,11 +728,33 @@ with aba_geral:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- LINHA OPERACIONAL ---
+    # --- LINHA OPERACIONAL (COM COMPRAS E CONSUMO À ESQUERDA) ---
     st.markdown("<div class='section-title'>⚙️ LINHA OPERACIONAL</div>", unsafe_allow_html=True)
-    c5, c6, c7 = st.columns(3)
+    c5, c6, c7, c8, c9 = st.columns(5)
 
     with c5:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-compras">📥</div>
+                <div class="card-title">VALOR TOTAL DE COMPRAS</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_compras)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c6:
+        st.markdown(f"""
+        <div class="card-box">
+            <div class="card-header">
+                <div class="icon-box icon-consumo">📤</div>
+                <div class="card-title">VALOR TOTAL DE CONSUMO</div>
+            </div>
+            <div class="card-value">{fmt_brl(val_consumo)}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c7:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
@@ -735,7 +765,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    with c6:
+    with c8:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
@@ -756,7 +786,7 @@ with aba_geral:
         </div>
         """, unsafe_allow_html=True)
 
-    with c7:
+    with c9:
         st.markdown(f"""
         <div class="card-box">
             <div class="card-header">
