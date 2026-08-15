@@ -1384,20 +1384,6 @@ with aba_geral:
 
                     st.markdown("<br>", unsafe_allow_html=True)
 
-                    # Top 10 Ação Imediata
-                    st.markdown("<div style='color: #ffffff; font-size: 13px; font-weight: bold; margin-bottom: 10px; border-left: 3px solid #e74c3c; padding-left: 8px;'>🔥 TOP 10 - MAIORES VALORES PARADOS (AÇÃO IMEDIATA)</div>", unsafe_allow_html=True)
-                    
-                    df_top10 = df_parados_3m.sort_values(by='valor_saldo_atual', ascending=False).head(10)
-                    
-                    df_top10_exib = pd.DataFrame()
-                    df_top10_exib['Unidade'] = df_top10['unidade_almoxarifado']
-                    df_top10_exib['Código SKU'] = df_top10['codigo_produto']
-                    df_top10_exib['Estoque Atual'] = df_top10['qtde_saldo_atual'].apply(fmt_int)
-                    df_top10_exib['Valor Parado'] = df_top10['valor_saldo_atual'].apply(fmt_brl)
-                    df_top10_exib['Meses Inativo'] = df_parados_3m.loc[df_top10.index, 'meses_parado'].astype(str) + " meses"
-
-                    st.dataframe(df_top10_exib, use_container_width=True, hide_index=True)
-
                     # Expander Otimizado para Auditoria Completa
                     with st.expander("📂 Abrir Auditoria Completa de Itens Parados (Filtro por Unidade)"):
                         unidades_paradas = sorted(df_parados_3m['unidade_almoxarifado'].unique().tolist())
