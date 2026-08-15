@@ -1114,14 +1114,13 @@ with aba_geral:
 
                     st.plotly_chart(fig_sku, use_container_width=True, config={'displayModeBar': False}, key="ranking_skus_lado")
 
-        # ================= NOVO GRÁFICO: MATERIAIS PARADOS HÁ MAIS DE 3 MESES =================
+        # ================= NOVO GRÁFICO: MATERIAIS PARADOS HÁ MAIS DE 3 MESES (COHORT INTELIGENTE) =================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>⏳ MATERIAIS PARADOS HÁ MAIS DE 3 MESES (SEM MOVIMENTAÇÃO)</div>", unsafe_allow_html=True)
-            st.markdown("<p style='color: #8c9ba5; font-size: 12px; margin-bottom: 15px;'>Exclui itens Críticos e Obsoletos. Agrupamento por tempo de inatividade em meses a partir do período selecionado.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #8c9ba5; font-size: 12px; margin-bottom: 15px;'>Exclui itens Críticos e Obsoletos. Contabiliza o ciclo de inatividade considerando também o mês de origem.</p>", unsafe_allow_html=True)
 
             if not df_filtrado.empty:
-                # Lógica de cálculo de inatividade por SKU/Unidade
                 df_calc = df_filtrado.copy()
                 df_calc['tempo_idx'] = df_calc['tmp_ano_num'] * 12 + df_calc['tmp_mes_num']
                 
@@ -1159,12 +1158,17 @@ with aba_geral:
 
                 df_inativo = pd.merge(df_snap_atual, df_mov, on=['unidade_almoxarifado', 'codigo_produto'], how='left')
                 
-                # Se nunca teve consumo, pega o primeiro registro histórico
+                # Pegar o primeiro registro histórico na base
                 df_min_hist = df_calc.groupby(['unidade_almoxarifado', 'codigo_produto'])['tempo_idx'].min().reset_index()
                 df_min_hist.rename(columns={'tempo_idx': 'primeiro_hist_idx'}, inplace=True)
                 df_inativo = pd.merge(df_inativo, df_min_hist, on=['unidade_almoxarifado', 'codigo_produto'], how='left')
                 
-                df_inativo['ultimo_mov_idx'] = df_inativo['ultimo_mov_idx'].fillna(df_inativo['primeiro_hist_idx']).fillna(snapshot_idx)
+                # A grande sacada do "Anel de Vedação": 
+                # Se nunca movimentou na base, considera-se que a inatividade começou um mês antes do primeiro registro,
+                # para que os meses parados fechados (ex: Jan, Fev, Mar) somem os 3 meses corretos.
+                df_inativo['ultimo_mov_idx'] = df_inativo['ultimo_mov_idx'].fillna(df_inativo['primeiro_hist_idx'] - 1).fillna(snapshot_idx)
+                
+                # Cálculo da inatividade real com "burn-down/envelhecimento"
                 df_inativo['meses_parado'] = snapshot_idx - df_inativo['ultimo_mov_idx']
 
                 # Filtrar apenas >= 3 meses parados
@@ -1194,7 +1198,14 @@ with aba_geral:
                         showlegend=False
                     )
 
-                    fig_parados.update_xaxes(title="Tempo de Inatividade", showgrid=False, zeroline=False)
+                    # Garantir que a ordem das barras sempre siga a cronologia (3, 4, 5...)
+                    fig_parados.update_xaxes(
+                        title="", 
+                        showgrid=False, 
+                        zeroline=False, 
+                        categoryorder='array', 
+                        categoryarray=df_chart_parados['Meses_Label']
+                    )
                     fig_parados.update_yaxes(title="", showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False)
                     fig_parados.update_traces(textposition='auto', textfont=dict(color='white', size=11))
 
