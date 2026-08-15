@@ -1114,17 +1114,16 @@ with aba_geral:
 
                     st.plotly_chart(fig_sku, use_container_width=True, config={'displayModeBar': False}, key="ranking_skus_lado")
 
-        # ================= NOVO GRÁFICO: MATERIAIS PARADOS HÁ MAIS DE 3 MESES (COHORT INTELIGENTE) =================
+        # ================= NOVO GRÁFICO & AUDITORIA: MATERIAIS PARADOS HÁ MAIS DE 3 MESES =================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>⏳ MATERIAIS PARADOS HÁ MAIS DE 3 MESES (SEM MOVIMENTAÇÃO)</div>", unsafe_allow_html=True)
-            st.markdown("<p style='color: #8c9ba5; font-size: 12px; margin-bottom: 15px;'>Exclui itens Críticos e Obsoletos. Contabiliza o ciclo de inatividade considerando também o mês de origem.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #8c9ba5; font-size: 12px; margin-bottom: 15px;'>Exclui itens Críticos e Obsoletos. Contabiliza o ciclo de inatividade considerando também o mês de origem (Efeito Coorte).</p>", unsafe_allow_html=True)
 
             if not df_filtrado.empty:
                 df_calc = df_filtrado.copy()
                 df_calc['tempo_idx'] = df_calc['tmp_ano_num'] * 12 + df_calc['tmp_mes_num']
                 
-                # Definir o teto do período ativo atual
                 p_ativo_str = st.session_state.get('filtro_periodo_grafico')
                 if p_ativo_str:
                     m_At, a_At = p_ativo_str.split('/')
@@ -1132,19 +1131,16 @@ with aba_geral:
                 else:
                     snapshot_idx = int(max_ano_base) * 12 + int(max_mes_base)
 
-                # Filtrar histórico até o snapshot e excluir críticos e obsoletos
                 df_calc = df_calc[
                     (df_calc['tempo_idx'] <= snapshot_idx) &
                     (df_calc['item_critico'] != '1-Sim') &
                     (~df_calc['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))
                 ]
 
-                # Identificar último movimento com consumo (> 0)
                 df_calc['teve_consumo'] = df_calc['valor_saida_cons_interno'].abs() > 0
                 df_mov = df_calc[df_calc['teve_consumo']].groupby(['unidade_almoxarifado', 'codigo_produto'])['tempo_idx'].max().reset_index()
                 df_mov.rename(columns={'tempo_idx': 'ultimo_mov_idx'}, inplace=True)
 
-                # Snapshot do mês atual (itens com saldo > 0)
                 m_teto_val = snapshot_idx % 12
                 if m_teto_val == 0: m_teto_val = 12
                 a_teto_val = snapshot_idx // 12 if m_teto_val != 12 else (snapshot_idx // 12) - 1
@@ -1158,20 +1154,13 @@ with aba_geral:
 
                 df_inativo = pd.merge(df_snap_atual, df_mov, on=['unidade_almoxarifado', 'codigo_produto'], how='left')
                 
-                # Pegar o primeiro registro histórico na base
                 df_min_hist = df_calc.groupby(['unidade_almoxarifado', 'codigo_produto'])['tempo_idx'].min().reset_index()
                 df_min_hist.rename(columns={'tempo_idx': 'primeiro_hist_idx'}, inplace=True)
                 df_inativo = pd.merge(df_inativo, df_min_hist, on=['unidade_almoxarifado', 'codigo_produto'], how='left')
                 
-                # A grande sacada do "Anel de Vedação": 
-                # Se nunca movimentou na base, considera-se que a inatividade começou um mês antes do primeiro registro,
-                # para que os meses parados fechados (ex: Jan, Fev, Mar) somem os 3 meses corretos.
                 df_inativo['ultimo_mov_idx'] = df_inativo['ultimo_mov_idx'].fillna(df_inativo['primeiro_hist_idx'] - 1).fillna(snapshot_idx)
-                
-                # Cálculo da inatividade real com "burn-down/envelhecimento"
                 df_inativo['meses_parado'] = snapshot_idx - df_inativo['ultimo_mov_idx']
 
-                # Filtrar apenas >= 3 meses parados
                 df_parados_3m = df_inativo[df_inativo['meses_parado'] >= 3].copy()
 
                 if not df_parados_3m.empty:
@@ -1198,7 +1187,6 @@ with aba_geral:
                         showlegend=False
                     )
 
-                    # Garantir que a ordem das barras sempre siga a cronologia (3, 4, 5...)
                     fig_parados.update_xaxes(
                         title="", 
                         showgrid=False, 
@@ -1210,6 +1198,44 @@ with aba_geral:
                     fig_parados.update_traces(textposition='auto', textfont=dict(color='white', size=11))
 
                     st.plotly_chart(fig_parados, use_container_width=True, config={'displayModeBar': False}, key="grafico_materiais_parados")
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+                    # Top 10 Ação Imediata
+                    st.markdown("<div style='color: #ffffff; font-size: 13px; font-weight: bold; margin-bottom: 10px; border-left: 3px solid #f39c12; padding-left: 8px;'>🔥 TOP 10 - MAIORES VALORES PARADOS (AÇÃO IMEDIATA)</div>", unsafe_allow_html=True)
+                    
+                    df_top10 = df_parados_3m.sort_values(by='valor_saldo_atual', ascending=False).head(10)
+                    
+                    df_top10_exib = pd.DataFrame()
+                    df_top10_exib['Unidade'] = df_top10['unidade_almoxarifado']
+                    df_top10_exib['Código SKU'] = df_top10['codigo_produto']
+                    df_top10_exib['Estoque Atual'] = df_top10['qtde_saldo_atual'].apply(fmt_int)
+                    df_top10_exib['Valor Parado'] = df_top10['valor_saldo_atual'].apply(fmt_brl)
+                    df_top10_exib['Meses Inativo'] = df_parados_3m.loc[df_top10.index, 'meses_parado'].astype(str) + " meses"
+
+                    st.dataframe(df_top10_exib, use_container_width=True, hide_index=True)
+
+                    # Expander Otimizado para Auditoria Completa
+                    with st.expander("📂 Abrir Auditoria Completa de Itens Parados (Filtro por Unidade)"):
+                        unidades_paradas = sorted(df_parados_3m['unidade_almoxarifado'].unique().tolist())
+                        unidade_filtro_audit = st.selectbox("Selecione a Unidade para Auditoria:", ["Todas as Unidades"] + unidades_paradas, key="select_audit_parados")
+                        
+                        df_audit_view = df_parados_3m
+                        if unidade_filtro_audit != "Todas as Unidades":
+                            df_audit_view = df_parados_3m[df_parados_3m['unidade_almoxarifado'] == unidade_filtro_audit]
+                        
+                        df_audit_view = df_audit_view.sort_values(by='valor_saldo_atual', ascending=False)
+
+                        df_audit_exib = pd.DataFrame()
+                        df_audit_exib['Unidade'] = df_audit_view['unidade_almoxarifado']
+                        df_audit_exib['Código SKU'] = df_audit_view['codigo_produto']
+                        df_audit_exib['Local Estoque'] = df_audit_view['nome_local_estoque']
+                        df_audit_exib['Quantidade'] = df_audit_view['qtde_saldo_atual'].apply(fmt_int)
+                        df_audit_exib['Valor Parado'] = df_audit_view['valor_saldo_atual'].apply(fmt_brl)
+                        df_audit_exib['Meses Parado'] = df_audit_view['meses_parado'].astype(str) + " meses"
+
+                        st.dataframe(df_audit_exib, use_container_width=True, hide_index=True)
+
                 else:
                     st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
