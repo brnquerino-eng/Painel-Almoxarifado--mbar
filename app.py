@@ -53,17 +53,19 @@ supabase = conectar_supabase()
 table_name = "painel_estoque"
 
 # 2. Performance Otimizada e Estável com Retry Progressivo
-@st.cache_data()
+@st.cache_data(show_spinner=False)
 def carregar_dados():
     try:
         with st.spinner("Carregando e normalizando base de dados em alta performance..."):
-            count_res = supabase.table(table_name).select("*", count="exact", head=True).execute()
+            count_res = supabase.table(table_name).select("id", count="exact", head=True).execute()
             total_rows = getattr(count_res, 'count', None)
 
             if not total_rows or total_rows == 0:
                 total_rows = 460000  # Fallback de segurança
 
-            batch_size = 1000
+            # Lotes maiores reduzem drasticamente o número de requisições ao Supabase.
+            # 5.000 é um compromisso conservador entre velocidade e estabilidade.
+            batch_size = 5000
             ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
 
             all_data = []
@@ -97,24 +99,39 @@ def carregar_dados():
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
 
-            def limpar_valor(val):
-                if pd.isna(val) or val is None:
-                    return ""
-                s_val = str(val).strip()
-                if s_val.endswith('.0'):
-                    s_val = s_val[:-2]
-                return s_val
-
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "nome_produto", "item_critico", "nome_local_estoque"]:
+            # Normalização vetorizada: evita milhões de chamadas Python via .apply().
+            text_cols = [
+                "mes_referencia", "ano_referencia", "codigo_produto",
+                "nome_produto", "item_critico", "nome_local_estoque"
+            ]
+            for col in text_cols:
                 if col in df.columns:
-                    df[col] = df[col].apply(limpar_valor)
+                    s = df[col].astype("string").fillna("").str.strip()
+                    df[col] = s.str.replace(r"\.0$", "", regex=True)
 
-            for col in ["valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno", "qtde_saldo_atual"]:
+            numeric_cols = [
+                "valor_saldo_atual", "valor_entrada_compras",
+                "valor_saida_cons_interno", "qtde_saldo_atual"
+            ]
+            for col in numeric_cols:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
-            df['tmp_ano_num'] = pd.to_numeric(df['ano_referencia'], errors='coerce').fillna(0)
-            df['tmp_mes_num'] = pd.to_numeric(df['mes_referencia'], errors='coerce').fillna(0)
+            df['tmp_ano_num'] = pd.to_numeric(df['ano_referencia'], errors='coerce').fillna(0).astype('int32')
+            df['tmp_mes_num'] = pd.to_numeric(df['mes_referencia'], errors='coerce').fillna(0).astype('int16')
+
+            # Colunas auxiliares calculadas uma única vez e reutilizadas no dashboard.
+            df['consumo_abs'] = df['valor_saida_cons_interno'].abs()
+            df['is_critico'] = df['item_critico'].eq('1-Sim')
+            df['is_obsoleto'] = df['nome_local_estoque'].str.contains('obsoleto', case=False, na=False)
+            df['is_obra'] = df['nome_local_estoque'].str.contains('obra', case=False, na=False)
+            df['tempo_idx'] = (df['tmp_ano_num'] * 12 + df['tmp_mes_num']).astype('int32')
+            df['teve_consumo'] = df['consumo_abs'].gt(0)
+
+            # Categorias reduzem bastante o consumo de memória para colunas repetitivas.
+            for col in ["unidade_almoxarifado", "item_critico", "nome_local_estoque"]:
+                if col in df.columns:
+                    df[col] = df[col].astype('category')
 
             return df
     except Exception as e:
@@ -454,17 +471,17 @@ with aba_geral:
         df_estoque_mes = df_estoque_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
         df_estoque_mes['Periodo'] = df_estoque_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_estoque_mes['ano_referencia'].astype(str)
 
-        df_critico_trend = df_chart_base[df_chart_base['item_critico'] == '1-Sim']
+        df_critico_trend = df_chart_base[df_chart_base['is_critico']]
         df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
         df_critico_mes = df_critico_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
         df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
 
-        df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
+        df_obsoleto_trend = df_chart_base[df_chart_base['is_obsoleto']]
         df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
         df_obsoleto_mes = df_obsoleto_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
         df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
 
-        df_obra_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('obra', case=False, na=False)]
+        df_obra_trend = df_chart_base[df_chart_base['is_obra']]
         df_obra_mes = df_obra_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
         df_obra_mes = df_obra_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
         df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
@@ -643,28 +660,28 @@ with aba_geral:
 
     val_estoque = somar_coluna(df_snapshot, "valor_saldo_atual")
     val_compras = somar_coluna(df_snapshot, "valor_entrada_compras")
-    val_consumo = pd.to_numeric(df_snapshot["valor_saida_cons_interno"], errors='coerce').fillna(0.0).abs().sum() if "valor_saida_cons_interno" in df_snapshot.columns else 0.0
+    val_consumo = df_snapshot['consumo_abs'].sum() if 'consumo_abs' in df_snapshot.columns else 0.0
 
     if "qtde_saldo_atual" in df_snapshot.columns and "codigo_produto" in df_snapshot.columns:
         val_skus = df_snapshot[(df_snapshot["qtde_saldo_atual"] > 0) & (df_snapshot["codigo_produto"] != "")]["codigo_produto"].nunique()
     else: val_skus = 0
 
-    val_critico = somar_coluna(df_snapshot[df_snapshot.get("item_critico", "") == "1-Sim"], "valor_saldo_atual") if not df_snapshot.empty else 0.0
-    val_obsoleto = somar_coluna(df_snapshot[df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)], "valor_saldo_atual") if not df_snapshot.empty else 0.0
-    val_obra = somar_coluna(df_snapshot[df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)], "valor_saldo_atual") if not df_snapshot.empty else 0.0
+    val_critico = somar_coluna(df_snapshot[df_snapshot['is_critico']], "valor_saldo_atual") if not df_snapshot.empty else 0.0
+    val_obsoleto = somar_coluna(df_snapshot[df_snapshot['is_obsoleto']], "valor_saldo_atual") if not df_snapshot.empty else 0.0
+    val_obra = somar_coluna(df_snapshot[df_snapshot['is_obra']], "valor_saldo_atual") if not df_snapshot.empty else 0.0
 
     # 8.1 Somas e Contagens Dinâmicas (Mês Anterior para Tendência)
     val_estoque_prev = somar_coluna(df_snapshot_prev, "valor_saldo_atual")
     val_compras_prev = somar_coluna(df_snapshot_prev, "valor_entrada_compras")
-    val_consumo_prev = pd.to_numeric(df_snapshot_prev["valor_saida_cons_interno"], errors='coerce').fillna(0.0).abs().sum() if "valor_saida_cons_interno" in df_snapshot_prev.columns else 0.0
+    val_consumo_prev = df_snapshot_prev['consumo_abs'].sum() if 'consumo_abs' in df_snapshot_prev.columns else 0.0
 
     if "qtde_saldo_atual" in df_snapshot_prev.columns and "codigo_produto" in df_snapshot_prev.columns:
         val_skus_prev = df_snapshot_prev[(df_snapshot_prev["qtde_saldo_atual"] > 0) & (df_snapshot_prev["codigo_produto"] != "")]["codigo_produto"].nunique()
     else: val_skus_prev = 0
 
-    val_critico_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("item_critico", "") == "1-Sim"], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
-    val_obsoleto_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
-    val_obra_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
+    val_critico_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev['is_critico']], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
+    val_obsoleto_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev['is_obsoleto']], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
+    val_obra_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev['is_obra']], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
 
     # --- ⚡ CÁLCULO DO GIRO E COBERTURA DE ESTOQUE (YTD E ANTERIOR) ---
     giro_mensal, giro_anual, cobertura_meses, cobertura_anos = 0.0, 0.0, 0.0, 0.0
@@ -680,21 +697,16 @@ with aba_geral:
             ano_ativo_val = int(df_filtrado['tmp_ano_num'].max())
             mes_teto_val = int(df_filtrado[df_filtrado['tmp_ano_num'] == ano_ativo_val]['tmp_mes_num'].max())
 
-        df_giro_ytd = df_filtrado[
+        df_giro_ytd = df_filtrado.loc[
             (df_filtrado['tmp_ano_num'] == ano_ativo_val) & 
-            (df_filtrado['tmp_mes_num'] <= mes_teto_val)
+            (df_filtrado['tmp_mes_num'] <= mes_teto_val),
+            ['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num',
+             'valor_saldo_atual', 'consumo_abs', 'is_critico', 'is_obsoleto']
         ].copy()
 
-        df_giro_ytd['consumo_abs'] = pd.to_numeric(df_giro_ytd['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
-        df_giro_ytd['val_estoque'] = pd.to_numeric(df_giro_ytd['valor_saldo_atual'], errors='coerce').fillna(0.0)
-
-        mask_operacional = ~(
-            (df_giro_ytd['item_critico'] == '1-Sim') | 
-            (df_giro_ytd['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))
-        )
-
-        df_giro_ytd['estoque_op'] = df_giro_ytd['val_estoque'] * mask_operacional
-        df_giro_ytd['consumo_op'] = df_giro_ytd['consumo_abs'] * mask_operacional
+        mask_operacional = ~(df_giro_ytd['is_critico'] | df_giro_ytd['is_obsoleto'])
+        df_giro_ytd['estoque_op'] = df_giro_ytd['valor_saldo_atual'].where(mask_operacional, 0.0)
+        df_giro_ytd['consumo_op'] = df_giro_ytd['consumo_abs'].where(mask_operacional, 0.0)
 
         monthly_df = df_giro_ytd.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
             estoque_op=('estoque_op', 'sum'),
@@ -715,16 +727,16 @@ with aba_geral:
         # Cálculo do Giro/Cobertura do Mês Anterior Exato para as Setas
         m_teto_prev = mes_teto_val - 1 if mes_teto_val > 1 else 12
         ano_prev_giro = ano_ativo_val if mes_teto_val > 1 else ano_ativo_val - 1
-        df_giro_prev = df_filtrado[
+        df_giro_prev = df_filtrado.loc[
             (df_filtrado['tmp_ano_num'] == ano_prev_giro) & 
-            (df_filtrado['tmp_mes_num'] <= m_teto_prev)
+            (df_filtrado['tmp_mes_num'] <= m_teto_prev),
+            ['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num',
+             'valor_saldo_atual', 'consumo_abs', 'is_critico', 'is_obsoleto']
         ].copy()
         if not df_giro_prev.empty:
-            df_giro_prev['consumo_abs'] = pd.to_numeric(df_giro_prev['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
-            df_giro_prev['val_estoque'] = pd.to_numeric(df_giro_prev['valor_saldo_atual'], errors='coerce').fillna(0.0)
-            mask_op_prev = ~((df_giro_prev['item_critico'] == '1-Sim') | (df_giro_prev['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)))
-            df_giro_prev['estoque_op'] = df_giro_prev['val_estoque'] * mask_op_prev
-            df_giro_prev['consumo_op'] = df_giro_prev['consumo_abs'] * mask_op_prev
+            mask_op_prev = ~(df_giro_prev['is_critico'] | df_giro_prev['is_obsoleto'])
+            df_giro_prev['estoque_op'] = df_giro_prev['valor_saldo_atual'].where(mask_op_prev, 0.0)
+            df_giro_prev['consumo_op'] = df_giro_prev['consumo_abs'].where(mask_op_prev, 0.0)
             m_prev_df = df_giro_prev.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(estoque_op=('estoque_op', 'sum'), consumo_op=('consumo_op', 'sum')).reset_index()
             if not m_prev_df.empty:
                 est_med_p = m_prev_df['estoque_op'].mean()
@@ -971,7 +983,8 @@ with aba_geral:
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
 
             df_trend = df_filtrado
-            df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])[['valor_entrada_compras', 'valor_saida_cons_interno']].sum().reset_index()
+            df_tempo = df_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])[['valor_entrada_compras', 'consumo_abs']].sum().reset_index()
+            df_tempo = df_tempo.rename(columns={'consumo_abs': 'valor_saida_cons_interno'})
             df_tempo = df_tempo.sort_values(['tmp_ano_num', 'tmp_mes_num'])
             df_tempo['Periodo'] = df_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
 
@@ -1021,7 +1034,7 @@ with aba_geral:
                 with st.container(height=380, border=False):
                     df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(
                         Compras=('valor_entrada_compras', 'sum'),
-                        Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())
+                        Consumo=('consumo_abs', 'sum')
                     ).reset_index()
 
                     df_diag = df_diag.sort_values('Compras', ascending=True)
@@ -1198,48 +1211,48 @@ with aba_geral:
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA (DUPLA LINHA)</div>", unsafe_allow_html=True)
 
             if not df_filtrado.empty:
-                df_duplo_base = df_filtrado.copy()
-                df_duplo_base['consumo_abs'] = pd.to_numeric(df_duplo_base['valor_saida_cons_interno'], errors='coerce').fillna(0.0).abs()
-                df_duplo_base['val_estoque'] = pd.to_numeric(df_duplo_base['valor_saldo_atual'], errors='coerce').fillna(0.0)
+                df_duplo_base = df_filtrado.loc[:, [
+                    'ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num',
+                    'valor_saldo_atual', 'consumo_abs', 'is_critico', 'is_obsoleto'
+                ]].copy()
 
-                mask_op_duplo = ~(
-                    (df_duplo_base['item_critico'] == '1-Sim') | 
-                    (df_duplo_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))
+                mask_op_duplo = ~(df_duplo_base['is_critico'] | df_duplo_base['is_obsoleto'])
+                df_duplo_base['estoque_op'] = df_duplo_base['valor_saldo_atual'].where(mask_op_duplo, 0.0)
+                df_duplo_base['consumo_op'] = df_duplo_base['consumo_abs'].where(mask_op_duplo, 0.0)
+
+                monthly_raw = (
+                    df_duplo_base
+                    .groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'], sort=False)
+                    .agg(est_op=('estoque_op', 'sum'), con_op=('consumo_op', 'sum'))
+                    .reset_index()
+                    .sort_values(['tmp_ano_num', 'tmp_mes_num'])
                 )
 
-                df_duplo_base['estoque_op'] = df_duplo_base['val_estoque'] * mask_op_duplo
-                df_duplo_base['consumo_op'] = df_duplo_base['consumo_abs'] * mask_op_duplo
+                # Cálculo vetorizado do YTD: elimina o loop + filtro de DataFrame para cada mês.
+                monthly_raw['n_ytd'] = monthly_raw.groupby('tmp_ano_num').cumcount() + 1
+                monthly_raw['est_ytd'] = monthly_raw.groupby('tmp_ano_num')['est_op'].cumsum()
+                monthly_raw['con_ytd'] = monthly_raw.groupby('tmp_ano_num')['con_op'].cumsum()
+                monthly_raw['est_medio_ytd'] = monthly_raw['est_ytd'] / monthly_raw['n_ytd']
+                monthly_raw['con_medio_ytd'] = monthly_raw['con_ytd'] / monthly_raw['n_ytd']
 
-                monthly_raw = df_duplo_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num']).agg(
-                    est_op=('estoque_op', 'sum'),
-                    con_op=('consumo_op', 'sum')
-                ).reset_index().sort_values(['tmp_ano_num', 'tmp_mes_num'])
+                monthly_raw['Giro_Mensal'] = np.divide(
+                    monthly_raw['con_medio_ytd'],
+                    monthly_raw['est_medio_ytd'],
+                    out=np.zeros(len(monthly_raw), dtype=float),
+                    where=monthly_raw['est_medio_ytd'].to_numpy() > 0
+                )
+                monthly_raw['Cobertura_Meses'] = np.divide(
+                    monthly_raw['est_medio_ytd'],
+                    monthly_raw['con_medio_ytd'],
+                    out=np.zeros(len(monthly_raw), dtype=float),
+                    where=monthly_raw['con_medio_ytd'].to_numpy() > 0
+                )
+                monthly_raw['Periodo'] = (
+                    monthly_raw['tmp_mes_num'].astype(int).astype(str).str.zfill(2)
+                    + '/' + monthly_raw['ano_referencia'].astype(str)
+                )
 
-                giro_mensal_lista = []
-                cobertura_lista = []
-                periodos_lista = []
-
-                for _, row in monthly_raw.iterrows():
-                    ano_alvo = row['tmp_ano_num']
-                    mes_alvo = row['tmp_mes_num']
-                    
-                    sub_ytd = monthly_raw[(monthly_raw['tmp_ano_num'] == ano_alvo) & (monthly_raw['tmp_mes_num'] <= mes_alvo)]
-                    
-                    est_medio_ytd = sub_ytd['est_op'].mean()
-                    con_medio_ytd = sub_ytd['con_op'].mean()
-                    
-                    g_m = (con_medio_ytd / est_medio_ytd) if est_medio_ytd > 0 else 0.0
-                    c_m = (est_medio_ytd / con_medio_ytd) if con_medio_ytd > 0 else 0.0
-                    
-                    giro_mensal_lista.append(g_m)
-                    cobertura_lista.append(c_m)
-                    periodos_lista.append(f"{int(mes_alvo):02d}/{int(ano_alvo)}")
-
-                df_duplo = pd.DataFrame({
-                    'Periodo': periodos_lista,
-                    'Giro_Mensal': giro_mensal_lista,
-                    'Cobertura_Meses': cobertura_lista
-                })
+                df_duplo = monthly_raw[['Periodo', 'Giro_Mensal', 'Cobertura_Meses']].copy()
 
                 df_duplo['Giro_Texto'] = df_duplo['Giro_Mensal'].apply(lambda x: f"{x:,.2f}x".replace(',', 'X').replace('.', ',').replace('X', '.'))
                 df_duplo['Cob_Texto'] = df_duplo['Cobertura_Meses'].apply(lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
@@ -1301,8 +1314,12 @@ with aba_geral:
             st.markdown("<p style='color: #8c9ba5; font-size: 12px; margin-bottom: 15px;'>Exclui itens Críticos e Obsoletos. Contabiliza o ciclo de inatividade considerando também o mês de origem (Efeito Coorte).</p>", unsafe_allow_html=True)
 
             if not df_filtrado.empty:
-                df_calc = df_filtrado.copy()
-                df_calc['tempo_idx'] = df_calc['tmp_ano_num'] * 12 + df_calc['tmp_mes_num']
+                df_calc = df_filtrado.loc[:, [
+                    'unidade_almoxarifado', 'codigo_produto', 'nome_produto',
+                    'tmp_ano_num', 'tmp_mes_num', 'tempo_idx', 'item_critico',
+                    'is_critico', 'is_obsoleto', 'teve_consumo',
+                    'qtde_saldo_atual', 'valor_saldo_atual'
+                ]].copy()
                 
                 p_ativo_str = st.session_state.get('filtro_periodo_grafico')
                 if p_ativo_str:
@@ -1313,11 +1330,10 @@ with aba_geral:
 
                 df_calc = df_calc[
                     (df_calc['tempo_idx'] <= snapshot_idx) &
-                    (df_calc['item_critico'] != '1-Sim') &
-                    (~df_calc['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))
+                    (~df_calc['is_critico']) &
+                    (~df_calc['is_obsoleto'])
                 ]
 
-                df_calc['teve_consumo'] = df_calc['valor_saida_cons_interno'].abs() > 0
                 df_mov = df_calc[df_calc['teve_consumo']].groupby(['unidade_almoxarifado', 'codigo_produto'])['tempo_idx'].max().reset_index()
                 df_mov.rename(columns={'tempo_idx': 'ultimo_mov_idx'}, inplace=True)
 
@@ -1440,7 +1456,7 @@ with aba_detalhada:
         df_tabela = df_snapshot.groupby('unidade_almoxarifado').agg(
             Valor_Estoque=('valor_saldo_atual', 'sum'),
             Valor_Compras=('valor_entrada_compras', 'sum'),
-            Valor_Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum()),
+            Valor_Consumo=('consumo_abs', 'sum'),
             SKUs_Ativos=('codigo_produto', lambda x: x[
                 (df_snapshot.loc[x.index, 'qtde_saldo_atual'] > 0) & (x != "")
             ].nunique())
