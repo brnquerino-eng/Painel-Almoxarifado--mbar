@@ -452,7 +452,7 @@ with aba_geral:
             if st.session_state.vis_obra:
                 st.markdown("<style>div.stButton > button[key='btn_vis_obra'] { border: 1px solid #f39c12 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
 
-        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA (MESTRE) CORRIGIDO ---
+        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA (MESTRE) 100% LIMPO (SEM FILL) ---
         df_chart_base = df_filtrado
 
         df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'], observed=False)['valor_saldo_atual'].sum().reset_index()
@@ -487,6 +487,7 @@ with aba_geral:
         if not df_obsoleto_mes.empty: df_obsoleto_mes['texto_labels'] = df_obsoleto_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
         if not df_obra_mes.empty: df_obra_mes['texto_labels'] = df_obra_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
 
+        min_y_est = (df_estoque_mes['valor_saldo_atual'].min() * 0.85) if not df_estoque_mes.empty else 0
         max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
         n_pontos_est = len(df_estoque_mes)
 
@@ -504,7 +505,7 @@ with aba_geral:
         def get_vis(key):
             return True if st.session_state.get(key, False) else 'legendonly'
 
-        # Removido o fill='tozeroy' para eliminar o efeito de colunas sólidas/verticais feias
+        # Linha totalmente limpa, com mode='lines+markers+text' e sem nenhum fill
         fig_linha_estoque.add_trace(go.Scatter(
             x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
             name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
@@ -565,8 +566,8 @@ with aba_geral:
 
         fig_linha_estoque.update_layout(**layout_linha_estoque)
         fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-        # Eixo Y sem margem negativa para evitar acúmulo de zeros e R$ 0,00 na base
-        fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.3], showticklabels=False)
+        # Eixo Y delimitado da base mínima até o teto, sem margens negativas indesejadas
+        fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[min_y_est, max_y_est * 1.2], showticklabels=False)
 
         st.plotly_chart(
             fig_linha_estoque, use_container_width=True, config={'displayModeBar': False},
@@ -885,7 +886,7 @@ with aba_geral:
                     fig_sku.update_traces(textposition='auto', textfont=dict(color='white', size=10))
                     st.plotly_chart(fig_sku, use_container_width=True, config={'displayModeBar': False}, key="ranking_skus_lado")
 
-        # EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (CORRIGIDO SEM FILL / ZEROS NA BASE)
+        # EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (100% LIMPO, SEM FILL)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -897,10 +898,10 @@ with aba_geral:
             layout_sku = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=40, r=40, t=50, b=10), annotations=[dict(x=1.0, y=1.12, xref="paper", yref="paper", text=f"<b>Total Período:</b> {total_formatado}", showarrow=False, font=dict(color="#ffffff", size=12, family="monospace"), bgcolor="#1a222d", bordercolor="#333d4d", borderwidth=1, borderpad=6, align="right")])
             
             fig_sku_linha = go.Figure()
-            # Removido o fill='tozeroy' e ajustado para linhas+marcadores limpos
             min_sku = (df_sku_tempo['codigo_produto'].min() * 0.95) if not df_sku_tempo.empty else 0
             max_sku = (df_sku_tempo['codigo_produto'].max() * 1.10) if not df_sku_tempo.empty else 100
             
+            # Linha limpa com mode='lines+markers+text' (sem fill)
             fig_sku_linha.add_trace(go.Scatter(
                 x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'], 
                 customdata=textos_skus, name='SKUs Ativos', mode='lines+markers+text', 
