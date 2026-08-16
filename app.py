@@ -986,7 +986,7 @@ with aba_geral:
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
-                # EXPANDER COM A NOVA AUDITORIA, FILTROS DUPLOS E EXCEL PROFISSIONAL
+                # EXPANDER COM A NOVA AUDITORIA, FILTROS DUPLOS E EXCEL EM FORMATO DE TABELA
                 with st.expander("📂 Abrir Lista Completa de Itens Parados"):
                     col_f1, col_f2 = st.columns(2)
                     unidades_paradas = sorted(df_parados_3m['unidade_almoxarifado'].unique().tolist())
@@ -1032,29 +1032,41 @@ with aba_geral:
 
                     output = io.BytesIO()
                     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        df_audit_excel.to_excel(writer, index=False, sheet_name='Itens Parados')
+                        # Escreve os dados a partir da linha 1 (deixando a linha 0 para o cabeçalho automático da Tabela)
+                        df_audit_excel.to_excel(writer, index=False, header=False, startrow=1, sheet_name='Itens Parados')
                         workbook = writer.book
                         worksheet = writer.sheets['Itens Parados']
                         
-                        # Formatos
-                        header_format = workbook.add_format({'bold': True, 'fg_color': '#D85C27', 'font_color': '#FFFFFF', 'border': 1})
+                        num_rows = len(df_audit_excel)
+                        num_cols = len(df_audit_excel.columns)
+                        
+                        # Criando a estrutura de colunas para a Tabela nativa do Excel
+                        col_settings = [{'header': col} for col in df_audit_excel.columns]
+                        
+                        # Adicionando a formatação de Tabela Oficial do Excel
+                        if num_rows > 0:
+                            worksheet.add_table(0, 0, num_rows, num_cols - 1, {
+                                'columns': col_settings,
+                                'style': 'Table Style Medium 14' # Estilo com tons vibrantes (laranja escuro/quente)
+                            })
+                        else:
+                            # Prevenção de erro se a tabela estiver vazia pelos filtros
+                            worksheet.write_row(0, 0, df_audit_excel.columns)
+                        
+                        # Formatos de números para a Tabela
                         inteiro_format = workbook.add_format({'num_format': '#,##0'})
                         moeda_format = workbook.add_format({'num_format': 'R$ #,##0.00'})
                         
-                        # Formatar Cabeçalho
-                        for col_num, value in enumerate(df_audit_excel.columns.values):
-                            worksheet.write(0, col_num, value, header_format)
-                            
-                        # Formatar Colunas Específicas
-                        worksheet.set_column('A:A', 20) # Unidade
-                        worksheet.set_column('B:B', 15) # Código SKU
-                        worksheet.set_column('C:C', 45) # Nome do Produto (bem largo)
-                        worksheet.set_column('D:D', 15, inteiro_format) # Quantidade como número inteiro
-                        worksheet.set_column('E:E', 20, moeda_format)   # Valor Parado como Moeda R$ nativa
-                        worksheet.set_column('F:F', 15, inteiro_format) # Meses Parado como número
+                        # Definindo as larguras das colunas e aplicando os formatos
+                        worksheet.set_column(0, 0, 20) # Unidade
+                        worksheet.set_column(1, 1, 15) # Código SKU
+                        worksheet.set_column(2, 2, 45) # Nome do Produto
+                        worksheet.set_column(3, 3, 15, inteiro_format) # Quantidade
+                        worksheet.set_column(4, 4, 20, moeda_format)   # Valor Parado
+                        worksheet.set_column(5, 5, 15, inteiro_format) # Meses Parado
 
                     st.download_button(
-                        label="📥 Baixar Lista Profissional em Excel (.xlsx)",
+                        label="📥 Baixar em Formato de Tabela do Excel (.xlsx)",
                         data=output.getvalue(),
                         file_name="auditoria_itens_parados.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
