@@ -95,7 +95,7 @@ def carregar_dados():
 
             df = pd.DataFrame(all_data)
 
-            # Limpeza vetorizada de strings (sem .apply individual, muito mais rápido)
+            # Limpeza vetorizada de strings
             for col in ["mes_referencia", "ano_referencia", "codigo_produto", "nome_produto", "item_critico", "nome_local_estoque", "unidade_almoxarifado"]:
                 if col in df.columns:
                     df[col] = df[col].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
@@ -112,10 +112,10 @@ def carregar_dados():
             df['tmp_ano_num'] = pd.to_numeric(df['ano_referencia'], errors='coerce').fillna(0).astype(int)
             df['tmp_mes_num'] = pd.to_numeric(df['mes_referencia'], errors='coerce').fillna(0).astype(int)
             
-            # Pré-cálculo do Índice Temporal dentro do cache (ganho brutal de performance)
+            # Pré-cálculo do Índice Temporal dentro do cache
             df['tempo_idx'] = df['tmp_ano_num'] * 12 + df['tmp_mes_num']
 
-            # Compressão de memória com Tipagem Categoria para colunas repetidas
+            # Compressão de memória com Tipagem Categoria
             colunas_categoricas = ["unidade_almoxarifado", "item_critico", "nome_local_estoque", "ano_referencia", "mes_referencia"]
             for col in colunas_categoricas:
                 if col in df.columns:
@@ -452,7 +452,7 @@ with aba_geral:
             if st.session_state.vis_obra:
                 st.markdown("<style>div.stButton > button[key='btn_vis_obra'] { border: 1px solid #f39c12 !important; color: #ffffff !important; }</style>", unsafe_allow_html=True)
 
-        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA (MESTRE) ---
+        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA (MESTRE) CORRIGIDO ---
         df_chart_base = df_filtrado
 
         df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'], observed=False)['valor_saldo_atual'].sum().reset_index()
@@ -504,12 +504,13 @@ with aba_geral:
         def get_vis(key):
             return True if st.session_state.get(key, False) else 'legendonly'
 
+        # Removido o fill='tozeroy' para eliminar o efeito de colunas sólidas/verticais feias
         fig_linha_estoque.add_trace(go.Scatter(
             x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
             name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
             textposition='top center', textfont=dict(color='white', size=11),
             line=dict(color='#e74c3c', width=3), marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
-            fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.08)', hoverinfo='none',
+            hoverinfo='none',
             visible=get_vis('vis_total')
         ))
 
@@ -564,7 +565,8 @@ with aba_geral:
 
         fig_linha_estoque.update_layout(**layout_linha_estoque)
         fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
-        fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
+        # Eixo Y sem margem negativa para evitar acúmulo de zeros e R$ 0,00 na base
+        fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, max_y_est * 1.3], showticklabels=False)
 
         st.plotly_chart(
             fig_linha_estoque, use_container_width=True, config={'displayModeBar': False},
@@ -883,7 +885,7 @@ with aba_geral:
                     fig_sku.update_traces(textposition='auto', textfont=dict(color='white', size=10))
                     st.plotly_chart(fig_sku, use_container_width=True, config={'displayModeBar': False}, key="ranking_skus_lado")
 
-        # EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
+        # EVOLUÇÃO TEMPORAL DE SKUS ATIVOS (CORRIGIDO SEM FILL / ZEROS NA BASE)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📦 EVOLUÇÃO DO MIX: TOTAL DE SKUs ATIVOS NO TEMPO</div>", unsafe_allow_html=True)
@@ -893,14 +895,27 @@ with aba_geral:
             textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
             total_formatado = f"{df_snapshot[(df_snapshot['qtde_saldo_atual'] > 0) & (df_snapshot['codigo_produto'] != '')]['codigo_produto'].nunique():,}".replace(',', '.')
             layout_sku = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=40, r=40, t=50, b=10), annotations=[dict(x=1.0, y=1.12, xref="paper", yref="paper", text=f"<b>Total Período:</b> {total_formatado}", showarrow=False, font=dict(color="#ffffff", size=12, family="monospace"), bgcolor="#1a222d", bordercolor="#333d4d", borderwidth=1, borderpad=6, align="right")])
+            
             fig_sku_linha = go.Figure()
-            fig_sku_linha.add_trace(go.Scatter(x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'], customdata=textos_skus, name='SKUs Ativos', mode='lines+markers+text', text=textos_skus, textposition='top center', textfont=dict(color='white', size=11), line=dict(color='#e74c3c', width=3), fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.1)', hoverinfo='none'))
+            # Removido o fill='tozeroy' e ajustado para linhas+marcadores limpos
+            min_sku = (df_sku_tempo['codigo_produto'].min() * 0.95) if not df_sku_tempo.empty else 0
+            max_sku = (df_sku_tempo['codigo_produto'].max() * 1.10) if not df_sku_tempo.empty else 100
+            
+            fig_sku_linha.add_trace(go.Scatter(
+                x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'], 
+                customdata=textos_skus, name='SKUs Ativos', mode='lines+markers+text', 
+                text=textos_skus, textposition='top center', textfont=dict(color='white', size=11), 
+                line=dict(color='#e74c3c', width=3), marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)), 
+                hoverinfo='none'
+            ))
+            
             if periodo_ativo and not df_sku_tempo.empty:
                 match_idx_sku = df_sku_tempo.index[df_sku_tempo['Periodo'] == periodo_ativo].tolist()
                 if match_idx_sku: fig_sku_linha.add_shape(type="rect", x0=match_idx_sku[0] - 0.25, x1=match_idx_sku[0] + 0.25, y0=0, y1=1, yref="paper", fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below")
+            
             fig_sku_linha.update_layout(**layout_sku, hovermode='x', showlegend=False)
             fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, len(df_sku_tempo) - 0.2])
-            fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, (df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100) * 1.15], showticklabels=False)
+            fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[min_sku, max_sku], showticklabels=False)
             st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False}, key="skus_geral")
 
         # EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA
@@ -1012,7 +1027,7 @@ with aba_geral:
                     # Ordenação dupla
                     df_audit_view = df_audit_view.sort_values(by=['valor_saldo_atual', 'meses_parado'], ascending=[False, False])
 
-                    # 1. DataFrame para EXIBIÇÃO NO STREAMLIT (com textos bonitinhos "R$")
+                    # 1. DataFrame para EXIBIÇÃO NO STREAMLIT
                     df_audit_exib = pd.DataFrame()
                     df_audit_exib['Unidade'] = df_audit_view['unidade_almoxarifado'].astype(str)
                     df_audit_exib['Código SKU'] = df_audit_view['codigo_produto'].astype(str)
@@ -1023,7 +1038,7 @@ with aba_geral:
 
                     st.dataframe(df_audit_exib, use_container_width=True, hide_index=True)
 
-                    # 2. DataFrame para o EXCEL (com NÚMEROS REAIS para permitir cálculos)
+                    # 2. DataFrame para o EXCEL
                     df_audit_excel = pd.DataFrame({
                         'Unidade': df_audit_view['unidade_almoxarifado'].astype(str),
                         'Código SKU': df_audit_view['codigo_produto'].astype(str),
