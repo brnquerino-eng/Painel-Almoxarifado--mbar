@@ -1384,7 +1384,7 @@ with aba_geral:
 
                     st.markdown("<br>", unsafe_allow_html=True)
 
-                    # Expander Otimizado para Auditoria Completa com Filtros Lado a Lado
+                    # Expander Otimizado para Auditoria Completa com Filtros Lado a Lado e Download Formatado
                     with st.expander("📂 Abrir Lista Completa de Itens Parados"):
                         col_f1, col_f2 = st.columns(2)
                         
@@ -1419,6 +1419,16 @@ with aba_geral:
                         df_audit_exib['Meses Parado'] = df_audit_view['meses_parado'].astype(str) + " meses"
 
                         st.dataframe(df_audit_exib, use_container_width=True, hide_index=True)
+
+                        # Botão de Download com a tabela perfeitamente formatada
+                        csv_data = df_audit_exib.to_csv(index=False, sep=';', encoding='utf-8-sig')
+                        st.download_button(
+                            label="📥 Baixar Lista Formatada em CSV",
+                            data=csv_data,
+                            file_name="itens_parados_formatado.csv",
+                            mime="text/csv",
+                            use_container_width=True
+                        )
 
                 else:
                     st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
