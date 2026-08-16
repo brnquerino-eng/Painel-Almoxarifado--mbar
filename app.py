@@ -1384,14 +1384,28 @@ with aba_geral:
 
                     st.markdown("<br>", unsafe_allow_html=True)
 
-                    # Expander Otimizado para Auditoria Completa
+                    # Expander Otimizado para Auditoria Completa com Filtros Lado a Lado
                     with st.expander("📂 Abrir Lista Completa de Itens Parados"):
+                        col_f1, col_f2 = st.columns(2)
+                        
                         unidades_paradas = sorted(df_parados_3m['unidade_almoxarifado'].unique().tolist())
-                        unidade_filtro_audit = st.selectbox("Selecione a Unidade para Auditoria:", ["Todas as Unidades"] + unidades_paradas, key="select_audit_parados")
+                        meses_opcoes = sorted(df_parados_3m['meses_parado'].unique().tolist())
+                        
+                        with col_f1:
+                            unidade_filtro_audit = st.selectbox("Filtrar por Unidade:", ["Todas as Unidades"] + unidades_paradas, key="select_audit_parados")
+                        with col_f2:
+                            meses_filtro_audit = st.selectbox("Filtrar por Tempo Parado:", ["Todos os Meses"] + [f"{m} Meses" for m in meses_opcoes], key="select_audit_meses")
                         
                         df_audit_view = df_parados_3m
+                        
+                        # Filtro de Unidade restrito apenas à tabela
                         if unidade_filtro_audit != "Todas as Unidades":
-                            df_audit_view = df_parados_3m[df_parados_3m['unidade_almoxarifado'] == unidade_filtro_audit]
+                            df_audit_view = df_audit_view[df_audit_view['unidade_almoxarifado'] == unidade_filtro_audit]
+                        
+                        # Filtro de Meses restrito apenas à tabela
+                        if meses_filtro_audit != "Todos os Meses":
+                            mes_selecionado = int(meses_filtro_audit.split()[0])
+                            df_audit_view = df_audit_view[df_audit_view['meses_parado'] == mes_selecionado]
                         
                         # Ordenação inteligente: 1º pelo Maior Valor Parado e 2º pela Maior Quantidade de Meses
                         df_audit_view = df_audit_view.sort_values(by=['valor_saldo_atual', 'meses_parado'], ascending=[False, False])
@@ -1399,10 +1413,7 @@ with aba_geral:
                         df_audit_exib = pd.DataFrame()
                         df_audit_exib['Unidade'] = df_audit_view['unidade_almoxarifado']
                         df_audit_exib['Código SKU'] = df_audit_view['codigo_produto']
-                        
-                        # Pegando o nome do produto ao invés do local de estoque para ficar mais visível e intuitivo
                         df_audit_exib['Nome do Produto'] = df_audit_view.get('nome_produto', '')
-                        
                         df_audit_exib['Quantidade'] = df_audit_view['qtde_saldo_atual'].apply(fmt_int)
                         df_audit_exib['Valor Parado'] = df_audit_view['valor_saldo_atual'].apply(fmt_brl)
                         df_audit_exib['Meses Parado'] = df_audit_view['meses_parado'].astype(str) + " meses"
