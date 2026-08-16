@@ -35,7 +35,7 @@ if 'filtro_periodo_grafico' not in st.session_state:
 COLUNAS_ESPERADAS = [
     "valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno",
     "unidade_almoxarifado", "mes_referencia", "ano_referencia",
-    "codigo_produto", "qtde_saldo_atual", "item_critico", "nome_local_estoque",
+    "codigo_produto", "nome_produto", "qtde_saldo_atual", "item_critico", "nome_local_estoque",
     "tmp_ano_num", "tmp_mes_num",
 ]
 
@@ -73,7 +73,7 @@ def carregar_dados():
                 for tentativa in range(1, tentativas + 1):
                     try:
                         res = supabase.table(table_name).select(
-                            "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
+                            "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, nome_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
                         ).order("id").range(start_r, end_r).execute()
                         return res.data if res.data else []
                     except Exception as e:
@@ -105,7 +105,7 @@ def carregar_dados():
                     s_val = s_val[:-2]
                 return s_val
 
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "item_critico", "nome_local_estoque"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "nome_produto", "item_critico", "nome_local_estoque"]:
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
@@ -1385,7 +1385,7 @@ with aba_geral:
                     st.markdown("<br>", unsafe_allow_html=True)
 
                     # Expander Otimizado para Auditoria Completa
-                    with st.expander("📂 Abrir Auditoria Completa de Itens Parados (Filtro por Unidade)"):
+                    with st.expander("📂 Abrir Lista Completa de Itens Parados"):
                         unidades_paradas = sorted(df_parados_3m['unidade_almoxarifado'].unique().tolist())
                         unidade_filtro_audit = st.selectbox("Selecione a Unidade para Auditoria:", ["Todas as Unidades"] + unidades_paradas, key="select_audit_parados")
                         
@@ -1393,12 +1393,16 @@ with aba_geral:
                         if unidade_filtro_audit != "Todas as Unidades":
                             df_audit_view = df_parados_3m[df_parados_3m['unidade_almoxarifado'] == unidade_filtro_audit]
                         
-                        df_audit_view = df_audit_view.sort_values(by='valor_saldo_atual', ascending=False)
+                        # Ordenação inteligente: 1º pelo Maior Valor Parado e 2º pela Maior Quantidade de Meses
+                        df_audit_view = df_audit_view.sort_values(by=['valor_saldo_atual', 'meses_parado'], ascending=[False, False])
 
                         df_audit_exib = pd.DataFrame()
                         df_audit_exib['Unidade'] = df_audit_view['unidade_almoxarifado']
                         df_audit_exib['Código SKU'] = df_audit_view['codigo_produto']
-                        df_audit_exib['Local Estoque'] = df_audit_view['nome_local_estoque']
+                        
+                        # Pegando o nome do produto ao invés do local de estoque para ficar mais visível e intuitivo
+                        df_audit_exib['Nome do Produto'] = df_audit_view.get('nome_produto', '')
+                        
                         df_audit_exib['Quantidade'] = df_audit_view['qtde_saldo_atual'].apply(fmt_int)
                         df_audit_exib['Valor Parado'] = df_audit_view['valor_saldo_atual'].apply(fmt_brl)
                         df_audit_exib['Meses Parado'] = df_audit_view['meses_parado'].astype(str) + " meses"
