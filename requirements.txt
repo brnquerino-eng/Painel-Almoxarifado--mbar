@@ -3,3 +3,4 @@ pandas
 supabase
 starlette<0.38.0
 plotly
+xlsxwriter
