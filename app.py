@@ -94,6 +94,9 @@ def carregar_dados():
 
             df = pd.DataFrame(all_data)
 
+            # Tratamento de segurança contra NaN para evitar erro 500 do JSON
+            df = df.replace({np.nan: None})
+
             if "unidade_almoxarifado" in df.columns:
                 df["unidade_almoxarifado"] = df["unidade_almoxarifado"].astype(str).str.strip().str.upper()
 
@@ -187,7 +190,6 @@ st.markdown("""
         color: #ffffff !important;
         transform: translateY(-1px);
     }
-    /* Botões de legenda "ativos" (type=primary) ganham borda laranja e texto branco */
     .stButton > button[kind="primary"] {
         background-color: #1a222d !important;
         border: 1px solid #d85c27 !important;
@@ -678,7 +680,6 @@ with aba_geral:
             consumo_op=('consumo_op', 'sum')
         ).reset_index().sort_values(['tmp_ano_num', 'tmp_mes_num'])
 
-        # Giro/Cobertura YTD do período ativo
         sub_atual = monthly_raw[(monthly_raw['tmp_ano_num'] == ano_ativo_val) & (monthly_raw['tmp_mes_num'] <= mes_teto_val)]
         if not sub_atual.empty:
             estoque_medio_op = sub_atual['estoque_op'].mean()
@@ -690,7 +691,6 @@ with aba_geral:
                 cobertura_meses = estoque_medio_op / consumo_medio_mensal
                 cobertura_anos = cobertura_meses / 12
 
-        # Giro/Cobertura YTD do mês anterior (para as setinhas de tendência)
         m_teto_prev = mes_teto_val - 1 if mes_teto_val > 1 else 12
         ano_prev_giro = ano_ativo_val if mes_teto_val > 1 else ano_ativo_val - 1
         sub_prev = monthly_raw[(monthly_raw['tmp_ano_num'] == ano_prev_giro) & (monthly_raw['tmp_mes_num'] <= m_teto_prev)]
@@ -836,7 +836,7 @@ with aba_geral:
                 fig_rosca.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=80, r=80, t=30, b=30), height=380, showlegend=False, annotations=[dict(text=f"<b>TOTAL</b><br><span style='font-size:20px'>{fmt_valor_milhoes(val_estoque) if val_estoque > 0 else 'R$ 0,00'}</span>", x=0.5, y=0.5, font_size=14, font_color='white', showarrow=False)])
                 st.plotly_chart(fig_rosca, use_container_width=True, config={'displayModeBar': False}, key="rosca_composicao")
 
-        # EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO
+        # EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO (Padronizado: Compras=Vermelho, Consumo=Amarelo/Laranja)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO</div>", unsafe_allow_html=True)
@@ -844,8 +844,8 @@ with aba_geral:
             df_tempo['Periodo'] = df_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
             df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
             fig_linha = go.Figure()
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], name='Compras', mode='lines+markers', line=dict(color='#f39c12', width=3)))
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], name='Consumo', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], name='Compras', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], name='Consumo', mode='lines+markers', line=dict(color='#f39c12', width=3)))
             if periodo_ativo and not df_tempo.empty:
                 match_idx_tempo = df_tempo.index[df_tempo['Periodo'] == periodo_ativo].tolist()
                 if match_idx_tempo: fig_linha.add_shape(type="rect", x0=match_idx_tempo[0] - 0.25, x1=match_idx_tempo[0] + 0.25, y0=0, y1=1, yref="paper", fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below")
@@ -854,22 +854,25 @@ with aba_geral:
             fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
             st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False}, key="compras_consumo_geral")
 
-        # SEÇÃO LADO A LADO: RANKING DE COMPRAS/CONSUMO & SKUs
+        # SEÇÃO LADO A LADO: RANKING DE COMPRAS/CONSUMO & SKUs (Padronizado: Compras primeiro, cores exatas)
         st.markdown("<br>", unsafe_allow_html=True)
         col_esq, col_dir = st.columns(2)
         with col_esq:
             with st.container(border=True):
-                st.markdown("<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;'><div style='color: #ffffff; font-size: 13px; font-weight: bold; border-left: 3px solid #d85c27; padding-left: 8px;'>📊 COMPRAS VS CONSUMO</div><div style='display: flex; gap: 10px; font-size: 11px; color: #8c9ba5; align-items: center; padding-right: 10px;'><span><span style='color: #f39c12; font-size: 13px;'>■</span> Consumo</span><span><span style='color: #e74c3c; font-size: 13px;'>■</span> Compras</span></div></div>", unsafe_allow_html=True)
+                st.markdown("<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;'><div style='color: #ffffff; font-size: 13px; font-weight: bold; border-left: 3px solid #d85c27; padding-left: 8px;'>📊 COMPRAS VS CONSUMO</div><div style='display: flex; gap: 10px; font-size: 11px; color: #8c9ba5; align-items: center; padding-right: 10px;'><span><span style='color: #e74c3c; font-size: 13px;'>■</span> Compras</span><span><span style='color: #f39c12; font-size: 13px;'>■</span> Consumo</span></div></div>", unsafe_allow_html=True)
                 with st.container(height=380, border=False):
                     df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(Compras=('valor_entrada_compras', 'sum'), Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())).reset_index().sort_values('Compras', ascending=True)
                     ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
                     df_diag['Compras_Label'] = df_diag['Compras'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     df_diag['Consumo_Label'] = df_diag['Consumo'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     df_diag_melted = df_diag.melt(id_vars=['unidade_almoxarifado', 'Compras_Label', 'Consumo_Label'], value_vars=['Compras', 'Consumo'], var_name='Métrica', value_name='Valor')
-                    df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Consumo', 'Compras'], ordered=True)
+                    
+                    # Ordem padronizada: Compras antes de Consumo
+                    df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Compras', 'Consumo'], ordered=True)
                     df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
                     df_diag_melted['Texto_Barra'] = np.where(df_diag_melted['Métrica'] == 'Compras', df_diag_melted['Compras_Label'], df_diag_melted['Consumo_Label'])
-                    fig_diag = px.bar(df_diag_melted, x='Valor', y='unidade_almoxarifado', color='Métrica', barmode='group', orientation='h', text='Texto_Barra', color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#f39c12'}, category_orders={'unidade_almoxarifado': ordem_unidades})
+                    
+                    fig_diag = px.bar(df_diag_melted, x='Valor', y='unidade_almoxarifado', color='Métrica', barmode='group', orientation='h', text='Texto_Barra', color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#f39c12'}, category_orders={'unidade_almoxarifado': ordem_unidades, 'Métrica': ['Compras', 'Consumo']})
                     fig_diag.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=130, r=40, t=10, b=10), height=max(350, len(df_diag) * 60), showlegend=False)
                     fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
                     fig_diag.update_yaxes(title="", showgrid=False, zeroline=False, tickfont=dict(size=10), categoryorder='array', categoryarray=ordem_unidades)
@@ -1014,7 +1017,6 @@ with aba_geral:
 
                     df_audit_view = df_audit_view.sort_values(by=['valor_saldo_atual', 'meses_parado'], ascending=[False, False])
 
-                    # DataFrame para EXIBIÇÃO NO STREAMLIT (com textos formatados)
                     df_audit_exib = pd.DataFrame()
                     df_audit_exib['Unidade'] = df_audit_view['unidade_almoxarifado']
                     df_audit_exib['Código SKU'] = df_audit_view['codigo_produto']
@@ -1025,7 +1027,6 @@ with aba_geral:
 
                     st.dataframe(df_audit_exib, use_container_width=True, hide_index=True)
 
-                    # DataFrame para o EXCEL (com números reais para permitir cálculos)
                     df_audit_excel = pd.DataFrame({
                         'Unidade': df_audit_view['unidade_almoxarifado'],
                         'Código SKU': df_audit_view['codigo_produto'],
@@ -1070,7 +1071,6 @@ with aba_geral:
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         use_container_width=True
                     )
-
             else:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
