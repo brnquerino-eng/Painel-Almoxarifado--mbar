@@ -7,7 +7,6 @@ import streamlit as st
 from supabase import create_client
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
@@ -377,9 +376,9 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 5. SISTEMA DE ABAS NATIVO
+# 5. SISTEMA DE ABAS NATIVO (Visão Geral & Inventários)
 # ==========================================
-aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
+aba_geral, aba_inventarios = st.tabs(["📈 Visão Geral", "📦 Inventários"])
 
 with aba_geral:
     # --- CONTROLES DO GRÁFICO (Filtros Compactos e Alinhados) ---
@@ -475,17 +474,17 @@ with aba_geral:
         df_critico_trend = df_chart_base[df_chart_base['item_critico'] == '1-Sim']
         df_critico_mes = df_critico_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
         df_critico_mes = df_critico_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-        df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
+        if not df_critico_mes.empty: df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
 
         df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
         df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
         df_obsoleto_mes = df_obsoleto_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-        df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
+        if not df_obsoleto_mes.empty: df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
 
         df_obra_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('obra', case=False, na=False)]
         df_obra_mes = df_obra_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
         df_obra_mes = df_obra_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
-        df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
+        if not df_obra_mes.empty: df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
 
         def fmt_valor_milhoes(val):
             if val >= 1e9:
@@ -528,7 +527,7 @@ with aba_geral:
             visible=get_vis('vis_total')
         ))
 
-        # Destaque de Pico e Vale Automático (Corrigido sem borderradius)
+        # Destaque de Pico e Vale Automático
         if not df_estoque_mes.empty:
             max_idx = df_estoque_mes['valor_saldo_atual'].idxmax()
             min_idx = df_estoque_mes['valor_saldo_atual'].idxmin()
@@ -875,9 +874,7 @@ with aba_geral:
                 with st.container(height=380, border=False):
                     df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(Compras=('valor_entrada_compras', 'sum'), Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())).reset_index()
                     
-                    # Filtra estritamente unidades que não tiveram NEM compra NEM consumo (> 0.01)
                     df_diag = df_diag[(df_diag['Compras'] > 0.01) | (df_diag['Consumo'] > 0.01)].sort_values('Compras', ascending=True)
-                    
                     ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
 
                     def formata_mil_ou_zero(x):
@@ -972,7 +969,7 @@ with aba_geral:
             else:
                 st.info("Sem dados suficientes para calcular Giro x Cobertura no período selecionado.")
 
-        # ================= MATERIAIS PARADOS HÁ MAIS DE 3 MESES & AUDITORIA (DUAS COLUNAS LADO A LADO) =================
+        # ================= MATERIAIS PARADOS HÁ MAIS DE 3 MESES & AUDITORIA =================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>⏳ MATERIAIS PARADOS HÁ MAIS DE 3 MESES (SEM MOVIMENTAÇÃO)</div>", unsafe_allow_html=True)
@@ -1018,7 +1015,6 @@ with aba_geral:
                 df_chart_parados['Valor_Label'] = df_chart_parados['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                 df_chart_parados['SKU_Label'] = df_chart_parados['qtd_skus'].astype(int).astype(str) + " SKUs"
 
-                # DIVISÃO EM DUAS COLUNAS LADO A LADO PARA VALOR E SKUS
                 c_p1, c_p2 = st.columns(2)
 
                 with c_p1:
@@ -1118,11 +1114,62 @@ with aba_geral:
             else:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
-with aba_detalhada:
-    if not df_snapshot.empty:
-        st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📋 CONSOLIDAÇÃO ANALÍTICA POR UNIDADE DE ALMOXARIFADO</div>", unsafe_allow_html=True)
-        df_tabela = df_snapshot.groupby('unidade_almoxarifado').agg(Valor_Estoque=('valor_saldo_atual', 'sum'), Valor_Compras=('valor_entrada_compras', 'sum'), Valor_Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum()), SKUs_Ativos=('codigo_produto', lambda x: x[(df_snapshot.loc[x.index, 'qtde_saldo_atual'] > 0) & (x != "")].nunique())).reset_index().sort_values(by='Valor_Estoque', ascending=False)
-        df_exibicao = pd.DataFrame({'Unidade de Almoxarifado': df_tabela['unidade_almoxarifado'], 'Valor em Estoque': df_tabela['Valor_Estoque'].apply(fmt_brl), 'Valor de Compras': df_tabela['Valor_Compras'].apply(fmt_brl), 'Valor de Consumo': df_tabela['Valor_Consumo'].apply(fmt_brl), 'SKUs Ativos': df_tabela['SKUs_Ativos'].apply(fmt_int)})
-        st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
-    else:
-        st.info("Nenhum dado encontrado para os filtros selecionados.")
+# ==========================================
+# ABA 2: INVENTÁRIOS (Simulado UTE Borborema)
+# ==========================================
+with aba_inventarios:
+    st.markdown("<div style='background-color: #d85c27; padding: 12px; border-radius: 8px; text-align: center; color: white; font-weight: bold; font-size: 16px; margin-bottom: 20px;'>INVENTÁRIO GERAL USINA UTE BORBOREMA (CAMPINA GRANDE-PB) — PERÍODO: 13/07/2026</div>", unsafe_allow_html=True)
+    
+    st.markdown("<div class='section-title'>📋 RESUMO DO INVENTÁRIO GERAL</div>", unsafe_allow_html=True)
+    
+    dados_resumo = pd.DataFrame({
+        "EMPRESA": ["UTE BORBOREMA", "TOTAL"],
+        "Nº INVENTÁRIO": ["INV-2026-07", "-"],
+        "ACURÁCIA": ["99,75%", "99,75%"],
+        "GANHOS": ["R$ 13.280,21", "R$ 13.280,21"],
+        "PERDAS": ["-R$ 56.957,07", "-R$ 56.957,07"],
+        "DIFERENÇA": ["-R$ 43.676,86", "-R$ 43.676,86"]
+    })
+    st.dataframe(dados_resumo, use_container_width=True, hide_index=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col_inv1, col_inv2 = st.columns([5, 5], gap="medium")
+    
+    with col_inv1:
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 IMPACTO FINANCEIRO DE INVENTÁRIO (R$)</div>", unsafe_allow_html=True)
+            
+            df_inv_grafico = pd.DataFrame({
+                'Categoria': ['GANHOS', 'PERDAS', 'DIFERENÇA'],
+                'Valor': [13280.21, -56957.07, -43676.86],
+                'Cor': ['#2ecc71', '#e74c3c', '#3498db']
+            })
+            
+            fig_inv = px.bar(df_inv_grafico, x='Categoria', y='Valor', color='Categoria', color_discrete_map={'GANHOS': '#2ecc71', 'PERDAS': '#e74c3c', 'DIFERENÇA': '#3498db'}, text=['R$ 13.280,21', '-R$ 56.957,07', '-R$ 43.676,86'])
+            fig_inv.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=20, r=20, t=10, b=10), height=350, showlegend=False)
+            fig_inv.update_traces(textposition='outside', textfont=dict(color='white'))
+            fig_inv.update_xaxes(title="")
+            fig_inv.update_yaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ")
+            st.plotly_chart(fig_inv, use_container_width=True, config={'displayModeBar': False})
+
+    with col_inv2:
+        with st.container(border=True):
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📑 DETALHES - INVENTÁRIO</div>", unsafe_allow_html=True)
+            
+            dados_detalhes = pd.DataFrame({
+                "Descrição": [
+                    "Total Geral Inventário - Contagem (Linhas/Localização)",
+                    "Total Geral - SKU's",
+                    "Itens Contados - Inventariados",
+                    "Itens Divergentes",
+                    "   • Negativos (para menos)",
+                    "   • Positivos (para mais)",
+                    "Acurácia - Itens Contados (R$)",
+                    "Acurácia - Itens contados (Linhas/Localização)"
+                ],
+                "Quant.": ["867", "867", "867", "2", "1", "1", "-", "-"],
+                "Valor (R$)": ["R$ 17.320.408,51", "-", "R$ 17.276.067,89", "-R$ 43.676,86", "-R$ 56.957,07", "R$ 13.280,21", "-", "-"],
+                "%": ["100,00%", "-", "100,00%", "0,25%", "99,67%", "99,92%", "99,75%", "99,77%"]
+            })
+            st.dataframe(dados_detalhes, use_container_width=True, hide_index=True)
