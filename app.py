@@ -465,7 +465,7 @@ with aba_geral:
                 st.session_state.vis_obra = not st.session_state.vis_obra
                 st.rerun()
 
-        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA (MESTRE) ---
+        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA (MESTRE COM SPLINE & PICO/VALE) ---
         df_chart_base = df_filtrado
 
         df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
@@ -517,21 +517,41 @@ with aba_geral:
         def get_vis(key):
             return True if st.session_state.get(key, False) else 'legendonly'
 
+        # Traço Principal com Spline Suave e Preenchimento Elegante
         fig_linha_estoque.add_trace(go.Scatter(
             x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
             name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
             textposition='top center', textfont=dict(color='white', size=11),
-            line=dict(color='#e74c3c', width=3), marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)),
+            line=dict(color='#e74c3c', width=3, shape='spline', smoothing=1.3), 
+            marker=dict(size=9, color='#e74c3c', line=dict(color='#ffffff', width=2)),
             fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.08)', hoverinfo='none',
             visible=get_vis('vis_total')
         ))
+
+        # Destaque de Pico e Vale Automático
+        if not df_estoque_mes.empty:
+            max_idx = df_estoque_mes['valor_saldo_atual'].idxmax()
+            min_idx = df_estoque_mes['valor_saldo_atual'].idxmin()
+            
+            fig_linha_estoque.add_annotation(
+                x=df_estoque_mes.loc[max_idx, 'Periodo'], y=df_estoque_mes.loc[max_idx, 'valor_saldo_atual'],
+                text="▲ PICO", showarrow=True, arrowhead=2, ax=0, ay=-35,
+                font=dict(color="#e74c3c", size=10, family="monospace"),
+                bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#e74c3c", borderwidth=1, borderradius=4
+            )
+            fig_linha_estoque.add_annotation(
+                x=df_estoque_mes.loc[min_idx, 'Periodo'], y=df_estoque_mes.loc[min_idx, 'valor_saldo_atual'],
+                text="▼ VALE", showarrow=True, arrowhead=2, ax=0, ay=35,
+                font=dict(color="#2ecc71", size=10, family="monospace"),
+                bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#2ecc71", borderwidth=1, borderradius=4
+            )
 
         if not df_critico_mes.empty:
             fig_linha_estoque.add_trace(go.Scatter(
                 x=df_critico_mes['Periodo'], y=df_critico_mes['valor_saldo_atual'],
                 name='Estoque Crítico', mode='lines+markers+text', text=df_critico_mes['texto_labels'],
                 textposition='bottom center', textfont=dict(color='#f39c12', size=11),
-                line=dict(color='#f39c12', width=2.5, dash='dash'), marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
+                line=dict(color='#f39c12', width=2.5, dash='dash', shape='spline', smoothing=1.3), marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
                 hoverinfo='none', visible=get_vis('vis_critico')
             ))
 
@@ -540,7 +560,7 @@ with aba_geral:
                 x=df_obsoleto_mes['Periodo'], y=df_obsoleto_mes['valor_saldo_atual'],
                 name='Estoque Obsoleto', mode='lines+markers+text', text=df_obsoleto_mes['texto_labels'],
                 textposition='top center', textfont=dict(color='#9b59b6', size=11),
-                line=dict(color='#9b59b6', width=2.5, dash='dot'), marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
+                line=dict(color='#9b59b6', width=2.5, dash='dot', shape='spline', smoothing=1.3), marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
                 hoverinfo='none', visible=get_vis('vis_obsoleto')
             ))
 
@@ -549,7 +569,7 @@ with aba_geral:
                 x=df_obra_mes['Periodo'], y=df_obra_mes['valor_saldo_atual'],
                 name='Estoque Obra', mode='lines+markers+text', text=df_obra_mes['texto_labels'],
                 textposition='bottom center', textfont=dict(color='#1abc9c', size=11),
-                line=dict(color='#1abc9c', width=2.5, dash='longdash'), marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
+                line=dict(color='#1abc9c', width=2.5, dash='longdash', shape='spline', smoothing=1.3), marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
                 hoverinfo='none', visible=get_vis('vis_obra')
             ))
 
@@ -836,8 +856,8 @@ with aba_geral:
             df_tempo['Periodo'] = df_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_tempo['ano_referencia'].astype(str)
             df_tempo['valor_saida_cons_interno'] = df_tempo['valor_saida_cons_interno'].abs()
             fig_linha = go.Figure()
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], name='Compras', mode='lines+markers', line=dict(color='#e74c3c', width=3)))
-            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], name='Consumo', mode='lines+markers', line=dict(color='#f39c12', width=3)))
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_entrada_compras'], name='Compras', mode='lines+markers', line=dict(color='#e74c3c', width=3, shape='spline', smoothing=1.3)))
+            fig_linha.add_trace(go.Scatter(x=df_tempo['Periodo'], y=df_tempo['valor_saida_cons_interno'], name='Consumo', mode='lines+markers', line=dict(color='#f39c12', width=3, shape='spline', smoothing=1.3)))
             if periodo_ativo and not df_tempo.empty:
                 match_idx_tempo = df_tempo.index[df_tempo['Periodo'] == periodo_ativo].tolist()
                 if match_idx_tempo: fig_linha.add_shape(type="rect", x0=match_idx_tempo[0] - 0.25, x1=match_idx_tempo[0] + 0.25, y0=0, y1=1, yref="paper", fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below")
@@ -908,7 +928,7 @@ with aba_geral:
             layout_sku = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=40, r=40, t=20, b=10))
             
             fig_sku_linha = go.Figure()
-            fig_sku_linha.add_trace(go.Scatter(x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'], customdata=textos_skus, name='SKUs Ativos', mode='lines+markers+text', text=textos_skus, textposition='top center', textfont=dict(color='white', size=11), line=dict(color='#e74c3c', width=3), fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.1)', hoverinfo='none'))
+            fig_sku_linha.add_trace(go.Scatter(x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'], customdata=textos_skus, name='SKUs Ativos', mode='lines+markers+text', text=textos_skus, textposition='top center', textfont=dict(color='white', size=11), line=dict(color='#e74c3c', width=3, shape='spline', smoothing=1.3), fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.1)', hoverinfo='none'))
             
             if periodo_ativo and not df_sku_tempo.empty:
                 match_idx_sku = df_sku_tempo.index[df_sku_tempo['Periodo'] == periodo_ativo].tolist()
@@ -939,8 +959,8 @@ with aba_geral:
                 df_duplo['Cob_Texto'] = df_duplo['Cobertura_Meses'].apply(lambda x: f"{x:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.'))
 
                 fig_duplo = go.Figure()
-                fig_duplo.add_trace(go.Scatter(x=df_duplo['Periodo'], y=df_duplo['Giro_Mensal'], name='Giro Mensal', mode='lines+markers', line=dict(color='#3498db', width=3), marker=dict(size=8, color='#3498db', line=dict(color='#ffffff', width=2)), customdata=df_duplo['Giro_Texto'], hovertemplate='Giro: %{customdata}<extra></extra>'))
-                fig_duplo.add_trace(go.Scatter(x=df_duplo['Periodo'], y=df_duplo['Cobertura_Meses'], name='Cobertura', mode='lines+markers', line=dict(color='#e74c3c', width=3), marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)), yaxis='y2', customdata=df_duplo['Cob_Texto'], hovertemplate='Cobertura: %{customdata} meses<extra></extra>'))
+                fig_duplo.add_trace(go.Scatter(x=df_duplo['Periodo'], y=df_duplo['Giro_Mensal'], name='Giro Mensal', mode='lines+markers', line=dict(color='#3498db', width=3, shape='spline', smoothing=1.3), marker=dict(size=8, color='#3498db', line=dict(color='#ffffff', width=2)), customdata=df_duplo['Giro_Texto'], hovertemplate='Giro: %{customdata}<extra></extra>'))
+                fig_duplo.add_trace(go.Scatter(x=df_duplo['Periodo'], y=df_duplo['Cobertura_Meses'], name='Cobertura', mode='lines+markers', line=dict(color='#e74c3c', width=3, shape='spline', smoothing=1.3), marker=dict(size=8, color='#e74c3c', line=dict(color='#ffffff', width=2)), yaxis='y2', customdata=df_duplo['Cob_Texto'], hovertemplate='Cobertura: %{customdata} meses<extra></extra>'))
 
                 if periodo_ativo and not df_duplo.empty:
                     match_idx_duplo = df_duplo.index[df_duplo['Periodo'] == periodo_ativo].tolist()
