@@ -7,6 +7,7 @@ import streamlit as st
 from supabase import create_client
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # Configuração da página
 st.set_page_config(page_title="Visão Executiva de Estoque", layout="wide")
@@ -174,14 +175,15 @@ st.markdown("""
     ::-webkit-scrollbar-thumb:hover {
         background: #d85c27;
     }
+    /* Botões das Legendas mais compactos */
     .stButton > button {
         background-color: #161c24 !important;
         color: #8c9ba5 !important;
         border: 1px solid #232b36 !important;
         border-radius: 6px !important;
         font-size: 10px !important;
-        padding: 2px 6px !important;
-        min-height: 28px !important;
+        padding: 2px 4px !important;
+        min-height: 24px !important;
         font-weight: 600 !important;
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
     }
@@ -260,7 +262,7 @@ st.markdown("""
         background-color: #161c24 !important;
         border: 1px solid #232b36 !important;
         border-radius: 8px !important;
-        padding: 20px !important;
+        padding: 15px !important;
         box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8) !important;
         overflow: visible !important;
         transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
@@ -370,27 +372,29 @@ st.markdown(f"""
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- CONTROLES DO GRÁFICO DENTRO DO PRÓPRIO CARTÃO DE TENDÊNCIA ---
+    # --- CONTROLES DO GRÁFICO (Mais Compactos) ---
     with st.container(border=True):
-        col_tg_title, col_tg_escopo, col_tg_unid, col_tg_ano = st.columns([1.8, 1.2, 2.0, 1.5])
+        col_tg_title, col_tg_escopo, col_tg_unid, col_tg_ano = st.columns([2.5, 1.2, 2.0, 1.5], gap="small")
         with col_tg_title:
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 EVOLUÇÃO TEMPORAL DO ESTOQUE (R$)</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-top: 25px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 EVOLUÇÃO TEMPORAL DO ESTOQUE (R$)</div>", unsafe_allow_html=True)
 
         with col_tg_escopo:
-            st.selectbox("Tipo Unidade:", ["Todas", "Ativa", "Gerencial"], key="chart_escopo")
+            st.markdown("<div style='font-size: 11px; color: #8c9ba5; margin-bottom: -15px;'>Tipo Unidade:</div>", unsafe_allow_html=True)
+            st.selectbox("Tipo Unidade:", ["Todas", "Ativa", "Gerencial"], key="chart_escopo", label_visibility="collapsed")
 
         with col_tg_unid:
+            st.markdown("<div style='font-size: 11px; color: #8c9ba5; margin-bottom: -15px;'>Unidades:</div>", unsafe_allow_html=True)
             if st.session_state.chart_escopo == "Ativa":
                 opcoes_unid = unidades_ativas
             elif st.session_state.chart_escopo == "Gerencial":
                 opcoes_unid = unidades_gerenciais
             else:
                 opcoes_unid = unidades_opcoes
-
-            st.multiselect("Unidades:", opcoes_unid, key="chart_unidades", placeholder="Todas")
+            st.multiselect("Unidades:", opcoes_unid, key="chart_unidades", placeholder="Todas", label_visibility="collapsed")
 
         with col_tg_ano:
-            st.multiselect("Anos:", ano_opcoes, key="chart_anos", placeholder="Todos")
+            st.markdown("<div style='font-size: 11px; color: #8c9ba5; margin-bottom: -15px;'>Anos:</div>", unsafe_allow_html=True)
+            st.multiselect("Anos:", ano_opcoes, key="chart_anos", placeholder="Todos", label_visibility="collapsed")
 
         # 6. Filtragem Síncrona Rigorosa
         df_filtrado = df_completo
@@ -569,15 +573,6 @@ with aba_geral:
             fig_linha_estoque, use_container_width=True, config={'displayModeBar': False},
             on_select="rerun", selection_mode="points", key="tendencia_geral"
         )
-
-        if st.session_state.get('filtro_periodo_grafico'):
-            col_b_info, col_b_acao = st.columns([3, 1])
-            with col_b_info:
-                st.markdown(f"<span style='color: #d85c27; font-size: 12px;'>📌 Período fixado pelo gráfico: <b>{st.session_state.filtro_periodo_grafico}</b></span>", unsafe_allow_html=True)
-            with col_b_acao:
-                if st.button("🔄 Limpar Filtro do Gráfico", use_container_width=True):
-                    st.session_state.filtro_periodo_grafico = None
-                    st.rerun()
 
     # 7. Criação do DataFrame de Snapshot Atual e Anterior
     df_snapshot = df_filtrado
@@ -816,7 +811,7 @@ with aba_geral:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🍩 COMPOSIÇÃO DO ESTOQUE (%)</div>", unsafe_allow_html=True)
                 val_demais = max(0, val_estoque - (val_critico + val_obsoleto + val_obra))
-                df_pizza = pd.DataFrame({'Categoria': ['Estoque Crítico', 'Estoque Obsoleto', 'Estoque Obra', 'Demais Estoque'], 'Valor': [val_critico, val_obsoleto, val_obra, val_demais], 'Cor': ['#f39c12', '#9b59b6', '#1abc9c', '#3498db']})
+                df_pizza = pd.DataFrame({'Categoria': ['Estoque Crítico', 'Estoque Obsoleto', 'Estoque Obra', 'Estoque Operacional'], 'Valor': [val_critico, val_obsoleto, val_obra, val_demais], 'Cor': ['#f39c12', '#9b59b6', '#1abc9c', '#3498db']})
                 df_pizza = df_pizza[df_pizza['Valor'] > 0]
                 df_pizza['Valor_Formatado'] = df_pizza['Valor'].apply(fmt_brl)
                 fig_rosca = go.Figure(data=[go.Pie(labels=df_pizza['Categoria'], values=df_pizza['Valor'], hole=0.65, marker=dict(colors=df_pizza['Cor'], line=dict(color='#161c24', width=2)), textinfo='label+percent', textposition='outside', hovertext=df_pizza['Valor_Formatado'], hovertemplate="<b>%{label}</b><br>%{hovertext}<extra></extra>", textfont=dict(size=11))])
@@ -848,7 +843,11 @@ with aba_geral:
             with st.container(border=True):
                 st.markdown("<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;'><div style='color: #ffffff; font-size: 13px; font-weight: bold; border-left: 3px solid #d85c27; padding-left: 8px;'>📊 COMPRA x CONSUMO POR UNIDADE (R$)</div><div style='display: flex; gap: 10px; font-size: 11px; color: #8c9ba5; align-items: center; padding-right: 10px;'><span><span style='color: #e74c3c; font-size: 13px;'>■</span> Compras</span><span><span style='color: #f39c12; font-size: 13px;'>■</span> Consumo</span></div></div>", unsafe_allow_html=True)
                 with st.container(height=380, border=False):
-                    df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(Compras=('valor_entrada_compras', 'sum'), Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())).reset_index().sort_values('Compras', ascending=True)
+                    df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(Compras=('valor_entrada_compras', 'sum'), Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())).reset_index()
+                    
+                    # Filtra unidades que não tiveram NEM compra NEM consumo
+                    df_diag = df_diag[(df_diag['Compras'] > 0) | (df_diag['Consumo'] > 0)].sort_values('Compras', ascending=True)
+                    
                     ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
 
                     def formata_mil_ou_zero(x):
@@ -896,7 +895,7 @@ with aba_geral:
             df_sku_tempo['Periodo'] = df_sku_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
             textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
             
-            layout_sku = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=40, r=40, t=50, b=10))
+            layout_sku = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=40, r=40, t=20, b=10))
             
             fig_sku_linha = go.Figure()
             fig_sku_linha.add_trace(go.Scatter(x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'], customdata=textos_skus, name='SKUs Ativos', mode='lines+markers+text', text=textos_skus, textposition='top center', textfont=dict(color='white', size=11), line=dict(color='#e74c3c', width=3), fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.1)', hoverinfo='none'))
@@ -986,20 +985,35 @@ with aba_geral:
                 ).reset_index().sort_values('meses_parado')
 
                 df_chart_parados['Meses_Label'] = df_chart_parados['meses_parado'].astype(str) + " Meses"
-                
-                def label_parado(row):
-                    val = row['valor_saldo_atual']
-                    skus = row['qtd_skus']
-                    val_str = f"R$ {val/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.')
-                    return f"{val_str} ({int(skus)} SKUs)"
+                df_chart_parados['Valor_Label'] = df_chart_parados['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                df_chart_parados['SKU_Label'] = df_chart_parados['qtd_skus'].astype(int).astype(str) + " SKUs"
 
-                df_chart_parados['Valor_Label'] = df_chart_parados.apply(label_parado, axis=1)
+                fig_parados = make_subplots(specs=[[{"secondary_y": True}]])
 
-                fig_parados = px.bar(df_chart_parados, x='Meses_Label', y='valor_saldo_atual', text='Valor_Label', color_discrete_sequence=['#e74c3c'])
-                fig_parados.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=40, r=40, t=30, b=10), height=350, showlegend=False, bargap=0.45)
-                fig_parados.update_xaxes(title="", showgrid=False, zeroline=False, categoryorder='array', categoryarray=df_chart_parados['Meses_Label'])
-                fig_parados.update_yaxes(title="", showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False)
-                fig_parados.update_traces(textposition='auto', textfont=dict(color='white', size=11))
+                fig_parados.add_trace(
+                    go.Bar(x=df_chart_parados['Meses_Label'], y=df_chart_parados['valor_saldo_atual'], name="Valor (R$)", text=df_chart_parados['Valor_Label'], textposition='auto', marker_color='#e74c3c'),
+                    secondary_y=False
+                )
+
+                fig_parados.add_trace(
+                    go.Bar(x=df_chart_parados['Meses_Label'], y=df_chart_parados['qtd_skus'], name="Qtd SKUs", text=df_chart_parados['SKU_Label'], textposition='auto', marker_color='#f39c12'),
+                    secondary_y=True
+                )
+
+                fig_parados.update_layout(
+                    barmode='group',
+                    plot_bgcolor='rgba(0,0,0,0)', 
+                    paper_bgcolor='rgba(0,0,0,0)', 
+                    font=dict(color='#8c9ba5'), 
+                    margin=dict(l=40, r=40, t=30, b=10), 
+                    height=350, 
+                    legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="right", x=1)
+                )
+
+                fig_parados.update_xaxes(title="", showgrid=False, zeroline=False)
+                fig_parados.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False, secondary_y=False)
+                fig_parados.update_yaxes(showgrid=False, zeroline=False, showticklabels=False, secondary_y=True)
+
                 st.plotly_chart(fig_parados, use_container_width=True, config={'displayModeBar': False}, key="grafico_materiais_parados")
 
                 st.markdown("<br>", unsafe_allow_html=True)
