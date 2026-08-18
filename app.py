@@ -528,7 +528,7 @@ with aba_geral:
             visible=get_vis('vis_total')
         ))
 
-        # Destaque de Pico e Vale Automático
+        # Destaque de Pico e Vale Automático (Corrigido sem borderradius)
         if not df_estoque_mes.empty:
             max_idx = df_estoque_mes['valor_saldo_atual'].idxmax()
             min_idx = df_estoque_mes['valor_saldo_atual'].idxmin()
@@ -537,13 +537,13 @@ with aba_geral:
                 x=df_estoque_mes.loc[max_idx, 'Periodo'], y=df_estoque_mes.loc[max_idx, 'valor_saldo_atual'],
                 text="▲ PICO", showarrow=True, arrowhead=2, ax=0, ay=-35,
                 font=dict(color="#e74c3c", size=10, family="monospace"),
-                bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#e74c3c", borderwidth=1, borderradius=4
+                bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#e74c3c", borderwidth=1
             )
             fig_linha_estoque.add_annotation(
                 x=df_estoque_mes.loc[min_idx, 'Periodo'], y=df_estoque_mes.loc[min_idx, 'valor_saldo_atual'],
                 text="▼ VALE", showarrow=True, arrowhead=2, ax=0, ay=35,
                 font=dict(color="#2ecc71", size=10, family="monospace"),
-                bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#2ecc71", borderwidth=1, borderradius=4
+                bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#2ecc71", borderwidth=1
             )
 
         if not df_critico_mes.empty:
