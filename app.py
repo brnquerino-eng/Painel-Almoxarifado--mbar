@@ -174,7 +174,6 @@ st.markdown("""
     ::-webkit-scrollbar-thumb:hover {
         background: #d85c27;
     }
-    /* Compactar inputs e selects para não ficarem gigantes */
     div[data-baseweb="select"] {
         min-height: 28px !important;
         font-size: 11px !important;
@@ -184,7 +183,6 @@ st.markdown("""
         min-height: 18px !important;
         padding: 0px 4px !important;
     }
-    /* Botões das Legendas mais compactos */
     .stButton > button {
         background-color: #161c24 !important;
         color: #8c9ba5 !important;
