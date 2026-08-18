@@ -149,7 +149,7 @@ def _chave_numerica(val):
 
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Estilização CSS Avançada
+# 3. Estilização CSS Avançada (Filtros e Botões Otimizados)
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -174,6 +174,16 @@ st.markdown("""
     }
     ::-webkit-scrollbar-thumb:hover {
         background: #d85c27;
+    }
+    /* Compactar inputs e selects para não ficarem gigantes */
+    div[data-baseweb="select"] {
+        min-height: 28px !important;
+        font-size: 11px !important;
+    }
+    div[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
+        font-size: 10px !important;
+        min-height: 18px !important;
+        padding: 0px 4px !important;
     }
     /* Botões das Legendas mais compactos */
     .stButton > button {
@@ -372,18 +382,18 @@ st.markdown(f"""
 aba_geral, aba_detalhada = st.tabs(["📈 Visão Geral", "📊 Análises Detalhadas & Tendência de Estoque"])
 
 with aba_geral:
-    # --- CONTROLES DO GRÁFICO (Mais Compactos) ---
+    # --- CONTROLES DO GRÁFICO (Filtros Compactos e Alinhados) ---
     with st.container(border=True):
-        col_tg_title, col_tg_escopo, col_tg_unid, col_tg_ano = st.columns([2.5, 1.2, 2.0, 1.5], gap="small")
+        col_tg_title, col_tg_escopo, col_tg_unid, col_tg_ano = st.columns([2.2, 1.2, 2.1, 1.5], gap="small")
         with col_tg_title:
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-top: 25px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 EVOLUÇÃO TEMPORAL DO ESTOQUE (R$)</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color: #ffffff; font-size: 13px; font-weight: bold; margin-top: 18px; border-left: 3px solid #d85c27; padding-left: 8px;'>📊 EVOLUÇÃO TEMPORAL DO ESTOQUE (R$)</div>", unsafe_allow_html=True)
 
         with col_tg_escopo:
-            st.markdown("<div style='font-size: 11px; color: #8c9ba5; margin-bottom: -15px;'>Tipo Unidade:</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Tipo Unidade:</div>", unsafe_allow_html=True)
             st.selectbox("Tipo Unidade:", ["Todas", "Ativa", "Gerencial"], key="chart_escopo", label_visibility="collapsed")
 
         with col_tg_unid:
-            st.markdown("<div style='font-size: 11px; color: #8c9ba5; margin-bottom: -15px;'>Unidades:</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Unidades:</div>", unsafe_allow_html=True)
             if st.session_state.chart_escopo == "Ativa":
                 opcoes_unid = unidades_ativas
             elif st.session_state.chart_escopo == "Gerencial":
@@ -393,7 +403,7 @@ with aba_geral:
             st.multiselect("Unidades:", opcoes_unid, key="chart_unidades", placeholder="Todas", label_visibility="collapsed")
 
         with col_tg_ano:
-            st.markdown("<div style='font-size: 11px; color: #8c9ba5; margin-bottom: -15px;'>Anos:</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Anos:</div>", unsafe_allow_html=True)
             st.multiselect("Anos:", ano_opcoes, key="chart_anos", placeholder="Todos", label_visibility="collapsed")
 
         # 6. Filtragem Síncrona Rigorosa
@@ -845,8 +855,8 @@ with aba_geral:
                 with st.container(height=380, border=False):
                     df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(Compras=('valor_entrada_compras', 'sum'), Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())).reset_index()
                     
-                    # Filtra unidades que não tiveram NEM compra NEM consumo
-                    df_diag = df_diag[(df_diag['Compras'] > 0) | (df_diag['Consumo'] > 0)].sort_values('Compras', ascending=True)
+                    # Filtra estritamente unidades que não tiveram NEM compra NEM consumo (> 0.01)
+                    df_diag = df_diag[(df_diag['Compras'] > 0.01) | (df_diag['Consumo'] > 0.01)].sort_values('Compras', ascending=True)
                     
                     ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
 
@@ -942,7 +952,7 @@ with aba_geral:
             else:
                 st.info("Sem dados suficientes para calcular Giro x Cobertura no período selecionado.")
 
-        # ================= MATERIAIS PARADOS HÁ MAIS DE 3 MESES & AUDITORIA =================
+        # ================= MATERIAIS PARADOS HÁ MAIS DE 3 MESES & AUDITORIA (DUAS COLUNAS LADO A LADO) =================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>⏳ MATERIAIS PARADOS HÁ MAIS DE 3 MESES (SEM MOVIMENTAÇÃO)</div>", unsafe_allow_html=True)
@@ -988,33 +998,26 @@ with aba_geral:
                 df_chart_parados['Valor_Label'] = df_chart_parados['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                 df_chart_parados['SKU_Label'] = df_chart_parados['qtd_skus'].astype(int).astype(str) + " SKUs"
 
-                fig_parados = make_subplots(specs=[[{"secondary_y": True}]])
+                # DIVISÃO EM DUAS COLUNAS LADO A LADO PARA VALOR E SKUS
+                c_p1, c_p2 = st.columns(2)
 
-                fig_parados.add_trace(
-                    go.Bar(x=df_chart_parados['Meses_Label'], y=df_chart_parados['valor_saldo_atual'], name="Valor (R$)", text=df_chart_parados['Valor_Label'], textposition='auto', marker_color='#e74c3c'),
-                    secondary_y=False
-                )
+                with c_p1:
+                    st.markdown("<div style='color: #ffffff; font-size: 12px; font-weight: bold; margin-bottom: 5px; text-align: center;'>💰 VALOR PARADO (R$)</div>", unsafe_allow_html=True)
+                    fig_val = px.bar(df_chart_parados, x='Meses_Label', y='valor_saldo_atual', text='Valor_Label', color_discrete_sequence=['#e74c3c'])
+                    fig_val.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=20, r=20, t=10, b=10), height=320, showlegend=False)
+                    fig_val.update_xaxes(title="", showgrid=False, zeroline=False)
+                    fig_val.update_yaxes(title="", showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False)
+                    fig_val.update_traces(textposition='auto', textfont=dict(color='white', size=11))
+                    st.plotly_chart(fig_val, use_container_width=True, config={'displayModeBar': False}, key="grafico_parados_valor")
 
-                fig_parados.add_trace(
-                    go.Bar(x=df_chart_parados['Meses_Label'], y=df_chart_parados['qtd_skus'], name="Qtd SKUs", text=df_chart_parados['SKU_Label'], textposition='auto', marker_color='#f39c12'),
-                    secondary_y=True
-                )
-
-                fig_parados.update_layout(
-                    barmode='group',
-                    plot_bgcolor='rgba(0,0,0,0)', 
-                    paper_bgcolor='rgba(0,0,0,0)', 
-                    font=dict(color='#8c9ba5'), 
-                    margin=dict(l=40, r=40, t=30, b=10), 
-                    height=350, 
-                    legend=dict(orientation="h", yanchor="bottom", y=1.1, xanchor="right", x=1)
-                )
-
-                fig_parados.update_xaxes(title="", showgrid=False, zeroline=False)
-                fig_parados.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False, secondary_y=False)
-                fig_parados.update_yaxes(showgrid=False, zeroline=False, showticklabels=False, secondary_y=True)
-
-                st.plotly_chart(fig_parados, use_container_width=True, config={'displayModeBar': False}, key="grafico_materiais_parados")
+                with c_p2:
+                    st.markdown("<div style='color: #ffffff; font-size: 12px; font-weight: bold; margin-bottom: 5px; text-align: center;'>📦 QUANTIDADE DE SKUs (Qtde)</div>", unsafe_allow_html=True)
+                    fig_sku_parados = px.bar(df_chart_parados, x='Meses_Label', y='qtd_skus', text='SKU_Label', color_discrete_sequence=['#f39c12'])
+                    fig_sku_parados.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=20, r=20, t=10, b=10), height=320, showlegend=False)
+                    fig_sku_parados.update_xaxes(title="", showgrid=False, zeroline=False)
+                    fig_sku_parados.update_yaxes(title="", showgrid=True, gridcolor='#232b36', zeroline=False, showticklabels=False)
+                    fig_sku_parados.update_traces(textposition='auto', textfont=dict(color='white', size=11))
+                    st.plotly_chart(fig_sku_parados, use_container_width=True, config={'displayModeBar': False}, key="grafico_parados_skus")
 
                 st.markdown("<br>", unsafe_allow_html=True)
 
