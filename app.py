@@ -1115,20 +1115,61 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Simulado UTE Borborema)
+# ABA 2: INVENTÁRIOS (Dinâmica com Unidades Reais + Rotativo/Geral + Acumulado 11+1)
 # ==========================================
 with aba_inventarios:
-    st.markdown("<div style='background-color: #d85c27; padding: 12px; border-radius: 8px; text-align: center; color: white; font-weight: bold; font-size: 16px; margin-bottom: 20px;'>INVENTÁRIO GERAL USINA UTE BORBOREMA (CAMPINA GRANDE-PB) — PERÍODO: 13/07/2026</div>", unsafe_allow_html=True)
-    
-    st.markdown("<div class='section-title'>📋 RESUMO DO INVENTÁRIO GERAL</div>", unsafe_allow_html=True)
-    
+    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (ROTAÇÕES & BALANÇO GERAL)</div>", unsafe_allow_html=True)
+
+    # Filtros de Controle da Aba de Inventários
+    with st.container(border=True):
+        col_inv_f1, col_inv_f2, col_inv_f3 = st.columns([3, 2, 2], gap="small")
+        
+        with col_inv_f1:
+            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Selecionar Unidade de Almoxarifado:</div>", unsafe_allow_html=True)
+            unidade_inventario_sel = st.selectbox("Unidade:", unidades_opcoes if unidades_opcoes else ["GERAL"], key="inv_unidade_sel", label_visibility="collapsed")
+            
+        with col_inv_f2:
+            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
+            tipo_inv_sel = st.selectbox("Tipo:", ["Rotativo (Mensal)", "Geral (Anual/Balanço)"], key="inv_tipo_sel", label_visibility="collapsed")
+            
+        with col_inv_f3:
+            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Ciclo (11 Rotativos + 1 Geral):</div>", unsafe_allow_html=True)
+            ciclo_mes_sel = st.selectbox("Ciclo:", [f"Mês {i} (Rotativo)" for i in range(1, 12)] + ["Mês 12 (Fechamento Geral)"], key="inv_ciclo_sel", label_visibility="collapsed")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Indicador Visual da Unidade e Período Ativo
+    st.markdown(f"""
+    <div style='background: linear-gradient(90deg, #161c24 0%, #1a222d 100%); border: 1px solid #d85c27; padding: 12px; border-radius: 8px; text-align: center; color: white; font-weight: bold; font-size: 14px; margin-bottom: 20px;'>
+        📍 UNIDADE ATIVA: <span style='color: #d85c27;'>{unidade_inventario_sel}</span> | TIPO: <span style='color: #3498db;'>{tipo_inv_sel}</span> | CICLO: <span style='color: #2ecc71;'>{ciclo_mes_sel}</span>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Simulação Avançada Baseada nas Contagens Acumuladas
+    is_geral = "Geral" in tipo_inv_sel
+    fator_escala = 0.15 if not is_geral else 1.00 # Rotativo abrange uma fração do estoque total por mês
+
+    # Puxa o saldo real da unidade selecionada no Supabase para dar veracidade aos números simulados do inventário
+    df_unidade_atual = df_completo[df_completo["unidade_almoxarifado"] == unidade_inventario_sel] if not df_completo.empty else pd.DataFrame()
+    val_base_unidade = df_unidade_atual['valor_saldo_atual'].sum() if not df_unidade_atual.empty else 17320408.51
+    skus_base_unidade = df_unidade_atual['codigo_produto'].nunique() if not df_unidade_atual.empty else 867
+
+    val_inventariado = val_base_unidade * fator_escala
+    ganhos_sim = val_inventariado * 0.0008
+    perdas_sim = -val_inventariado * 0.0033
+    dif_sim = ganhos_sim + perdas_sim
+    acuracia_isolada = 99.75 if is_geral else 99.88
+    acuracia_acumulada = 99.77 # Efeito 11+1 acumulado do ciclo
+
+    st.markdown("<div class='section-title'>📋 RESUMO DO INVENTÁRIO (ISOLADO vs ACUMULADO)</div>", unsafe_allow_html=True)
+
     dados_resumo = pd.DataFrame({
-        "EMPRESA": ["UTE BORBOREMA", "TOTAL"],
-        "Nº INVENTÁRIO": ["INV-2026-07", "-"],
-        "ACURÁCIA": ["99,75%", "99,75%"],
-        "GANHOS": ["R$ 13.280,21", "R$ 13.280,21"],
-        "PERDAS": ["-R$ 56.957,07", "-R$ 56.957,07"],
-        "DIFERENÇA": ["-R$ 43.676,86", "-R$ 43.676,86"]
+        "MÉTRICA / VISÃO": ["Inventário Isolado (Período Atual)", "Inventário Acumulado (Ciclo 11+1)"],
+        "TIPO CONTAGEM": [tipo_inv_sel, "Consolidado do Ano"],
+        "ACURÁCIA": [f"{acuracia_isolada:.2f}%", f"{acuracia_acumulada:.2f}%"],
+        "GANHOS": [fmt_brl(ganhos_sim), fmt_brl(ganhos_sim * 11)],
+        "PERDAS": [fmt_brl(perdas_sim), fmt_brl(perdas_sim * 11)],
+        "DIFERENÇA LÍQUIDA": [fmt_brl(dif_sim), fmt_brl(dif_sim * 11)]
     })
     st.dataframe(dados_resumo, use_container_width=True, hide_index=True)
 
@@ -1138,15 +1179,15 @@ with aba_inventarios:
     
     with col_inv1:
         with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 IMPACTO FINANCEIRO DE INVENTÁRIO (R$)</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 IMPACTO FINANCEIRO DO INVENTÁRIO (R$)</div>", unsafe_allow_html=True)
             
             df_inv_grafico = pd.DataFrame({
                 'Categoria': ['GANHOS', 'PERDAS', 'DIFERENÇA'],
-                'Valor': [13280.21, -56957.07, -43676.86],
+                'Valor': [ganhos_sim, perdas_sim, dif_sim],
                 'Cor': ['#2ecc71', '#e74c3c', '#3498db']
             })
             
-            fig_inv = px.bar(df_inv_grafico, x='Categoria', y='Valor', color='Categoria', color_discrete_map={'GANHOS': '#2ecc71', 'PERDAS': '#e74c3c', 'DIFERENÇA': '#3498db'}, text=['R$ 13.280,21', '-R$ 56.957,07', '-R$ 43.676,86'])
+            fig_inv = px.bar(df_inv_grafico, x='Categoria', y='Valor', color='Categoria', color_discrete_map={'GANHOS': '#2ecc71', 'PERDAS': '#e74c3c', 'DIFERENÇA': '#3498db'}, text=[fmt_brl(ganhos_sim), fmt_brl(perdas_sim), fmt_brl(dif_sim)])
             fig_inv.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=20, r=20, t=10, b=10), height=350, showlegend=False)
             fig_inv.update_traces(textposition='outside', textfont=dict(color='white'))
             fig_inv.update_xaxes(title="")
@@ -1155,21 +1196,21 @@ with aba_inventarios:
 
     with col_inv2:
         with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📑 DETALHES - INVENTÁRIO</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📑 DETALHES ANALÍTICOS - INVENTÁRIO</div>", unsafe_allow_html=True)
             
             dados_detalhes = pd.DataFrame({
                 "Descrição": [
-                    "Total Geral Inventário - Contagem (Linhas/Localização)",
-                    "Total Geral - SKU's",
-                    "Itens Contados - Inventariados",
-                    "Itens Divergentes",
+                    "Total Contado no Ciclo (Linhas/Localização)",
+                    "Total SKUs na Unidade",
+                    "Itens Contados e Auditados",
+                    "Itens com Divergência",
                     "   • Negativos (para menos)",
                     "   • Positivos (para mais)",
-                    "Acurácia - Itens Contados (R$)",
-                    "Acurácia - Itens contados (Linhas/Localização)"
+                    "Acurácia do Inventário (R$)",
+                    "Acurácia Acumulada do Ciclo (11+1)"
                 ],
-                "Quant.": ["867", "867", "867", "2", "1", "1", "-", "-"],
-                "Valor (R$)": ["R$ 17.320.408,51", "-", "R$ 17.276.067,89", "-R$ 43.676,86", "-R$ 56.957,07", "R$ 13.280,21", "-", "-"],
-                "%": ["100,00%", "-", "100,00%", "0,25%", "99,67%", "99,92%", "99,75%", "99,77%"]
+                "Quant.": [fmt_int(int(skus_base_unidade * fator_escala)), fmt_int(skus_base_unidade), fmt_int(int(skus_base_unidade * fator_escala)), "2", "1", "1", "-", "-"],
+                "Valor (R$)": [fmt_brl(val_base_unidade), "-", fmt_brl(val_inventariado), fmt_brl(dif_sim), fmt_brl(perdas_sim), fmt_brl(ganhos_sim), "-", "-"],
+                "%": ["100,00%", "-", "100,00%", "0,25%", "99,67%", "99,92%", f"{acuracia_isolada:.2f}%", f"{acuracia_acumulada:.2f}%"]
             })
             st.dataframe(dados_detalhes, use_container_width=True, hide_index=True)
