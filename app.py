@@ -23,7 +23,7 @@ if 'vis_obra' not in st.session_state:
 
 # Inicialização dos estados globais de controle do painel
 if 'chart_escopo' not in st.session_state:
-    st.session_state.chart_escopo = "Ativa" # CORREÇÃO: Inicializando em Ativa
+    st.session_state.chart_escopo = "Ativa"
 if 'chart_unidades' not in st.session_state:
     st.session_state.chart_unidades = []
 if 'chart_anos' not in st.session_state:
@@ -148,6 +148,13 @@ def carregar_dados_inventario():
 
 df_completo = carregar_dados()
 df_inventario = carregar_dados_inventario()
+
+# Identificação segura dos limites globais
+if not df_completo.empty:
+    max_ano_base = int(df_completo['tmp_ano_num'].max())
+    max_mes_base = int(df_completo[df_completo['tmp_ano_num'] == max_ano_base]['tmp_mes_num'].max())
+else:
+    max_ano_base, max_mes_base = 2026, 1
 
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
@@ -311,20 +318,23 @@ with aba_geral:
         if anos_sel:
             df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(anos_sel)]
 
-        # CORREÇÃO: Validação Automática Inteligente baseada no DataFrame JÁ FILTRADO
+        # CORREÇÃO BLINDADA: Definição segura dos limites de período filtrado ou fallback global
         if not df_filtrado.empty:
             max_a_filt = int(df_filtrado['tmp_ano_num'].max())
             max_m_filt = int(df_filtrado[df_filtrado['tmp_ano_num'] == max_a_filt]['tmp_mes_num'].max())
             periodo_maximo_valido = f"{max_m_filt:02d}/{max_a_filt}"
+        else:
+            max_a_filt, max_m_filt = max_ano_base, max_mes_base
+            periodo_maximo_valido = f"{max_m_filt:02d}/{max_a_filt}"
 
-            p_sel = st.session_state.get('filtro_periodo_grafico')
-            if not p_sel:
+        p_sel = st.session_state.get('filtro_periodo_grafico')
+        if not p_sel or df_filtrado.empty:
+            st.session_state.filtro_periodo_grafico = periodo_maximo_valido
+        else:
+            m_str, a_str = p_sel.split('/')
+            chk_per = df_filtrado[(df_filtrado['tmp_ano_num'] == int(a_str)) & (df_filtrado['tmp_mes_num'] == int(m_str))]
+            if chk_per.empty:
                 st.session_state.filtro_periodo_grafico = periodo_maximo_valido
-            else:
-                m_str, a_str = p_sel.split('/')
-                chk_per = df_filtrado[(df_filtrado['tmp_ano_num'] == int(a_str)) & (df_filtrado['tmp_mes_num'] == int(m_str))]
-                if chk_per.empty:
-                    st.session_state.filtro_periodo_grafico = periodo_maximo_valido
 
         # --- LEGENDA INTELIGENTE COMPACTA ---
         c_leg1, c_leg2, c_leg3, c_leg4 = st.columns(4)
@@ -447,7 +457,7 @@ with aba_geral:
 
         st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, on_select="rerun", selection_mode="points", key="tendencia_geral")
 
-    # 7. CORREÇÃO: Criação do DataFrame de Snapshot muito mais limpa e assertiva
+    # 7. Criação do DataFrame de Snapshot Atual e Anterior
     df_snapshot = pd.DataFrame(columns=df_filtrado.columns)
     df_snapshot_prev = pd.DataFrame(columns=df_filtrado.columns)
 
@@ -627,7 +637,6 @@ with aba_geral:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🍩 COMPOSIÇÃO DO ESTOQUE (%)</div>", unsafe_allow_html=True)
                 
-                # CORREÇÃO: Máscaras mutuamente exclusivas para evitar dupla contagem na Pizza!
                 m_obs = df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)
                 m_obra = df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False) & ~m_obs
                 m_crit = (df_snapshot.get("item_critico", "") == "1-Sim") & ~m_obs & ~m_obra
