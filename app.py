@@ -52,7 +52,7 @@ def conectar_supabase():
 supabase = conectar_supabase()
 table_name = "painel_estoque"
 
-# 2. Performance Otimizada e Estável com Retry Progressivo
+# 2. Performance Otimizada e Estável com Retry Progressivo (Aba Geral)
 @st.cache_data()
 def carregar_dados():
     try:
@@ -124,7 +124,35 @@ def carregar_dados():
         st.error(f"Erro ao carregar dados do Supabase: {e}")
         return _df_vazio_padrao()
 
+# --- NOVO: Carregamento dos dados Reais de Inventário ---
+@st.cache_data()
+def carregar_dados_inventario():
+    try:
+        with st.spinner("Carregando base real de inventários..."):
+            res = supabase.table("painel_inventario").select("*").execute()
+            if not res.data:
+                return pd.DataFrame()
+            
+            df_inv = pd.DataFrame(res.data)
+            df_inv = df_inv.replace({np.nan: None})
+            
+            # Garantir tipos numéricos para os cálculos
+            cols_numericas = [
+                "saldo_anterior_val", "inventario_val", "diferenca_val", 
+                "saldo_anterior_consolidado", "inventario_consolidado", "diferenca_consolidada",
+                "valor_unitario"
+            ]
+            for col in cols_numericas:
+                if col in df_inv.columns:
+                    df_inv[col] = pd.to_numeric(df_inv[col], errors='coerce').fillna(0.0)
+            
+            return df_inv
+    except Exception as e:
+        st.error(f"Erro ao carregar dados da tabela painel_inventario: {e}")
+        return pd.DataFrame()
+
 df_completo = carregar_dados()
+df_inventario = carregar_dados_inventario()
 
 # Identificação automática do último mês e ano disponíveis
 if not df_completo.empty:
@@ -148,7 +176,7 @@ def _chave_numerica(val):
 
 ano_opcoes = sorted(df_completo["ano_referencia"].dropna().unique().tolist(), key=_chave_numerica) if not df_completo.empty else []
 
-# 3. Estilização CSS Avançada (Filtros e Botões Otimizados)
+# 3. Estilização CSS Avançada
 st.markdown("""
 <style>
     @keyframes smoothPageLoad {
@@ -368,15 +396,51 @@ st.markdown(f"""
     </div>
     <div class="title-container">
         <div class="title-main">VISÃO EXECUTIVA DE ESTOQUE</div>
-        <div class="title-sub">Valores Consolidados</div>
+        <div class="title-sub">Valores Consolidados e Gestão de Inventários</div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
+# Funções Globais de Formatação
+def fmt_brl(val): return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+def fmt_int(val): return f"{val:,}".replace(',', '.')
+def fmt_dec(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
+def fmt_mes(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
+def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font_size="21px", invert_color=False):
+    if val_ant == 0 and val_atual == 0:
+        pct_str, trend_class, arrow = "0,0%", "trend-neutral", "➖"
+    elif val_ant == 0 or val_ant == val_atual: # Ajuste para não mostrar variação irreal em dados únicos (Inventário)
+        pct_str, trend_class, arrow = "0,0%", "trend-neutral", "➖"
+    else:
+        pct = ((val_atual - val_ant) / val_ant) * 100
+        pct_str = f"{abs(pct):.1f}%".replace('.', ',')
+        if pct > 0:
+            trend_class = "trend-down" if invert_color else "trend-up"
+            arrow = "🔺"
+        elif pct < 0:
+            trend_class = "trend-up" if invert_color else "trend-down"
+            arrow = "🔻"
+        else:
+            trend_class, arrow = "trend-neutral", "➖"
+
+    return f"""
+    <div class="card-box">
+        <div class="card-header">
+            <div class="header-left">
+                <div class="icon-box {icon_class}">{icon}</div>
+                <div class="card-title">{title}</div>
+            </div>
+            <div class="trend-box {trend_class}">{arrow} {pct_str}</div>
+        </div>
+        <div class="card-value" style="font-size: {font_size};">{val_formatado}</div>
+    </div>
+    """
+
 # ==========================================
 # 5. SISTEMA DE ABAS NATIVO (Visão Geral & Inventários)
 # ==========================================
-aba_geral, aba_inventarios = st.tabs(["📈 Visão Geral", "📦 Inventários"])
+aba_geral, aba_inventarios = st.tabs(["📈 Visão Geral", "📦 Painel de Inventários"])
 
 with aba_geral:
     # --- CONTROLES DO GRÁFICO (Filtros Compactos e Alinhados) ---
@@ -462,7 +526,7 @@ with aba_geral:
                 st.session_state.vis_obra = not st.session_state.vis_obra
                 st.rerun()
 
-        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA (MESTRE COM SPLINE & PICO/VALE) ---
+        # --- RENDERIZAÇÃO DO GRÁFICO DE TENDÊNCIA ---
         df_chart_base = df_filtrado
 
         df_estoque_mes = df_chart_base.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
@@ -514,7 +578,7 @@ with aba_geral:
         def get_vis(key):
             return True if st.session_state.get(key, False) else 'legendonly'
 
-        # Traço Principal com Spline Suave e Preenchimento Elegante
+        # Traço Principal com Spline Suave
         fig_linha_estoque.add_trace(go.Scatter(
             x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
             name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
@@ -658,7 +722,7 @@ with aba_geral:
     val_obsoleto_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
     val_obra_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
 
-    # --- ⚡ AGREGAÇÃO MENSAL OPERACIONAL ÚNICA (base para Giro/Cobertura) ---
+    # --- ⚡ AGREGAÇÃO MENSAL OPERACIONAL ---
     giro_mensal, giro_anual, cobertura_meses, cobertura_anos = 0.0, 0.0, 0.0, 0.0
     giro_mensal_prev, cobertura_meses_prev = 0.0, 0.0
     monthly_raw = pd.DataFrame(columns=['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num', 'estoque_op', 'consumo_op'])
@@ -708,42 +772,6 @@ with aba_geral:
             con_med_p = sub_prev['consumo_op'].mean()
             if est_med_p > 0: giro_mensal_prev = con_med_p / est_med_p
             if con_med_p > 0: cobertura_meses_prev = est_med_p / con_med_p
-
-    # Funções de formatação
-    def fmt_brl(val): return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-    def fmt_int(val): return f"{val:,}".replace(',', '.')
-    def fmt_dec(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.') + "x"
-    def fmt_mes(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-    def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font_size="21px", invert_color=False):
-        if val_ant == 0 and val_atual == 0:
-            pct_str, trend_class, arrow = "0,0%", "trend-neutral", "➖"
-        elif val_ant == 0:
-            pct_str, trend_class, arrow = "100,0%", "trend-down" if invert_color else "trend-up", "🔺"
-        else:
-            pct = ((val_atual - val_ant) / val_ant) * 100
-            pct_str = f"{abs(pct):.1f}%".replace('.', ',')
-            if pct > 0:
-                trend_class = "trend-down" if invert_color else "trend-up"
-                arrow = "🔺"
-            elif pct < 0:
-                trend_class = "trend-up" if invert_color else "trend-down"
-                arrow = "🔻"
-            else:
-                trend_class, arrow = "trend-neutral", "➖"
-
-        return f"""
-        <div class="card-box">
-            <div class="card-header">
-                <div class="header-left">
-                    <div class="icon-box {icon_class}">{icon}</div>
-                    <div class="card-title">{title}</div>
-                </div>
-                <div class="trend-box {trend_class}">{arrow} {pct_str}</div>
-            </div>
-            <div class="card-value" style="font-size: {font_size};">{val_formatado}</div>
-        </div>
-        """
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<div class='section-title'>💼 LINHA FINANCEIRA</div>", unsafe_allow_html=True)
@@ -813,7 +841,7 @@ with aba_geral:
     if not df_filtrado.empty:
         layout_transparente = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=10, r=10, t=10, b=10))
 
-        # LINHA 1: RANKING POR UNIDADE VS COMPOSIÇÃO DE ESTOQUE (ROSCA)
+        # LINHA 1: RANKING POR UNIDADE VS COMPOSIÇÃO DE ESTOQUE
         col_c1, col_c2 = st.columns([5, 5], gap="medium")
         with col_c1:
             with st.container(border=True):
@@ -1113,102 +1141,131 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Dinâmica com Unidades Reais + Rotativo/Geral + Acumulado 11+1)
+# ABA 2: INVENTÁRIOS (Dados Reais do Supabase)
 # ==========================================
 with aba_inventarios:
-    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (ROTAÇÕES & BALANÇO GERAL)</div>", unsafe_allow_html=True)
+    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (RESULTADOS REAIS)</div>", unsafe_allow_html=True)
 
-    # Filtros de Controle da Aba de Inventários
-    with st.container(border=True):
-        col_inv_f1, col_inv_f2, col_inv_f3 = st.columns([3, 2, 2], gap="small")
+    if df_inventario.empty:
+        st.warning("⚠️ Nenhum dado de inventário encontrado. Por favor, verifique se a tabela 'painel_inventario' foi carregada corretamente no Supabase.")
+    else:
+        # Filtros de Controle Reais da Aba de Inventários
+        with st.container(border=True):
+            col_inv_f1, col_inv_f2, col_inv_f3 = st.columns([3, 3, 2], gap="small")
+            
+            with col_inv_f1:
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Nome do Inventário:</div>", unsafe_allow_html=True)
+                lista_inventarios = sorted(df_inventario['nome_inventario'].dropna().unique().tolist())
+                inv_sel = st.selectbox("Inventário:", ["Todos os Inventários"] + lista_inventarios, key="inv_nome_sel", label_visibility="collapsed")
+                
+            with col_inv_f2:
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Local de Estoque (Armazém):</div>", unsafe_allow_html=True)
+                # Filtra locais baseados no inventário escolhido
+                df_locais = df_inventario if inv_sel == "Todos os Inventários" else df_inventario[df_inventario['nome_inventario'] == inv_sel]
+                lista_locais = sorted(df_locais['local_estoque'].dropna().unique().tolist())
+                local_sel = st.selectbox("Local:", ["Todos os Locais"] + lista_locais, key="inv_local_sel", label_visibility="collapsed")
+                
+            with col_inv_f3:
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Família / Categoria:</div>", unsafe_allow_html=True)
+                lista_familias = sorted(df_locais['familia'].dropna().unique().tolist())
+                fam_sel = st.selectbox("Família:", ["Todas as Famílias"] + lista_familias, key="inv_fam_sel", label_visibility="collapsed")
+
+        # Filtragem Rigorosa de Inventário
+        df_inv_filtrado = df_inventario.copy()
+        if inv_sel != "Todos os Inventários":
+            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['nome_inventario'] == inv_sel]
+        if local_sel != "Todos os Locais":
+            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['local_estoque'] == local_sel]
+        if fam_sel != "Todas as Famílias":
+            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['familia'] == fam_sel]
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # Indicador Visual Ativo
+        st.markdown(f"""
+        <div style='background: linear-gradient(90deg, #161c24 0%, #1a222d 100%); border: 1px solid #d85c27; padding: 12px; border-radius: 8px; text-align: center; color: white; font-weight: bold; font-size: 14px; margin-bottom: 20px;'>
+            📍 INVENTÁRIO: <span style='color: #d85c27;'>{inv_sel}</span> | LOCAL: <span style='color: #3498db;'>{local_sel}</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # --- CÁLCULOS FINANCEIROS REAIS DO INVENTÁRIO ---
+        saldo_sistema_inv = df_inv_filtrado['saldo_anterior_val'].sum()
+        total_contado_inv = df_inv_filtrado['inventario_val'].sum()
         
-        with col_inv_f1:
-            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Selecionar Unidade de Almoxarifado:</div>", unsafe_allow_html=True)
-            unidade_inventario_sel = st.selectbox("Unidade:", unidades_opcoes if unidades_opcoes else ["GERAL"], key="inv_unidade_sel", label_visibility="collapsed")
-            
-        with col_inv_f2:
-            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
-            tipo_inv_sel = st.selectbox("Tipo:", ["Rotativo (Mensal)", "Geral (Anual/Balanço)"], key="inv_tipo_sel", label_visibility="collapsed")
-            
-        with col_inv_f3:
-            st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Ciclo (11 Rotativos + 1 Geral):</div>", unsafe_allow_html=True)
-            ciclo_mes_sel = st.selectbox("Ciclo:", [f"Mês {i} (Rotativo)" for i in range(1, 12)] + ["Mês 12 (Fechamento Geral)"], key="inv_ciclo_sel", label_visibility="collapsed")
+        # Ganhos (Diferença Positiva) e Perdas (Diferença Negativa)
+        ganhos_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] > 0]['diferenca_val'].sum()
+        perdas_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] < 0]['diferenca_val'].sum()
+        dif_liquida_real = df_inv_filtrado['diferenca_val'].sum()
 
-    st.markdown("<br>", unsafe_allow_html=True)
+        # Acurácia Real: Baseada na diferença absoluta sobre o saldo total
+        dif_absoluta = abs(df_inv_filtrado['diferenca_val']).sum()
+        if saldo_sistema_inv > 0:
+            acuracia_real = max(0, 100.0 - (dif_absoluta / saldo_sistema_inv * 100.0))
+        else:
+            acuracia_real = 100.0 if dif_absoluta == 0 else 0.0
 
-    # Indicador Visual da Unidade e Período Ativo
-    st.markdown(f"""
-    <div style='background: linear-gradient(90deg, #161c24 0%, #1a222d 100%); border: 1px solid #d85c27; padding: 12px; border-radius: 8px; text-align: center; color: white; font-weight: bold; font-size: 14px; margin-bottom: 20px;'>
-        📍 UNIDADE ATIVA: <span style='color: #d85c27;'>{unidade_inventario_sel}</span> | TIPO: <span style='color: #3498db;'>{tipo_inv_sel}</span> | CICLO: <span style='color: #2ecc71;'>{ciclo_mes_sel}</span>
-    </div>
-    """, unsafe_allow_html=True)
+        # --- CARDS DE KPI (Reaproveitando a função render_card) ---
+        c_k1, c_k2, c_k3, c_k4 = st.columns(4)
+        with c_k1: st.markdown(render_card("💻", "icon-estoque", "SALDO SISTEMA (R$)", fmt_brl(saldo_sistema_inv), saldo_sistema_inv, saldo_sistema_inv), unsafe_allow_html=True)
+        with c_k2: st.markdown(render_card("📋", "icon-skus", "TOTAL CONTADO (R$)", fmt_brl(total_contado_inv), total_contado_inv, total_contado_inv), unsafe_allow_html=True)
+        with c_k3: st.markdown(render_card("📈", "icon-obra", "SOBRAS / GANHOS", fmt_brl(ganhos_reais), ganhos_reais, ganhos_reais), unsafe_allow_html=True)
+        with c_k4: st.markdown(render_card("📉", "icon-critico", "FALTAS / PERDAS", fmt_brl(perdas_reais), perdas_reais, perdas_reais), unsafe_allow_html=True)
 
-    # Simulação Avançada Baseada nas Contagens Acumuladas
-    is_geral = "Geral" in tipo_inv_sel
-    fator_escala = 0.15 if not is_geral else 1.00 # Rotativo abrange uma fração do estoque total por mês
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    # Puxa o saldo real da unidade selecionada no Supabase para dar veracidade aos números simulados do inventário
-    df_unidade_atual = df_completo[df_completo["unidade_almoxarifado"] == unidade_inventario_sel] if not df_completo.empty else pd.DataFrame()
-    val_base_unidade = df_unidade_atual['valor_saldo_atual'].sum() if not df_unidade_atual.empty else 17320408.51
-    skus_base_unidade = df_unidade_atual['codigo_produto'].nunique() if not df_unidade_atual.empty else 867
+        # --- GRÁFICOS E TABELAS ANALÍTICAS ---
+        col_inv1, col_inv2 = st.columns([4, 6], gap="medium")
+        
+        with col_inv1:
+            with st.container(border=True):
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 BALANÇO FINANCEIRO DO INVENTÁRIO (R$)</div>", unsafe_allow_html=True)
+                
+                df_inv_grafico = pd.DataFrame({
+                    'Categoria': ['SOBRAS (+)', 'FALTAS (-)', 'DIF. LÍQUIDA'],
+                    'Valor': [ganhos_reais, perdas_reais, dif_liquida_real],
+                    'Cor': ['#2ecc71', '#e74c3c', '#3498db']
+                })
+                
+                fig_inv = px.bar(
+                    df_inv_grafico, x='Categoria', y='Valor', color='Categoria', 
+                    color_discrete_map={'SOBRAS (+)': '#2ecc71', 'FALTAS (-)': '#e74c3c', 'DIF. LÍQUIDA': '#3498db'}, 
+                    text=[fmt_brl(ganhos_reais), fmt_brl(perdas_reais), fmt_brl(dif_liquida_real)]
+                )
+                fig_inv.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=20, r=20, t=10, b=10), height=350, showlegend=False)
+                fig_inv.update_traces(textposition='outside', textfont=dict(color='white'))
+                fig_inv.update_xaxes(title="")
+                fig_inv.update_yaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ")
+                st.plotly_chart(fig_inv, use_container_width=True, config={'displayModeBar': False})
 
-    val_inventariado = val_base_unidade * fator_escala
-    ganhos_sim = val_inventariado * 0.0008
-    perdas_sim = -val_inventariado * 0.0033
-    dif_sim = ganhos_sim + perdas_sim
-    acuracia_isolada = 99.75 if is_geral else 99.88
-    acuracia_acumulada = 99.77 # Efeito 11+1 acumulado do ciclo
+        with col_inv2:
+            with st.container(border=True):
+                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📑 AUDITORIA DE DIVERGÊNCIAS (SKUs)</div>", unsafe_allow_html=True)
+                
+                # Resumo das Quantidades Físicas
+                skus_total = df_inv_filtrado['codigo_produto'].nunique()
+                skus_divergentes = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0]['codigo_produto'].nunique()
+                
+                st.markdown(f"""
+                <div style="display: flex; justify-content: space-between; margin-bottom: 15px; background-color: #161c24; padding: 10px; border-radius: 6px;">
+                    <div><span style="color:#8c9ba5; font-size:12px;">Total de SKUs Auditados:</span> <strong style="color:white; font-size:14px;">{fmt_int(skus_total)}</strong></div>
+                    <div><span style="color:#8c9ba5; font-size:12px;">SKUs com Divergência:</span> <strong style="color:#e74c3c; font-size:14px;">{fmt_int(skus_divergentes)}</strong></div>
+                    <div><span style="color:#8c9ba5; font-size:12px;">Acurácia (Valor):</span> <strong style="color:#2ecc71; font-size:14px;">{acuracia_real:.2f}%</strong></div>
+                </div>
+                """, unsafe_allow_html=True)
 
-    st.markdown("<div class='section-title'>📋 RESUMO DO INVENTÁRIO (ISOLADO vs ACUMULADO)</div>", unsafe_allow_html=True)
-
-    dados_resumo = pd.DataFrame({
-        "MÉTRICA / VISÃO": ["Inventário Isolado (Período Atual)", "Inventário Acumulado (Ciclo 11+1)"],
-        "TIPO CONTAGEM": [tipo_inv_sel, "Consolidado do Ano"],
-        "ACURÁCIA": [f"{acuracia_isolada:.2f}%", f"{acuracia_acumulada:.2f}%"],
-        "GANHOS": [fmt_brl(ganhos_sim), fmt_brl(ganhos_sim * 11)],
-        "PERDAS": [fmt_brl(perdas_sim), fmt_brl(perdas_sim * 11)],
-        "DIFERENÇA LÍQUIDA": [fmt_brl(dif_sim), fmt_brl(dif_sim * 11)]
-    })
-    st.dataframe(dados_resumo, use_container_width=True, hide_index=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    col_inv1, col_inv2 = st.columns([5, 5], gap="medium")
-    
-    with col_inv1:
-        with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 IMPACTO FINANCEIRO DO INVENTÁRIO (R$)</div>", unsafe_allow_html=True)
-            
-            df_inv_grafico = pd.DataFrame({
-                'Categoria': ['GANHOS', 'PERDAS', 'DIFERENÇA'],
-                'Valor': [ganhos_sim, perdas_sim, dif_sim],
-                'Cor': ['#2ecc71', '#e74c3c', '#3498db']
-            })
-            
-            fig_inv = px.bar(df_inv_grafico, x='Categoria', y='Valor', color='Categoria', color_discrete_map={'GANHOS': '#2ecc71', 'PERDAS': '#e74c3c', 'DIFERENÇA': '#3498db'}, text=[fmt_brl(ganhos_sim), fmt_brl(perdas_sim), fmt_brl(dif_sim)])
-            fig_inv.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=20, r=20, t=10, b=10), height=350, showlegend=False)
-            fig_inv.update_traces(textposition='outside', textfont=dict(color='white'))
-            fig_inv.update_xaxes(title="")
-            fig_inv.update_yaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ")
-            st.plotly_chart(fig_inv, use_container_width=True, config={'displayModeBar': False})
-
-    with col_inv2:
-        with st.container(border=True):
-            st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📑 DETALHES ANALÍTICOS - INVENTÁRIO</div>", unsafe_allow_html=True)
-            
-            dados_detalhes = pd.DataFrame({
-                "Descrição": [
-                    "Total Contado no Ciclo (Linhas/Localização)",
-                    "Total SKUs na Unidade",
-                    "Itens Contados e Auditados",
-                    "Itens com Divergência",
-                    "   • Negativos (para menos)",
-                    "   • Positivos (para mais)",
-                    "Acurácia do Inventário (R$)",
-                    "Acurácia Acumulada do Ciclo (11+1)"
-                ],
-                "Quant.": [fmt_int(int(skus_base_unidade * fator_escala)), fmt_int(skus_base_unidade), fmt_int(int(skus_base_unidade * fator_escala)), "2", "1", "1", "-", "-"],
-                "Valor (R$)": [fmt_brl(val_base_unidade), "-", fmt_brl(val_inventariado), fmt_brl(dif_sim), fmt_brl(perdas_sim), fmt_brl(ganhos_sim), "-", "-"],
-                "%": ["100,00%", "-", "100,00%", "0,25%", "99,67%", "99,92%", f"{acuracia_isolada:.2f}%", f"{acuracia_acumulada:.2f}%"]
-            })
-            st.dataframe(dados_detalhes, use_container_width=True, hide_index=True)
+                # Tabela de itens com divergência
+                df_diverg = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0].copy()
+                if not df_diverg.empty:
+                    df_diverg = df_diverg.sort_values(by='diferenca_val', key=abs, ascending=False)
+                    
+                    df_tabela_div = pd.DataFrame()
+                    df_tabela_div['SKU'] = df_diverg['codigo_produto']
+                    df_tabela_div['Nome do Produto'] = df_diverg['nome_produto']
+                    df_tabela_div['Local'] = df_diverg['localizacao']
+                    df_tabela_div['Sist. (R$)'] = df_diverg['saldo_anterior_val'].apply(fmt_brl)
+                    df_tabela_div['Físico (R$)'] = df_diverg['inventario_val'].apply(fmt_brl)
+                    df_tabela_div['Diferença (R$)'] = df_diverg['diferenca_val'].apply(fmt_brl)
+                    
+                    st.dataframe(df_tabela_div, use_container_width=True, hide_index=True, height=250)
+                else:
+                    st.success("✨ Excelente! Não há divergências financeiras nos filtros selecionados. Acurácia de 100%.")
