@@ -23,7 +23,7 @@ if 'vis_obra' not in st.session_state:
 
 # Inicialização dos estados globais de controle do painel
 if 'chart_escopo' not in st.session_state:
-    st.session_state.chart_escopo = "Todas"
+    st.session_state.chart_escopo = "Ativa" # CORREÇÃO: Inicializando em Ativa
 if 'chart_unidades' not in st.session_state:
     st.session_state.chart_unidades = []
 if 'chart_anos' not in st.session_state:
@@ -61,11 +61,10 @@ def carregar_dados():
             total_rows = getattr(count_res, 'count', None)
 
             if not total_rows or total_rows == 0:
-                total_rows = 460000  # Fallback de segurança
+                total_rows = 460000
 
             batch_size = 1000
             ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
-
             all_data = []
 
             def fetch_range(start_r, end_r, tentativas=3):
@@ -93,8 +92,6 @@ def carregar_dados():
                 return _df_vazio_padrao()
 
             df = pd.DataFrame(all_data)
-
-            # Tratamento de segurança contra NaN para evitar erro 500 do JSON
             df = df.replace({np.nan: None})
 
             if "unidade_almoxarifado" in df.columns:
@@ -124,7 +121,6 @@ def carregar_dados():
         st.error(f"Erro ao carregar dados do Supabase: {e}")
         return _df_vazio_padrao()
 
-# --- NOVO: Carregamento dos dados Reais de Inventário ---
 @st.cache_data()
 def carregar_dados_inventario():
     try:
@@ -136,7 +132,6 @@ def carregar_dados_inventario():
             df_inv = pd.DataFrame(res.data)
             df_inv = df_inv.replace({np.nan: None})
             
-            # Garantir tipos numéricos para os cálculos
             cols_numericas = [
                 "saldo_anterior_val", "inventario_val", "diferenca_val", 
                 "saldo_anterior_consolidado", "inventario_consolidado", "diferenca_consolidada",
@@ -153,16 +148,6 @@ def carregar_dados_inventario():
 
 df_completo = carregar_dados()
 df_inventario = carregar_dados_inventario()
-
-# Identificação automática do último mês e ano disponíveis
-if not df_completo.empty:
-    max_ano_base = df_completo['tmp_ano_num'].max()
-    max_mes_base = df_completo[df_completo['tmp_ano_num'] == max_ano_base]['tmp_mes_num'].max()
-
-    if st.session_state.filtro_periodo_grafico is None:
-        st.session_state.filtro_periodo_grafico = f"{int(max_mes_base):02d}/{int(max_ano_base)}"
-else:
-    max_ano_base, max_mes_base = 2026, 7
 
 unidades_opcoes = sorted(df_completo["unidade_almoxarifado"].dropna().unique().tolist()) if not df_completo.empty else []
 unidades_gerenciais = [u for u in unidades_opcoes if "GERENCIAL" in u]
@@ -187,147 +172,29 @@ st.markdown("""
         background-color: #0f141c;
         animation: smoothPageLoad 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
     }
-    ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-        background: #161c24;
-        border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb {
-        background: #232b36;
-        border-radius: 4px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-        background: #d85c27;
-    }
-    div[data-baseweb="select"] {
-        min-height: 28px !important;
-        font-size: 11px !important;
-    }
-    div[data-testid="stMultiSelect"] span[data-baseweb="tag"] {
-        font-size: 10px !important;
-        min-height: 18px !important;
-        padding: 0px 4px !important;
-    }
-    .stButton > button {
-        background-color: #161c24 !important;
-        color: #8c9ba5 !important;
-        border: 1px solid #232b36 !important;
-        border-radius: 6px !important;
-        font-size: 10px !important;
-        padding: 2px 4px !important;
-        min-height: 24px !important;
-        font-weight: 600 !important;
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    }
-    .stButton > button:hover {
-        border-color: #d85c27 !important;
-        color: #ffffff !important;
-        transform: translateY(-1px);
-    }
-    .stButton > button[kind="primary"] {
-        background-color: #1a222d !important;
-        border: 1px solid #d85c27 !important;
-        color: #ffffff !important;
-    }
-    .header-container {
-        display: flex;
-        align-items: center;
-        border-bottom: 2px solid #d85c27;
-        padding-bottom: 12px;
-        margin-bottom: 20px;
-        gap: 20px;
-    }
-    .logo-container {
-        background-color: #ffffff;
-        padding: 6px 16px;
-        border-radius: 4px;
-        text-align: center;
-        font-family: Arial, sans-serif;
-    }
-    .logo-main {
-        color: #12161f;
-        font-weight: 900;
-        font-size: 18px;
-        line-height: 1;
-    }
-    .logo-sub {
-        color: #d85c27;
-        font-size: 9px;
-        font-weight: bold;
-        letter-spacing: 1px;
-    }
-    .title-container {
-        border-left: 1px solid #333d4d;
-        padding-left: 15px;
-    }
-    .title-main {
-        color: #ffffff;
-        font-size: 18px;
-        font-weight: bold;
-        letter-spacing: 1px;
-        margin: 0;
-    }
-    .title-sub {
-        color: #8c9ba5;
-        font-size: 12px;
-        margin: 0;
-    }
-    .card-box {
-        background-color: #161c24;
-        border: 1px solid #232b36;
-        border-radius: 8px;
-        padding: 16px;
-        min-height: 130px;
-        height: auto;
-        display: flex;
-        flex-direction: column;
-        justify-content: space-between;
-        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3);
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    }
-    .card-box:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15);
-        border-color: #333d4d;
-    }
-    div[data-testid="stContainer"] {
-        background-color: #161c24 !important;
-        border: 1px solid #232b36 !important;
-        border-radius: 8px !important;
-        padding: 15px !important;
-        box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8) !important;
-        overflow: visible !important;
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    }
-    div[data-testid="stContainer"]:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 20px 35px rgba(0, 0, 0, 0.85), 0 8px 20px rgba(216, 92, 39, 0.2) !important;
-        border-color: #333d4d !important;
-    }
-    .card-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 12px;
-    }
-    .header-left {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-    }
-    .icon-box {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 14px;
-        flex-shrink: 0;
-    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #161c24; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #232b36; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #d85c27; }
+    div[data-baseweb="select"] { min-height: 28px !important; font-size: 11px !important; }
+    div[data-testid="stMultiSelect"] span[data-baseweb="tag"] { font-size: 10px !important; min-height: 18px !important; padding: 0px 4px !important; }
+    .stButton > button { background-color: #161c24 !important; color: #8c9ba5 !important; border: 1px solid #232b36 !important; border-radius: 6px !important; font-size: 10px !important; padding: 2px 4px !important; min-height: 24px !important; font-weight: 600 !important; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
+    .stButton > button:hover { border-color: #d85c27 !important; color: #ffffff !important; transform: translateY(-1px); }
+    .stButton > button[kind="primary"] { background-color: #1a222d !important; border: 1px solid #d85c27 !important; color: #ffffff !important; }
+    .header-container { display: flex; align-items: center; border-bottom: 2px solid #d85c27; padding-bottom: 12px; margin-bottom: 20px; gap: 20px; }
+    .logo-container { background-color: #ffffff; padding: 6px 16px; border-radius: 4px; text-align: center; font-family: Arial, sans-serif; }
+    .logo-main { color: #12161f; font-weight: 900; font-size: 18px; line-height: 1; }
+    .logo-sub { color: #d85c27; font-size: 9px; font-weight: bold; letter-spacing: 1px; }
+    .title-container { border-left: 1px solid #333d4d; padding-left: 15px; }
+    .title-main { color: #ffffff; font-size: 18px; font-weight: bold; letter-spacing: 1px; margin: 0; }
+    .title-sub { color: #8c9ba5; font-size: 12px; margin: 0; }
+    .card-box { background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; padding: 16px; min-height: 130px; height: auto; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 10px 20px rgba(0, 0, 0, 0.5), 0 4px 8px rgba(0, 0, 0, 0.3); transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
+    .card-box:hover { transform: translateY(-5px); box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8), 0 5px 15px rgba(216, 92, 39, 0.15); border-color: #333d4d; }
+    div[data-testid="stContainer"] { background-color: #161c24 !important; border: 1px solid #232b36 !important; border-radius: 8px !important; padding: 15px !important; box-shadow: 0 15px 30px rgba(0, 0, 0, 0.8) !important; overflow: visible !important; transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
+    div[data-testid="stContainer"]:hover { transform: translateY(-4px); box-shadow: 0 20px 35px rgba(0, 0, 0, 0.85), 0 8px 20px rgba(216, 92, 39, 0.2) !important; border-color: #333d4d !important; }
+    .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .header-left { display: flex; align-items: center; gap: 8px; }
+    .icon-box { width: 32px; height: 32px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
     .icon-estoque { background-color: #132a24; color: #2ecc71; }
     .icon-critico { background-color: #2a1515; color: #e74c3c; }
     .icon-obsoleto { background-color: #2a2a2a; color: #9b59b6; }
@@ -337,53 +204,13 @@ st.markdown("""
     .icon-skus { background-color: #1a222d; color: #3498db; }
     .icon-giro { background-color: #221a2d; color: #9b59b6; }
     .icon-cobertura { background-color: #2a2211; color: #e67e22; }
-    .card-title {
-        color: #8c9ba5;
-        font-size: 11px;
-        font-weight: bold;
-        letter-spacing: 0.5px;
-        line-height: 1.2;
-    }
-    .card-value {
-        color: #ffffff;
-        font-size: 21px; 
-        font-weight: bold;
-        text-align: center;
-        font-family: monospace;
-        margin-top: 12px;
-        white-space: nowrap;
-    }
-    .section-title {
-        color: #ffffff;
-        font-size: 14px;
-        font-weight: bold;
-        margin-bottom: 12px;
-        letter-spacing: 0.5px;
-        border-left: 3px solid #d85c27;
-        padding-left: 10px;
-    }
-    .trend-box {
-        display: flex;
-        align-items: center;
-        padding: 3px 8px;
-        border-radius: 5px;
-        font-size: 11px;
-        font-weight: bold;
-        font-family: monospace;
-        white-space: nowrap;
-    }
-    .trend-up {
-        background-color: rgba(231, 76, 60, 0.2);
-        color: #e74c3c;
-    }
-    .trend-down {
-        background-color: rgba(46, 204, 113, 0.2);
-        color: #2ecc71;
-    }
-    .trend-neutral {
-        background-color: rgba(140, 155, 165, 0.2);
-        color: #8c9ba5;
-    }
+    .card-title { color: #8c9ba5; font-size: 11px; font-weight: bold; letter-spacing: 0.5px; line-height: 1.2; }
+    .card-value { color: #ffffff; font-size: 21px; font-weight: bold; text-align: center; font-family: monospace; margin-top: 12px; white-space: nowrap; }
+    .section-title { color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 12px; letter-spacing: 0.5px; border-left: 3px solid #d85c27; padding-left: 10px; }
+    .trend-box { display: flex; align-items: center; padding: 3px 8px; border-radius: 5px; font-size: 11px; font-weight: bold; font-family: monospace; white-space: nowrap; }
+    .trend-up { background-color: rgba(231, 76, 60, 0.2); color: #e74c3c; }
+    .trend-down { background-color: rgba(46, 204, 113, 0.2); color: #2ecc71; }
+    .trend-neutral { background-color: rgba(140, 155, 165, 0.2); color: #8c9ba5; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -410,7 +237,7 @@ def fmt_mes(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').repla
 def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font_size="21px", invert_color=False):
     if val_ant == 0 and val_atual == 0:
         pct_str, trend_class, arrow = "0,0%", "trend-neutral", "➖"
-    elif val_ant == 0 or val_ant == val_atual: # Ajuste para não mostrar variação irreal em dados únicos (Inventário)
+    elif val_ant == 0 or val_ant == val_atual: 
         pct_str, trend_class, arrow = "0,0%", "trend-neutral", "➖"
     else:
         pct = ((val_atual - val_ant) / val_ant) * 100
@@ -438,12 +265,12 @@ def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font
     """
 
 # ==========================================
-# 5. SISTEMA DE ABAS NATIVO (Visão Geral & Inventários)
+# 5. SISTEMA DE ABAS NATIVO
 # ==========================================
 aba_geral, aba_inventarios = st.tabs(["📈 Visão Geral", "📦 Painel de Inventários"])
 
 with aba_geral:
-    # --- CONTROLES DO GRÁFICO (Filtros Compactos e Alinhados) ---
+    # --- CONTROLES DO GRÁFICO ---
     with st.container(border=True):
         col_tg_title, col_tg_escopo, col_tg_unid, col_tg_ano = st.columns([2.2, 1.2, 2.1, 1.5], gap="small")
         with col_tg_title:
@@ -484,45 +311,45 @@ with aba_geral:
         if anos_sel:
             df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(anos_sel)]
 
-        # Validação e Correção Automática do Período Ativo
-        if st.session_state.get('filtro_periodo_grafico') and not df_filtrado.empty:
-            p_sel = st.session_state.filtro_periodo_grafico
-            m_str, a_str = p_sel.split('/')
-            chk_per = df_filtrado[(df_filtrado['tmp_ano_num'] == int(a_str)) & (df_filtrado['tmp_mes_num'] == int(m_str))]
-            if chk_per.empty:
-                max_a = df_filtrado['tmp_ano_num'].max()
-                max_m = df_filtrado[df_filtrado['tmp_ano_num'] == max_a]['tmp_mes_num'].max()
-                st.session_state.filtro_periodo_grafico = f"{int(max_m):02d}/{int(max_a)}"
+        # CORREÇÃO: Validação Automática Inteligente baseada no DataFrame JÁ FILTRADO
+        if not df_filtrado.empty:
+            max_a_filt = int(df_filtrado['tmp_ano_num'].max())
+            max_m_filt = int(df_filtrado[df_filtrado['tmp_ano_num'] == max_a_filt]['tmp_mes_num'].max())
+            periodo_maximo_valido = f"{max_m_filt:02d}/{max_a_filt}"
 
-        # --- LEGENDA INTELIGENTE COMPACTA (🟡 Ativo / ⚪ Inativo) ---
+            p_sel = st.session_state.get('filtro_periodo_grafico')
+            if not p_sel:
+                st.session_state.filtro_periodo_grafico = periodo_maximo_valido
+            else:
+                m_str, a_str = p_sel.split('/')
+                chk_per = df_filtrado[(df_filtrado['tmp_ano_num'] == int(a_str)) & (df_filtrado['tmp_mes_num'] == int(m_str))]
+                if chk_per.empty:
+                    st.session_state.filtro_periodo_grafico = periodo_maximo_valido
+
+        # --- LEGENDA INTELIGENTE COMPACTA ---
         c_leg1, c_leg2, c_leg3, c_leg4 = st.columns(4)
-
         lbl_tot = "🟡 Estoque Total" if st.session_state.vis_total else "⚪ Estoque Total"
         lbl_cri = "🟡 Estoque Crítico" if st.session_state.vis_critico else "⚪ Estoque Crítico"
         lbl_obs = "🟡 Estoque Obsoleto" if st.session_state.vis_obsoleto else "⚪ Estoque Obsoleto"
         lbl_obr = "🟡 Estoque Obra" if st.session_state.vis_obra else "⚪ Estoque Obra"
 
         with c_leg1:
-            if st.button(lbl_tot, key="btn_vis_total", use_container_width=True,
-                         type="primary" if st.session_state.vis_total else "secondary"):
+            if st.button(lbl_tot, key="btn_vis_total", use_container_width=True, type="primary" if st.session_state.vis_total else "secondary"):
                 st.session_state.vis_total = not st.session_state.vis_total
                 st.rerun()
 
         with c_leg2:
-            if st.button(lbl_cri, key="btn_vis_critico", use_container_width=True,
-                         type="primary" if st.session_state.vis_critico else "secondary"):
+            if st.button(lbl_cri, key="btn_vis_critico", use_container_width=True, type="primary" if st.session_state.vis_critico else "secondary"):
                 st.session_state.vis_critico = not st.session_state.vis_critico
                 st.rerun()
 
         with c_leg3:
-            if st.button(lbl_obs, key="btn_vis_obsoleto", use_container_width=True,
-                         type="primary" if st.session_state.vis_obsoleto else "secondary"):
+            if st.button(lbl_obs, key="btn_vis_obsoleto", use_container_width=True, type="primary" if st.session_state.vis_obsoleto else "secondary"):
                 st.session_state.vis_obsoleto = not st.session_state.vis_obsoleto
                 st.rerun()
 
         with c_leg4:
-            if st.button(lbl_obr, key="btn_vis_obra", use_container_width=True,
-                         type="primary" if st.session_state.vis_obra else "secondary"):
+            if st.button(lbl_obr, key="btn_vis_obra", use_container_width=True, type="primary" if st.session_state.vis_obra else "secondary"):
                 st.session_state.vis_obra = not st.session_state.vis_obra
                 st.rerun()
 
@@ -549,12 +376,9 @@ with aba_geral:
         if not df_obra_mes.empty: df_obra_mes['Periodo'] = df_obra_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obra_mes['ano_referencia'].astype(str)
 
         def fmt_valor_milhoes(val):
-            if val >= 1e9:
-                return f"R$ {val/1e9:.1f}B".replace('.', ',')
-            elif val >= 1e6:
-                return f"R$ {val/1e6:.1f}M".replace('.', ',')
-            else:
-                return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+            if val >= 1e9: return f"R$ {val/1e9:.1f}B".replace('.', ',')
+            elif val >= 1e6: return f"R$ {val/1e6:.1f}M".replace('.', ',')
+            else: return f"R$ {val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
         df_estoque_mes['texto_labels'] = df_estoque_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
         if not df_critico_mes.empty: df_critico_mes['texto_labels'] = df_critico_mes['valor_saldo_atual'].apply(fmt_valor_milhoes)
@@ -564,21 +388,11 @@ with aba_geral:
         max_y_est = df_estoque_mes['valor_saldo_atual'].max() if not df_estoque_mes.empty else 100
         n_pontos_est = len(df_estoque_mes)
 
-        layout_linha_estoque = dict(
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color='#8c9ba5'),
-            margin=dict(l=10, r=10, t=30, b=30),
-            showlegend=False,
-            hovermode='x'
-        )
-
+        layout_linha_estoque = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=10, r=10, t=30, b=30), showlegend=False, hovermode='x')
         fig_linha_estoque = go.Figure()
 
-        def get_vis(key):
-            return True if st.session_state.get(key, False) else 'legendonly'
+        def get_vis(key): return True if st.session_state.get(key, False) else 'legendonly'
 
-        # Traço Principal com Spline Suave
         fig_linha_estoque.add_trace(go.Scatter(
             x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
             name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
@@ -589,52 +403,28 @@ with aba_geral:
             visible=get_vis('vis_total')
         ))
 
-        # Destaque de Pico e Vale Automático
         if not df_estoque_mes.empty:
             max_idx = df_estoque_mes['valor_saldo_atual'].idxmax()
             min_idx = df_estoque_mes['valor_saldo_atual'].idxmin()
             
-            fig_linha_estoque.add_annotation(
-                x=df_estoque_mes.loc[max_idx, 'Periodo'], y=df_estoque_mes.loc[max_idx, 'valor_saldo_atual'],
-                text="▲ PICO", showarrow=True, arrowhead=2, ax=0, ay=-35,
-                font=dict(color="#e74c3c", size=10, family="monospace"),
-                bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#e74c3c", borderwidth=1
-            )
-            fig_linha_estoque.add_annotation(
-                x=df_estoque_mes.loc[min_idx, 'Periodo'], y=df_estoque_mes.loc[min_idx, 'valor_saldo_atual'],
-                text="▼ VALE", showarrow=True, arrowhead=2, ax=0, ay=35,
-                font=dict(color="#2ecc71", size=10, family="monospace"),
-                bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#2ecc71", borderwidth=1
-            )
+            fig_linha_estoque.add_annotation(x=df_estoque_mes.loc[max_idx, 'Periodo'], y=df_estoque_mes.loc[max_idx, 'valor_saldo_atual'], text="▲ PICO", showarrow=True, arrowhead=2, ax=0, ay=-35, font=dict(color="#e74c3c", size=10, family="monospace"), bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#e74c3c", borderwidth=1)
+            fig_linha_estoque.add_annotation(x=df_estoque_mes.loc[min_idx, 'Periodo'], y=df_estoque_mes.loc[min_idx, 'valor_saldo_atual'], text="▼ VALE", showarrow=True, arrowhead=2, ax=0, ay=35, font=dict(color="#2ecc71", size=10, family="monospace"), bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#2ecc71", borderwidth=1)
 
         if not df_critico_mes.empty:
             fig_linha_estoque.add_trace(go.Scatter(
-                x=df_critico_mes['Periodo'], y=df_critico_mes['valor_saldo_atual'],
-                name='Estoque Crítico', mode='lines+markers+text', text=df_critico_mes['texto_labels'],
-                textposition='bottom center', textfont=dict(color='#f39c12', size=11),
-                line=dict(color='#f39c12', width=2.5, dash='dash', shape='spline', smoothing=1.3), marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)),
-                hoverinfo='none', visible=get_vis('vis_critico')
+                x=df_critico_mes['Periodo'], y=df_critico_mes['valor_saldo_atual'], name='Estoque Crítico', mode='lines+markers+text', text=df_critico_mes['texto_labels'], textposition='bottom center', textfont=dict(color='#f39c12', size=11), line=dict(color='#f39c12', width=2.5, dash='dash', shape='spline', smoothing=1.3), marker=dict(size=6, color='#f39c12', line=dict(color='#ffffff', width=1)), hoverinfo='none', visible=get_vis('vis_critico')
             ))
 
         if not df_obsoleto_mes.empty:
             fig_linha_estoque.add_trace(go.Scatter(
-                x=df_obsoleto_mes['Periodo'], y=df_obsoleto_mes['valor_saldo_atual'],
-                name='Estoque Obsoleto', mode='lines+markers+text', text=df_obsoleto_mes['texto_labels'],
-                textposition='top center', textfont=dict(color='#9b59b6', size=11),
-                line=dict(color='#9b59b6', width=2.5, dash='dot', shape='spline', smoothing=1.3), marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)),
-                hoverinfo='none', visible=get_vis('vis_obsoleto')
+                x=df_obsoleto_mes['Periodo'], y=df_obsoleto_mes['valor_saldo_atual'], name='Estoque Obsoleto', mode='lines+markers+text', text=df_obsoleto_mes['texto_labels'], textposition='top center', textfont=dict(color='#9b59b6', size=11), line=dict(color='#9b59b6', width=2.5, dash='dot', shape='spline', smoothing=1.3), marker=dict(size=6, color='#9b59b6', line=dict(color='#ffffff', width=1)), hoverinfo='none', visible=get_vis('vis_obsoleto')
             ))
 
         if not df_obra_mes.empty:
             fig_linha_estoque.add_trace(go.Scatter(
-                x=df_obra_mes['Periodo'], y=df_obra_mes['valor_saldo_atual'],
-                name='Estoque Obra', mode='lines+markers+text', text=df_obra_mes['texto_labels'],
-                textposition='bottom center', textfont=dict(color='#1abc9c', size=11),
-                line=dict(color='#1abc9c', width=2.5, dash='longdash', shape='spline', smoothing=1.3), marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)),
-                hoverinfo='none', visible=get_vis('vis_obra')
+                x=df_obra_mes['Periodo'], y=df_obra_mes['valor_saldo_atual'], name='Estoque Obra', mode='lines+markers+text', text=df_obra_mes['texto_labels'], textposition='bottom center', textfont=dict(color='#1abc9c', size=11), line=dict(color='#1abc9c', width=2.5, dash='longdash', shape='spline', smoothing=1.3), marker=dict(size=6, color='#1abc9c', line=dict(color='#ffffff', width=1)), hoverinfo='none', visible=get_vis('vis_obra')
             ))
 
-        # Proteção do clique do gráfico
         sel_state = st.session_state.get("tendencia_geral", {})
         pontos_clicados = sel_state.get("selection", {}).get("points", []) if isinstance(sel_state, dict) else []
 
@@ -649,27 +439,19 @@ with aba_geral:
             match_idx = df_estoque_mes.index[df_estoque_mes['Periodo'] == periodo_ativo].tolist()
             if match_idx:
                 idx = match_idx[0]
-                fig_linha_estoque.add_shape(
-                    type="rect",
-                    x0=idx - 0.25, x1=idx + 0.25,
-                    y0=0, y1=1, yref="paper",
-                    fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below"
-                )
+                fig_linha_estoque.add_shape(type="rect", x0=idx - 0.25, x1=idx + 0.25, y0=0, y1=1, yref="paper", fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below")
 
         fig_linha_estoque.update_layout(**layout_linha_estoque)
         fig_linha_estoque.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, n_pontos_est - 0.2])
         fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
 
-        st.plotly_chart(
-            fig_linha_estoque, use_container_width=True, config={'displayModeBar': False},
-            on_select="rerun", selection_mode="points", key="tendencia_geral"
-        )
+        st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, on_select="rerun", selection_mode="points", key="tendencia_geral")
 
-    # 7. Criação do DataFrame de Snapshot Atual e Anterior
-    df_snapshot = df_filtrado
+    # 7. CORREÇÃO: Criação do DataFrame de Snapshot muito mais limpa e assertiva
+    df_snapshot = pd.DataFrame(columns=df_filtrado.columns)
     df_snapshot_prev = pd.DataFrame(columns=df_filtrado.columns)
 
-    if st.session_state.get('filtro_periodo_grafico'):
+    if st.session_state.get('filtro_periodo_grafico') and not df_filtrado.empty:
         p_sel = st.session_state.filtro_periodo_grafico
         m_str, a_str = p_sel.split('/')
         m_num, a_num = int(m_str), int(a_str)
@@ -680,26 +462,6 @@ with aba_geral:
         else:
             m_prev, a_prev = m_num - 1, a_num
         df_snapshot_prev = df_filtrado[(df_filtrado['tmp_ano_num'] == a_prev) & (df_filtrado['tmp_mes_num'] == m_prev)]
-    else:
-        if st.session_state.get('chart_anos'):
-            anos_sel_num = [int(a) for a in st.session_state.chart_anos]
-            df_anos_sel = df_filtrado[df_filtrado['tmp_ano_num'].isin(anos_sel_num)]
-            if not df_anos_sel.empty:
-                m_ano = df_anos_sel['tmp_ano_num'].max()
-                m_mes = df_anos_sel[df_anos_sel['tmp_ano_num'] == m_ano]['tmp_mes_num'].max()
-                df_snapshot = df_filtrado[(df_filtrado['tmp_ano_num'] == m_ano) & (df_filtrado['tmp_mes_num'] == m_mes)]
-                if m_mes == 1:
-                    m_prev, a_prev = 12, m_ano - 1
-                else:
-                    m_prev, a_prev = m_mes - 1, m_ano
-                df_snapshot_prev = df_filtrado[(df_filtrado['tmp_ano_num'] == a_prev) & (df_filtrado['tmp_mes_num'] == m_prev)]
-        else:
-            df_snapshot = df_filtrado[(df_filtrado['tmp_ano_num'] == max_ano_base) & (df_filtrado['tmp_mes_num'] == max_mes_base)]
-            if max_mes_base == 1:
-                m_prev, a_prev = 12, max_ano_base - 1
-            else:
-                m_prev, a_prev = max_mes_base - 1, max_ano_base
-            df_snapshot_prev = df_filtrado[(df_filtrado['tmp_ano_num'] == a_prev) & (df_filtrado['tmp_mes_num'] == m_prev)]
 
     # 8. Somas e Contagens Dinâmicas
     def somar_coluna(dataframe, coluna):
@@ -841,7 +603,6 @@ with aba_geral:
     if not df_filtrado.empty:
         layout_transparente = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=10, r=10, t=10, b=10))
 
-        # LINHA 1: RANKING POR UNIDADE VS COMPOSIÇÃO DE ESTOQUE
         col_c1, col_c2 = st.columns([5, 5], gap="medium")
         with col_c1:
             with st.container(border=True):
@@ -865,15 +626,29 @@ with aba_geral:
         with col_c2:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🍩 COMPOSIÇÃO DO ESTOQUE (%)</div>", unsafe_allow_html=True)
-                val_demais = max(0, val_estoque - (val_critico + val_obsoleto + val_obra))
-                df_pizza = pd.DataFrame({'Categoria': ['Estoque Crítico', 'Estoque Obsoleto', 'Estoque Obra', 'Estoque Operacional'], 'Valor': [val_critico, val_obsoleto, val_obra, val_demais], 'Cor': ['#f39c12', '#9b59b6', '#1abc9c', '#3498db']})
+                
+                # CORREÇÃO: Máscaras mutuamente exclusivas para evitar dupla contagem na Pizza!
+                m_obs = df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)
+                m_obra = df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False) & ~m_obs
+                m_crit = (df_snapshot.get("item_critico", "") == "1-Sim") & ~m_obs & ~m_obra
+                
+                val_obs_pizza = somar_coluna(df_snapshot[m_obs], "valor_saldo_atual")
+                val_obra_pizza = somar_coluna(df_snapshot[m_obra], "valor_saldo_atual")
+                val_crit_pizza = somar_coluna(df_snapshot[m_crit], "valor_saldo_atual")
+                val_operacional_pizza = max(0, val_estoque - (val_obs_pizza + val_obra_pizza + val_crit_pizza))
+
+                df_pizza = pd.DataFrame({
+                    'Categoria': ['Estoque Crítico', 'Estoque Obsoleto', 'Estoque Obra', 'Estoque Operacional'], 
+                    'Valor': [val_crit_pizza, val_obs_pizza, val_obra_pizza, val_operacional_pizza], 
+                    'Cor': ['#f39c12', '#9b59b6', '#1abc9c', '#3498db']
+                })
                 df_pizza = df_pizza[df_pizza['Valor'] > 0]
                 df_pizza['Valor_Formatado'] = df_pizza['Valor'].apply(fmt_brl)
+                
                 fig_rosca = go.Figure(data=[go.Pie(labels=df_pizza['Categoria'], values=df_pizza['Valor'], hole=0.65, marker=dict(colors=df_pizza['Cor'], line=dict(color='#161c24', width=2)), textinfo='label+percent', textposition='outside', hovertext=df_pizza['Valor_Formatado'], hovertemplate="<b>%{label}</b><br>%{hovertext}<extra></extra>", textfont=dict(size=11))])
                 fig_rosca.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=80, r=80, t=30, b=30), height=380, showlegend=False, annotations=[dict(text=f"<b>TOTAL</b><br><span style='font-size:20px'>{fmt_valor_milhoes(val_estoque) if val_estoque > 0 else 'R$ 0,00'}</span>", x=0.5, y=0.5, font_size=14, font_color='white', showarrow=False)])
                 st.plotly_chart(fig_rosca, use_container_width=True, config={'displayModeBar': False}, key="rosca_composicao")
 
-        # EVOLUÇÃO TEMPORAL: COMPRAS VS CONSUMO
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL COMPRA x CONSUMO (R$)</div>", unsafe_allow_html=True)
@@ -891,7 +666,6 @@ with aba_geral:
             fig_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, tickprefix="R$ ")
             st.plotly_chart(fig_linha, use_container_width=True, config={'displayModeBar': False}, key="compras_consumo_geral")
 
-        # SEÇÃO LADO A LADO: RANKING DE COMPRAS/CONSUMO & SKUs
         st.markdown("<br>", unsafe_allow_html=True)
         col_esq, col_dir = st.columns(2)
         with col_esq:
@@ -939,7 +713,6 @@ with aba_geral:
                     fig_sku.update_traces(textposition='auto', textfont=dict(color='white', size=10), hoverinfo='none', hovertemplate=None)
                     st.plotly_chart(fig_sku, use_container_width=True, config={'displayModeBar': False}, key="ranking_skus_lado")
 
-        # EVOLUÇÃO TEMPORAL DE SKUS ATIVOS
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📦 EVOLUÇÃO TEMPORAL DE SKUs (Qtde)</div>", unsafe_allow_html=True)
@@ -962,7 +735,6 @@ with aba_geral:
             fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, (df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100) * 1.15], showticklabels=False)
             st.plotly_chart(fig_sku_linha, use_container_width=True, config={'displayModeBar': False}, key="skus_geral")
 
-        # EVOLUÇÃO TEMPORAL COMBINADA: GIRO MENSAL VS COBERTURA
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📈 EVOLUÇÃO TEMPORAL DE GIRO x COBERTURA (MENSAL)</div>", unsafe_allow_html=True)
@@ -995,7 +767,6 @@ with aba_geral:
             else:
                 st.info("Sem dados suficientes para calcular Giro x Cobertura no período selecionado.")
 
-        # ================= MATERIAIS PARADOS HÁ MAIS DE 3 MESES & AUDITORIA =================
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 5px; border-left: 3px solid #d85c27; padding-left: 10px;'>⏳ MATERIAIS PARADOS HÁ MAIS DE 3 MESES (SEM MOVIMENTAÇÃO)</div>", unsafe_allow_html=True)
@@ -1008,7 +779,7 @@ with aba_geral:
                 m_At, a_At = periodo_ativo.split('/')
                 snapshot_idx = int(a_At) * 12 + int(m_At)
             else:
-                snapshot_idx = int(max_ano_base) * 12 + int(max_mes_base)
+                snapshot_idx = int(max_a_filt) * 12 + int(max_m_filt)
 
             df_calc = df_calc[(df_calc['tempo_idx'] <= snapshot_idx) & (df_calc['item_critico'] != '1-Sim') & (~df_calc['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))]
             df_calc['teve_consumo'] = df_calc['valor_saida_cons_interno'].abs() > 0
@@ -1149,7 +920,6 @@ with aba_inventarios:
     if df_inventario.empty:
         st.warning("⚠️ Nenhum dado de inventário encontrado. Por favor, verifique se a tabela 'painel_inventario' foi carregada corretamente no Supabase.")
     else:
-        # Filtros de Controle Reais da Aba de Inventários
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3 = st.columns([3, 3, 2], gap="small")
             
@@ -1160,7 +930,6 @@ with aba_inventarios:
                 
             with col_inv_f2:
                 st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Local de Estoque (Armazém):</div>", unsafe_allow_html=True)
-                # Filtra locais baseados no inventário escolhido
                 df_locais = df_inventario if inv_sel == "Todos os Inventários" else df_inventario[df_inventario['nome_inventario'] == inv_sel]
                 lista_locais = sorted(df_locais['local_estoque'].dropna().unique().tolist())
                 local_sel = st.selectbox("Local:", ["Todos os Locais"] + lista_locais, key="inv_local_sel", label_visibility="collapsed")
@@ -1170,7 +939,6 @@ with aba_inventarios:
                 lista_familias = sorted(df_locais['familia'].dropna().unique().tolist())
                 fam_sel = st.selectbox("Família:", ["Todas as Famílias"] + lista_familias, key="inv_fam_sel", label_visibility="collapsed")
 
-        # Filtragem Rigorosa de Inventário
         df_inv_filtrado = df_inventario.copy()
         if inv_sel != "Todos os Inventários":
             df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['nome_inventario'] == inv_sel]
@@ -1181,30 +949,25 @@ with aba_inventarios:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # Indicador Visual Ativo
         st.markdown(f"""
         <div style='background: linear-gradient(90deg, #161c24 0%, #1a222d 100%); border: 1px solid #d85c27; padding: 12px; border-radius: 8px; text-align: center; color: white; font-weight: bold; font-size: 14px; margin-bottom: 20px;'>
             📍 INVENTÁRIO: <span style='color: #d85c27;'>{inv_sel}</span> | LOCAL: <span style='color: #3498db;'>{local_sel}</span>
         </div>
         """, unsafe_allow_html=True)
 
-        # --- CÁLCULOS FINANCEIROS REAIS DO INVENTÁRIO ---
         saldo_sistema_inv = df_inv_filtrado['saldo_anterior_val'].sum()
         total_contado_inv = df_inv_filtrado['inventario_val'].sum()
         
-        # Ganhos (Diferença Positiva) e Perdas (Diferença Negativa)
         ganhos_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] > 0]['diferenca_val'].sum()
         perdas_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] < 0]['diferenca_val'].sum()
         dif_liquida_real = df_inv_filtrado['diferenca_val'].sum()
 
-        # Acurácia Real: Baseada na diferença absoluta sobre o saldo total
         dif_absoluta = abs(df_inv_filtrado['diferenca_val']).sum()
         if saldo_sistema_inv > 0:
             acuracia_real = max(0, 100.0 - (dif_absoluta / saldo_sistema_inv * 100.0))
         else:
             acuracia_real = 100.0 if dif_absoluta == 0 else 0.0
 
-        # --- CARDS DE KPI (Reaproveitando a função render_card) ---
         c_k1, c_k2, c_k3, c_k4 = st.columns(4)
         with c_k1: st.markdown(render_card("💻", "icon-estoque", "SALDO SISTEMA (R$)", fmt_brl(saldo_sistema_inv), saldo_sistema_inv, saldo_sistema_inv), unsafe_allow_html=True)
         with c_k2: st.markdown(render_card("📋", "icon-skus", "TOTAL CONTADO (R$)", fmt_brl(total_contado_inv), total_contado_inv, total_contado_inv), unsafe_allow_html=True)
@@ -1213,7 +976,6 @@ with aba_inventarios:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # --- GRÁFICOS E TABELAS ANALÍTICAS ---
         col_inv1, col_inv2 = st.columns([4, 6], gap="medium")
         
         with col_inv1:
@@ -1241,7 +1003,6 @@ with aba_inventarios:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📑 AUDITORIA DE DIVERGÊNCIAS (SKUs)</div>", unsafe_allow_html=True)
                 
-                # Resumo das Quantidades Físicas
                 skus_total = df_inv_filtrado['codigo_produto'].nunique()
                 skus_divergentes = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0]['codigo_produto'].nunique()
                 
@@ -1253,7 +1014,6 @@ with aba_inventarios:
                 </div>
                 """, unsafe_allow_html=True)
 
-                # Tabela de itens com divergência
                 df_diverg = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0].copy()
                 if not df_diverg.empty:
                     df_diverg = df_diverg.sort_values(by='diferenca_val', key=abs, ascending=False)
