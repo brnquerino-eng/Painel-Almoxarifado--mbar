@@ -35,7 +35,7 @@ if 'filtro_periodo_grafico' not in st.session_state:
 COLUNAS_ESPERADAS = [
     "valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno",
     "unidade_almoxarifado", "mes_referencia", "ano_referencia",
-    "codigo_produto", "nome_produto", "qtde_saldo_atual", "item_critico", "item_obsoleto", "nome_local_estoque",
+    "codigo_produto", "nome_produto", "qtde_saldo_atual", "item_critico", "nome_local_estoque",
     "tmp_ano_num", "tmp_mes_num",
 ]
 
@@ -72,7 +72,7 @@ def carregar_dados():
                 for tentativa in range(1, tentativas + 1):
                     try:
                         res = supabase.table(table_name).select(
-                            "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, nome_produto, qtde_saldo_atual, item_critico, item_obsoleto, nome_local_estoque"
+                            "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, nome_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
                         ).order("id").range(start_r, end_r).execute()
                         return res.data if res.data else []
                     except Exception as e:
@@ -105,7 +105,7 @@ def carregar_dados():
                     s_val = s_val[:-2]
                 return s_val
 
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "nome_produto", "item_critico", "item_obsoleto", "nome_local_estoque"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "nome_produto", "item_critico", "nome_local_estoque"]:
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
@@ -149,17 +149,12 @@ def carregar_dados_inventario():
 df_completo = carregar_dados()
 df_inventario = carregar_dados_inventario()
 
-# Função unificada e blindada para identificar itens obsoletos (Flag + Nome do Local)
+# Função unificada e blindada para identificar itens obsoletos (Apenas Nome do Local)
 def is_obsoleto_mask(df_in):
     if df_in.empty:
-        return pd.Series(dtype=bool)
-    col_obs_flag = df_in.get("item_obsoleto", pd.Series("", index=df_in.index))
-    is_flag = col_obs_flag.astype(str).str.upper().isin(["1-SIM", "SIM", "1", "TRUE", "S"])
-    
+        return pd.Series(False, index=df_in.index)
     col_local = df_in.get("nome_local_estoque", pd.Series("", index=df_in.index))
-    is_local = col_local.astype(str).str.contains("Obsoleto", case=False, na=False)
-    
-    return is_flag | is_local
+    return col_local.astype(str).str.contains("Obsoleto", case=False, na=False)
 
 # Identificação segura dos limites globais
 if not df_completo.empty:
