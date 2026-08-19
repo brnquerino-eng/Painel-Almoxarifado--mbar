@@ -1001,48 +1001,67 @@ with aba_inventarios:
         st.warning("⚠️ Nenhum dado de inventário encontrado. Por favor, verifique se a tabela 'painel_inventario' foi carregada corretamente no Supabase.")
     else:
         with st.container(border=True):
-            col_inv_f1, col_inv_f2, col_inv_f3 = st.columns([3, 3, 2], gap="small")
+            # 🆕 Novos 4 Filtros alinhados na mesma linha
+            col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
             
             with col_inv_f1:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Nome do Inventário:</div>", unsafe_allow_html=True)
-                lista_inventarios = sorted(df_inventario['nome_inventario'].dropna().unique().tolist())
-                inv_sel = st.selectbox("Inventário:", ["Todos os Inventários"] + lista_inventarios, key="inv_nome_sel", label_visibility="collapsed")
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Empresa:</div>", unsafe_allow_html=True)
+                lista_empresas = sorted([str(x) for x in df_inventario.get('empresa_nome', pd.Series()).dropna().unique()]) if 'empresa_nome' in df_inventario.columns else []
+                empresa_sel = st.selectbox("Empresa:", ["Todas as Empresas"] + lista_empresas, key="inv_empresa_sel", label_visibility="collapsed")
                 
             with col_inv_f2:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Local de Estoque (Armazém):</div>", unsafe_allow_html=True)
-                df_locais = df_inventario if inv_sel == "Todos os Inventários" else df_inventario[df_inventario['nome_inventario'] == inv_sel]
-                lista_locais = sorted(df_locais['local_estoque'].dropna().unique().tolist())
-                local_sel = st.selectbox("Local:", ["Todos os Locais"] + lista_locais, key="inv_local_sel", label_visibility="collapsed")
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Ano:</div>", unsafe_allow_html=True)
+                df_ano = df_inventario if empresa_sel == "Todas as Empresas" else df_inventario[df_inventario.get('empresa_nome', '').astype(str) == empresa_sel]
+                lista_anos = sorted([str(x) for x in df_ano.get('ano_referencia', pd.Series()).dropna().unique()], reverse=True) if 'ano_referencia' in df_ano.columns else []
+                ano_sel = st.selectbox("Ano:", ["Todos os Anos"] + lista_anos, key="inv_ano_sel", label_visibility="collapsed")
                 
             with col_inv_f3:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Família / Categoria:</div>", unsafe_allow_html=True)
-                lista_familias = sorted(df_locais['familia'].dropna().unique().tolist())
-                fam_sel = st.selectbox("Família:", ["Todas as Famílias"] + lista_familias, key="inv_fam_sel", label_visibility="collapsed")
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Mês:</div>", unsafe_allow_html=True)
+                df_mes = df_ano if ano_sel == "Todos os Anos" else df_ano[df_ano.get('ano_referencia', '').astype(str) == ano_sel]
+                lista_meses = sorted([str(x) for x in df_mes.get('mes_referencia', pd.Series()).dropna().unique()]) if 'mes_referencia' in df_mes.columns else []
+                mes_sel = st.selectbox("Mês:", ["Todos os Meses"] + lista_meses, key="inv_mes_sel", label_visibility="collapsed")
 
+            with col_inv_f4:
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
+                df_tipo = df_mes if mes_sel == "Todos os Meses" else df_mes[df_mes.get('mes_referencia', '').astype(str) == mes_sel]
+                lista_tipos = sorted([str(x) for x in df_tipo.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_tipo.columns else []
+                tipo_sel = st.selectbox("Tipo de Inventário:", ["Todos os Tipos"] + lista_tipos, key="inv_tipo_sel", label_visibility="collapsed")
+
+        # 🆕 Lógica de filtragem atualizada
         df_inv_filtrado = df_inventario.copy()
-        if inv_sel != "Todos os Inventários":
-            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['nome_inventario'] == inv_sel]
-        if local_sel != "Todos os Locais":
-            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['local_estoque'] == local_sel]
-        if fam_sel != "Todas as Famílias":
-            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['familia'] == fam_sel]
+        if empresa_sel != "Todas as Empresas" and 'empresa_nome' in df_inv_filtrado.columns:
+            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['empresa_nome'].astype(str) == empresa_sel]
+        if ano_sel != "Todos os Anos" and 'ano_referencia' in df_inv_filtrado.columns:
+            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['ano_referencia'].astype(str) == ano_sel]
+        if mes_sel != "Todos os Meses" and 'mes_referencia' in df_inv_filtrado.columns:
+            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['mes_referencia'].astype(str) == mes_sel]
+        if tipo_sel != "Todos os Tipos" and 'tipo_inventario' in df_inv_filtrado.columns:
+            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['tipo_inventario'].astype(str) == tipo_sel]
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # 🆕 Formatação do texto do período para o banner
+        txt_periodo = "Todos os Períodos"
+        if ano_sel != "Todos os Anos" or mes_sel != "Todos os Meses":
+            m_txt = mes_sel if mes_sel != "Todos os Meses" else "Histórico"
+            a_txt = ano_sel if ano_sel != "Todos os Anos" else ""
+            txt_periodo = f"{m_txt}/{a_txt}".strip('/')
+
+        # 🆕 Banner Luminoso Atualizado
         st.markdown(f"""
         <div style='background: linear-gradient(90deg, #161c24 0%, #1a222d 100%); border: 1px solid #d85c27; padding: 12px; border-radius: 8px; text-align: center; color: white; font-weight: bold; font-size: 14px; margin-bottom: 20px;'>
-            📍 INVENTÁRIO: <span style='color: #d85c27;'>{inv_sel}</span> | LOCAL: <span style='color: #3498db;'>{local_sel}</span>
+            🏢 EMPRESA: <span style='color: #d85c27;'>{empresa_sel}</span> | 📅 PERÍODO: <span style='color: #3498db;'>{txt_periodo}</span> | 📋 TIPO: <span style='color: #2ecc71;'>{tipo_sel}</span>
         </div>
         """, unsafe_allow_html=True)
 
-        saldo_sistema_inv = df_inv_filtrado['saldo_anterior_val'].sum()
-        total_contado_inv = df_inv_filtrado['inventario_val'].sum()
+        saldo_sistema_inv = df_inv_filtrado['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv_filtrado.columns else 0.0
+        total_contado_inv = df_inv_filtrado['inventario_val'].sum() if 'inventario_val' in df_inv_filtrado.columns else 0.0
         
-        ganhos_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] > 0]['diferenca_val'].sum()
-        perdas_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] < 0]['diferenca_val'].sum()
-        dif_liquida_real = df_inv_filtrado['diferenca_val'].sum()
+        ganhos_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv_filtrado.columns else 0.0
+        perdas_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv_filtrado.columns else 0.0
+        dif_liquida_real = df_inv_filtrado['diferenca_val'].sum() if 'diferenca_val' in df_inv_filtrado.columns else 0.0
 
-        dif_absoluta = abs(df_inv_filtrado['diferenca_val']).sum()
+        dif_absoluta = abs(df_inv_filtrado['diferenca_val']).sum() if 'diferenca_val' in df_inv_filtrado.columns else 0.0
         if saldo_sistema_inv > 0:
             acuracia_real = max(0, 100.0 - (dif_absoluta / saldo_sistema_inv * 100.0))
         else:
@@ -1083,8 +1102,8 @@ with aba_inventarios:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📑 AUDITORIA DE DIVERGÊNCIAS (SKUs)</div>", unsafe_allow_html=True)
                 
-                skus_total = df_inv_filtrado['codigo_produto'].nunique()
-                skus_divergentes = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0]['codigo_produto'].nunique()
+                skus_total = df_inv_filtrado['codigo_produto'].nunique() if 'codigo_produto' in df_inv_filtrado.columns else 0
+                skus_divergentes = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0]['codigo_produto'].nunique() if 'diferenca_val' in df_inv_filtrado.columns and 'codigo_produto' in df_inv_filtrado.columns else 0
                 
                 st.markdown(f"""
                 <div style="display: flex; justify-content: space-between; margin-bottom: 15px; background-color: #161c24; padding: 10px; border-radius: 6px;">
@@ -1094,18 +1113,25 @@ with aba_inventarios:
                 </div>
                 """, unsafe_allow_html=True)
 
-                df_diverg = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0].copy()
-                if not df_diverg.empty:
-                    df_diverg = df_diverg.sort_values(by='diferenca_val', key=abs, ascending=False)
-                    
-                    df_tabela_div = pd.DataFrame()
-                    df_tabela_div['SKU'] = df_diverg['codigo_produto']
-                    df_tabela_div['Nome do Produto'] = df_diverg['nome_produto']
-                    df_tabela_div['Local'] = df_diverg['localizacao']
-                    df_tabela_div['Sist. (R$)'] = df_diverg['saldo_anterior_val'].apply(fmt_brl)
-                    df_diverg['Físico (R$)'] = df_diverg['inventario_val'].apply(fmt_brl)
-                    df_tabela_div['Diferença (R$)'] = df_diverg['diferenca_val'].apply(fmt_brl)
-                    
-                    st.dataframe(df_tabela_div, use_container_width=True, hide_index=True, height=250)
+                if 'diferenca_val' in df_inv_filtrado.columns:
+                    df_diverg = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0].copy()
+                    if not df_diverg.empty:
+                        df_diverg = df_diverg.sort_values(by='diferenca_val', key=abs, ascending=False)
+                        
+                        df_tabela_div = pd.DataFrame()
+                        df_tabela_div['SKU'] = df_diverg['codigo_produto'] if 'codigo_produto' in df_diverg.columns else ''
+                        df_tabela_div['Nome do Produto'] = df_diverg['nome_produto'] if 'nome_produto' in df_diverg.columns else ''
+                        df_tabela_div['Local'] = df_diverg['localizacao'] if 'localizacao' in df_diverg.columns else ''
+                        
+                        if 'saldo_anterior_val' in df_diverg.columns:
+                            df_tabela_div['Sist. (R$)'] = df_diverg['saldo_anterior_val'].apply(fmt_brl)
+                        if 'inventario_val' in df_diverg.columns:
+                            df_tabela_div['Físico (R$)'] = df_diverg['inventario_val'].apply(fmt_brl)
+                        
+                        df_tabela_div['Diferença (R$)'] = df_diverg['diferenca_val'].apply(fmt_brl)
+                        
+                        st.dataframe(df_tabela_div, use_container_width=True, hide_index=True, height=250)
+                    else:
+                        st.success("✨ Excelente! Não há divergências financeiras nos filtros selecionados. Acurácia de 100%.")
                 else:
-                    st.success("✨ Excelente! Não há divergências financeiras nos filtros selecionados. Acurácia de 100%.")
+                    st.info("Colunas de diferença não encontradas nos dados.")
