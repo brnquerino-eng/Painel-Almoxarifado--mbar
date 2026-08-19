@@ -35,7 +35,7 @@ if 'filtro_periodo_grafico' not in st.session_state:
 COLUNAS_ESPERADAS = [
     "valor_saldo_atual", "valor_entrada_compras", "valor_saida_cons_interno",
     "unidade_almoxarifado", "mes_referencia", "ano_referencia",
-    "codigo_produto", "nome_produto", "qtde_saldo_atual", "item_critico", "nome_local_estoque",
+    "codigo_produto", "nome_produto", "qtde_saldo_atual", "item_critico", "item_obsoleto", "nome_local_estoque",
     "tmp_ano_num", "tmp_mes_num",
 ]
 
@@ -72,7 +72,7 @@ def carregar_dados():
                 for tentativa in range(1, tentativas + 1):
                     try:
                         res = supabase.table(table_name).select(
-                            "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, nome_produto, qtde_saldo_atual, item_critico, nome_local_estoque"
+                            "valor_saldo_atual, valor_entrada_compras, valor_saida_cons_interno, unidade_almoxarifado, mes_referencia, ano_referencia, codigo_produto, nome_produto, qtde_saldo_atual, item_critico, item_obsoleto, nome_local_estoque"
                         ).order("id").range(start_r, end_r).execute()
                         return res.data if res.data else []
                     except Exception as e:
@@ -105,7 +105,7 @@ def carregar_dados():
                     s_val = s_val[:-2]
                 return s_val
 
-            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "nome_produto", "item_critico", "nome_local_estoque"]:
+            for col in ["mes_referencia", "ano_referencia", "codigo_produto", "nome_produto", "item_critico", "item_obsoleto", "nome_local_estoque"]:
                 if col in df.columns:
                     df[col] = df[col].apply(limpar_valor)
 
@@ -148,6 +148,18 @@ def carregar_dados_inventario():
 
 df_completo = carregar_dados()
 df_inventario = carregar_dados_inventario()
+
+# Função unificada e blindada para identificar itens obsoletos (Flag + Nome do Local)
+def is_obsoleto_mask(df_in):
+    if df_in.empty:
+        return pd.Series(dtype=bool)
+    col_obs_flag = df_in.get("item_obsoleto", pd.Series("", index=df_in.index))
+    is_flag = col_obs_flag.astype(str).str.upper().isin(["1-SIM", "SIM", "1", "TRUE", "S"])
+    
+    col_local = df_in.get("nome_local_estoque", pd.Series("", index=df_in.index))
+    is_local = col_local.astype(str).str.contains("Obsoleto", case=False, na=False)
+    
+    return is_flag | is_local
 
 # Identificação segura dos limites globais
 if not df_completo.empty:
@@ -318,7 +330,6 @@ with aba_geral:
         if anos_sel:
             df_filtrado = df_filtrado[df_filtrado["ano_referencia"].isin(anos_sel)]
 
-        # CORREÇÃO BLINDADA: Definição segura dos limites de período filtrado ou fallback global
         if not df_filtrado.empty:
             max_a_filt = int(df_filtrado['tmp_ano_num'].max())
             max_m_filt = int(df_filtrado[df_filtrado['tmp_ano_num'] == max_a_filt]['tmp_mes_num'].max())
@@ -375,7 +386,7 @@ with aba_geral:
         df_critico_mes = df_critico_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
         if not df_critico_mes.empty: df_critico_mes['Periodo'] = df_critico_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_critico_mes['ano_referencia'].astype(str)
 
-        df_obsoleto_trend = df_chart_base[df_chart_base['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False)]
+        df_obsoleto_trend = df_chart_base[is_obsoleto_mask(df_chart_base)]
         df_obsoleto_mes = df_obsoleto_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['valor_saldo_atual'].sum().reset_index()
         df_obsoleto_mes = df_obsoleto_mes.sort_values(['tmp_ano_num', 'tmp_mes_num'])
         if not df_obsoleto_mes.empty: df_obsoleto_mes['Periodo'] = df_obsoleto_mes['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_obsoleto_mes['ano_referencia'].astype(str)
@@ -483,7 +494,7 @@ with aba_geral:
     val_consumo = pd.to_numeric(df_snapshot["valor_saida_cons_interno"], errors='coerce').fillna(0.0).abs().sum() if "valor_saida_cons_interno" in df_snapshot.columns else 0.0
     val_skus = df_snapshot[(df_snapshot["qtde_saldo_atual"] > 0) & (df_snapshot["codigo_produto"] != "")]["codigo_produto"].nunique() if "qtde_saldo_atual" in df_snapshot.columns else 0
     val_critico = somar_coluna(df_snapshot[df_snapshot.get("item_critico", "") == "1-Sim"], "valor_saldo_atual") if not df_snapshot.empty else 0.0
-    val_obsoleto = somar_coluna(df_snapshot[df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)], "valor_saldo_atual") if not df_snapshot.empty else 0.0
+    val_obsoleto = somar_coluna(df_snapshot[is_obsoleto_mask(df_snapshot)], "valor_saldo_atual") if not df_snapshot.empty else 0.0
     val_obra = somar_coluna(df_snapshot[df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)], "valor_saldo_atual") if not df_snapshot.empty else 0.0
 
     val_estoque_prev = somar_coluna(df_snapshot_prev, "valor_saldo_atual")
@@ -491,7 +502,7 @@ with aba_geral:
     val_consumo_prev = pd.to_numeric(df_snapshot_prev["valor_saida_cons_interno"], errors='coerce').fillna(0.0).abs().sum() if "valor_saida_cons_interno" in df_snapshot_prev.columns else 0.0
     val_skus_prev = df_snapshot_prev[(df_snapshot_prev["qtde_saldo_atual"] > 0) & (df_snapshot_prev["codigo_produto"] != "")]["codigo_produto"].nunique() if "qtde_saldo_atual" in df_snapshot_prev.columns else 0
     val_critico_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("item_critico", "") == "1-Sim"], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
-    val_obsoleto_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
+    val_obsoleto_prev = somar_coluna(df_snapshot_prev[is_obsoleto_mask(df_snapshot_prev)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
     val_obra_prev = somar_coluna(df_snapshot_prev[df_snapshot_prev.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)], "valor_saldo_atual") if not df_snapshot_prev.empty else 0.0
 
     # --- ⚡ AGREGAÇÃO MENSAL OPERACIONAL ---
@@ -514,7 +525,7 @@ with aba_geral:
 
         mask_operacional_geral = ~(
             (df_op['item_critico'] == '1-Sim') |
-            (df_op['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))
+            is_obsoleto_mask(df_op)
         )
 
         df_op['estoque_op'] = df_op['val_estoque'] * mask_operacional_geral
@@ -637,7 +648,7 @@ with aba_geral:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🍩 COMPOSIÇÃO DO ESTOQUE (%)</div>", unsafe_allow_html=True)
                 
-                m_obs = df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("Obsoleto", case=False, na=False)
+                m_obs = is_obsoleto_mask(df_snapshot)
                 m_obra = df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False) & ~m_obs
                 m_crit = (df_snapshot.get("item_critico", "") == "1-Sim") & ~m_obs & ~m_obra
                 
@@ -657,6 +668,65 @@ with aba_geral:
                 fig_rosca = go.Figure(data=[go.Pie(labels=df_pizza['Categoria'], values=df_pizza['Valor'], hole=0.65, marker=dict(colors=df_pizza['Cor'], line=dict(color='#161c24', width=2)), textinfo='label+percent', textposition='outside', hovertext=df_pizza['Valor_Formatado'], hovertemplate="<b>%{label}</b><br>%{hovertext}<extra></extra>", textfont=dict(size=11))])
                 fig_rosca.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=80, r=80, t=30, b=30), height=380, showlegend=False, annotations=[dict(text=f"<b>TOTAL</b><br><span style='font-size:20px'>{fmt_valor_milhoes(val_estoque) if val_estoque > 0 else 'R$ 0,00'}</span>", x=0.5, y=0.5, font_size=14, font_color='white', showarrow=False)])
                 st.plotly_chart(fig_rosca, use_container_width=True, config={'displayModeBar': False}, key="rosca_composicao")
+
+        # ==========================================
+        # 🆕 NOVOS RANKINGS POR CATEGORIA E UNIDADE
+        # ==========================================
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<div class='section-title'>📊 RANKING POR CATEGORIA E UNIDADE (R$)</div>", unsafe_allow_html=True)
+        
+        col_r1, col_r2, col_r3 = st.columns(3, gap="medium")
+        
+        # 1. Ranking Crítico por Unidade
+        with col_r1:
+            with st.container(border=True):
+                st.markdown("<div style='color: #f39c12; font-size: 13px; font-weight: bold; margin-bottom: 12px;'>⚠️ ESTOQUE CRÍTICO POR UNIDADE</div>", unsafe_allow_html=True)
+                with st.container(height=350, border=False):
+                    df_crit_rank = df_snapshot[df_snapshot.get("item_critico", "") == "1-Sim"].groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+                    df_crit_rank = df_crit_rank[df_crit_rank['valor_saldo_atual'] > 0].sort_values('valor_saldo_atual', ascending=True)
+                    df_crit_rank['texto_formatado'] = df_crit_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                    df_crit_rank['unidade_exibicao'] = df_crit_rank['unidade_almoxarifado'] + " "
+                    
+                    fig_bar_crit = px.bar(df_crit_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#f39c12'], text='texto_formatado')
+                    fig_bar_crit.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=320, hovermode=False)
+                    fig_bar_crit.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
+                    fig_bar_crit.update_xaxes(title="", showgrid=True, gridcolor='#232b36', showticklabels=False, zeroline=False)
+                    fig_bar_crit.update_yaxes(title="", showgrid=False, tickfont=dict(size=9))
+                    st.plotly_chart(fig_bar_crit, use_container_width=True, config={'displayModeBar': False}, key="ranking_critico_unidade")
+
+        # 2. Ranking Obsoleto por Unidade
+        with col_r2:
+            with st.container(border=True):
+                st.markdown("<div style='color: #9b59b6; font-size: 13px; font-weight: bold; margin-bottom: 12px;'>🗑️ ESTOQUE OBSOLETO POR UNIDADE</div>", unsafe_allow_html=True)
+                with st.container(height=350, border=False):
+                    df_obs_rank = df_snapshot[is_obsoleto_mask(df_snapshot)].groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+                    df_obs_rank = df_obs_rank[df_obs_rank['valor_saldo_atual'] > 0].sort_values('valor_saldo_atual', ascending=True)
+                    df_obs_rank['texto_formatado'] = df_obs_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                    df_obs_rank['unidade_exibicao'] = df_obs_rank['unidade_almoxarifado'] + " "
+                    
+                    fig_bar_obs = px.bar(df_obs_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#9b59b6'], text='texto_formatado')
+                    fig_bar_obs.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=320, hovermode=False)
+                    fig_bar_obs.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
+                    fig_bar_obs.update_xaxes(title="", showgrid=True, gridcolor='#232b36', showticklabels=False, zeroline=False)
+                    fig_bar_obs.update_yaxes(title="", showgrid=False, tickfont=dict(size=9))
+                    st.plotly_chart(fig_bar_obs, use_container_width=True, config={'displayModeBar': False}, key="ranking_obsoleto_unidade")
+
+        # 3. Ranking Obra por Unidade
+        with col_r3:
+            with st.container(border=True):
+                st.markdown("<div style='color: #1abc9c; font-size: 13px; font-weight: bold; margin-bottom: 12px;'>🏗️ ESTOQUE OBRA POR UNIDADE</div>", unsafe_allow_html=True)
+                with st.container(height=350, border=False):
+                    df_obra_rank = df_snapshot[df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False)].groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
+                    df_obra_rank = df_obra_rank[df_obra_rank['valor_saldo_atual'] > 0].sort_values('valor_saldo_atual', ascending=True)
+                    df_obra_rank['texto_formatado'] = df_obra_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
+                    df_obra_rank['unidade_exibicao'] = df_obra_rank['unidade_almoxarifado'] + " "
+                    
+                    fig_bar_obra = px.bar(df_obra_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#1abc9c'], text='texto_formatado')
+                    fig_bar_obra.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=320, hovermode=False)
+                    fig_bar_obra.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
+                    fig_bar_obra.update_xaxes(title="", showgrid=True, gridcolor='#232b36', showticklabels=False, zeroline=False)
+                    fig_bar_obra.update_yaxes(title="", showgrid=False, tickfont=dict(size=9))
+                    st.plotly_chart(fig_bar_obra, use_container_width=True, config={'displayModeBar': False}, key="ranking_obra_unidade")
 
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
@@ -790,7 +860,7 @@ with aba_geral:
             else:
                 snapshot_idx = int(max_a_filt) * 12 + int(max_m_filt)
 
-            df_calc = df_calc[(df_calc['tempo_idx'] <= snapshot_idx) & (df_calc['item_critico'] != '1-Sim') & (~df_calc['nome_local_estoque'].astype(str).str.contains('Obsoleto', case=False, na=False))]
+            df_calc = df_calc[(df_calc['tempo_idx'] <= snapshot_idx) & (df_calc['item_critico'] != '1-Sim') & (~is_obsoleto_mask(df_calc))]
             df_calc['teve_consumo'] = df_calc['valor_saida_cons_interno'].abs() > 0
             df_mov = df_calc[df_calc['teve_consumo']].groupby(['unidade_almoxarifado', 'codigo_produto'])['tempo_idx'].max().reset_index()
             df_mov.rename(columns={'tempo_idx': 'ultimo_mov_idx'}, inplace=True)
@@ -1032,7 +1102,7 @@ with aba_inventarios:
                     df_tabela_div['Nome do Produto'] = df_diverg['nome_produto']
                     df_tabela_div['Local'] = df_diverg['localizacao']
                     df_tabela_div['Sist. (R$)'] = df_diverg['saldo_anterior_val'].apply(fmt_brl)
-                    df_tabela_div['Físico (R$)'] = df_diverg['inventario_val'].apply(fmt_brl)
+                    df_diverg['Físico (R$)'] = df_diverg['inventario_val'].apply(fmt_brl)
                     df_tabela_div['Diferença (R$)'] = df_diverg['diferenca_val'].apply(fmt_brl)
                     
                     st.dataframe(df_tabela_div, use_container_width=True, hide_index=True, height=250)
