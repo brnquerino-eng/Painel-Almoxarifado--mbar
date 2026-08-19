@@ -682,8 +682,10 @@ with aba_geral:
                     df_crit_rank['texto_formatado'] = df_crit_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     df_crit_rank['unidade_exibicao'] = df_crit_rank['unidade_almoxarifado'] + " "
                     
+                    altura_crit = max(350, len(df_crit_rank) * 35) # Cálculo dinâmico para ativar a barra de rolagem
+                    
                     fig_bar_crit = px.bar(df_crit_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#f39c12'], text='texto_formatado')
-                    fig_bar_crit.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=320, hovermode=False)
+                    fig_bar_crit.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=altura_crit, hovermode=False)
                     fig_bar_crit.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
                     fig_bar_crit.update_xaxes(title="", showgrid=True, gridcolor='#232b36', showticklabels=False, zeroline=False)
                     fig_bar_crit.update_yaxes(title="", showgrid=False, tickfont=dict(size=9))
@@ -699,8 +701,10 @@ with aba_geral:
                     df_obs_rank['texto_formatado'] = df_obs_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     df_obs_rank['unidade_exibicao'] = df_obs_rank['unidade_almoxarifado'] + " "
                     
+                    altura_obs = max(350, len(df_obs_rank) * 35) # Cálculo dinâmico para ativar a barra de rolagem
+                    
                     fig_bar_obs = px.bar(df_obs_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#9b59b6'], text='texto_formatado')
-                    fig_bar_obs.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=320, hovermode=False)
+                    fig_bar_obs.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=altura_obs, hovermode=False)
                     fig_bar_obs.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
                     fig_bar_obs.update_xaxes(title="", showgrid=True, gridcolor='#232b36', showticklabels=False, zeroline=False)
                     fig_bar_obs.update_yaxes(title="", showgrid=False, tickfont=dict(size=9))
@@ -716,8 +720,10 @@ with aba_geral:
                     df_obra_rank['texto_formatado'] = df_obra_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     df_obra_rank['unidade_exibicao'] = df_obra_rank['unidade_almoxarifado'] + " "
                     
+                    altura_obra = max(350, len(df_obra_rank) * 35) # Cálculo dinâmico para ativar a barra de rolagem
+                    
                     fig_bar_obra = px.bar(df_obra_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#1abc9c'], text='texto_formatado')
-                    fig_bar_obra.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=320, hovermode=False)
+                    fig_bar_obra.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=altura_obra, hovermode=False)
                     fig_bar_obra.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
                     fig_bar_obra.update_xaxes(title="", showgrid=True, gridcolor='#232b36', showticklabels=False, zeroline=False)
                     fig_bar_obra.update_yaxes(title="", showgrid=False, tickfont=dict(size=9))
