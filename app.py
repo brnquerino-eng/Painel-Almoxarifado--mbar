@@ -131,6 +131,18 @@ def carregar_dados_inventario():
             
             df_inv = pd.DataFrame(res.data)
             df_inv = df_inv.replace({np.nan: None})
+
+            def limpar_valor(val):
+            if pd.isna(val) or val is None:
+                return ""
+            s_val = str(val).strip()
+            if s_val.endswith('.0'):
+                s_val = s_val[:-2]
+            return s_val
+
+        for col in ["mes_referencia", "ano_referencia"]:
+            if col in df_inv.columns:
+                df_inv[col] = df_inv[col].apply(limpar_valor)
             
             cols_numericas = [
                 "saldo_anterior_val", "inventario_val", "diferenca_val", 
