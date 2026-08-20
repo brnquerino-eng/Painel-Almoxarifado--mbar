@@ -1100,7 +1100,7 @@ with aba_inventarios:
                 '<table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">'
                 '<tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;">'
                 '<th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Empresa</th>'
-                '<th style="padding: 10px; border-right: 1px solid #232b36;">(Qtde) Inventário</th>'
+                '<th style="padding: 10px; border-right: 1px solid #232b36;">(Qt) Inventário</th>'
                 '<th style="padding: 10px; border-right: 1px solid #232b36;">Linhas</th>'
                 '<th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Ganhos</th>'
                 '<th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Perdas</th>'
