@@ -124,15 +124,28 @@ def carregar_dados():
 @st.cache_data()
 def carregar_dados_inventario():
     try:
-        with st.spinner("Carregando base real de inventários..."):
-            res = supabase.table("painel_inventario").select("*").execute()
-            if not res.data:
+        with st.spinner("Baixando 100% da base de inventários..."):
+            all_data = []
+            batch_size = 1000
+            
+            # Loop de paginação para burlar o limite de 1000 linhas do Supabase
+            for offset in range(0, 100000, batch_size): 
+                res = supabase.table("painel_inventario").select("*").range(offset, offset + batch_size - 1).execute()
+                
+                if res.data:
+                    all_data.extend(res.data)
+                
+                # Se vieram menos linhas que o tamanho do lote, significa que puxamos tudo
+                if not res.data or len(res.data) < batch_size:
+                    break 
+
+            if not all_data:
                 return pd.DataFrame()
 
-            df_inv = pd.DataFrame(res.data)
+            df_inv = pd.DataFrame(all_data)
             df_inv = df_inv.replace({np.nan: None})
 
-            # Função de limpeza com a indentação correta
+            # Função de limpeza para os meses e anos (remove o .0)
             def limpar_valor(val):
                 if pd.isna(val) or val is None:
                     return ""
