@@ -991,6 +991,8 @@ with aba_geral:
             else:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
+import textwrap
+
 # ==========================================
 # ABA 2: INVENTÁRIOS (Tema Escuro & Tabela Executiva)
 # ==========================================
@@ -1077,7 +1079,7 @@ with aba_inventarios:
                     </tr>
                     """
 
-            html_tabela_geral = f"""
+            html_tabela_geral = textwrap.dedent(f"""
             <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
                 <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
                     INVENTÁRIO GERAL - RESUMO EXECUTIVO
@@ -1100,6 +1102,6 @@ with aba_inventarios:
                     </tr>
                 </table>
             </div>
-            """
+            """)
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
