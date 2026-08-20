@@ -1000,24 +1000,31 @@ with aba_inventarios:
     if df_inventario.empty:
         st.warning("⚠️ Nenhum dado de inventário encontrado na base.")
     else:
-        # 1. Filtros Superiores Dinâmicos (Multiselect)
+        # 1. Filtros Superiores Dinâmicos (Multiselect com Defaults Inteligentes)
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
             
             lista_empresas = sorted([str(x) for x in df_inventario.get('empresa_nome', pd.Series()).dropna().unique()]) if 'empresa_nome' in df_inventario.columns else []
             lista_anos = sorted([str(x) for x in df_inventario.get('ano_referencia', pd.Series()).dropna().unique()], reverse=True) if 'ano_referencia' in df_inventario.columns else []
-            lista_meses = sorted([str(x) for x in df_inventario.get('mes_referencia', pd.Series()).dropna().unique()]) if 'mes_referencia' in df_inventario.columns else []
+            
+            # Ordena os meses numericamente de forma decrescente para pegar o mais recente primeiro (ex: mês 7)
+            lista_meses = sorted([str(x) for x in df_inventario.get('mes_referencia', pd.Series()).dropna().unique()], key=lambda x: int(x) if str(x).isdigit() else 0, reverse=True) if 'mes_referencia' in df_inventario.columns else []
+            
             lista_tipos = sorted([str(x) for x in df_inventario.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_inventario.columns else []
+
+            # Defaults: Todas as empresas e tipos, mas apenas o ano e mês mais recentes/atuais
+            default_ano = [lista_anos[0]] if lista_anos else []
+            default_mes = [lista_meses[0]] if lista_meses else []
 
             with col_inv_f1:
                 st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Empresa:</div>", unsafe_allow_html=True)
                 empresas_sel = st.multiselect("Empresa:", lista_empresas, default=lista_empresas, key="inv_empresa_sel", label_visibility="collapsed")
             with col_inv_f2:
                 st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Ano:</div>", unsafe_allow_html=True)
-                anos_sel = st.multiselect("Ano:", lista_anos, default=lista_anos, key="inv_ano_sel", label_visibility="collapsed")
+                anos_sel = st.multiselect("Ano:", lista_anos, default=default_ano, key="inv_ano_sel", label_visibility="collapsed")
             with col_inv_f3:
                 st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Mês:</div>", unsafe_allow_html=True)
-                meses_sel = st.multiselect("Mês:", lista_meses, default=lista_meses, key="inv_mes_sel", label_visibility="collapsed")
+                meses_sel = st.multiselect("Mês:", lista_meses, default=default_mes, key="inv_mes_sel", label_visibility="collapsed")
             with col_inv_f4:
                 st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
                 tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos, default=lista_tipos, key="inv_tipo_sel", label_visibility="collapsed")
