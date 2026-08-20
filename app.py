@@ -1063,11 +1063,11 @@ with aba_inventarios:
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
-         # Agrupamento por empresa contando os inventários distintos e as linhas
+# Agrupamento por empresa contando os inventários distintos e as linhas totais
             if 'empresa_nome' in df_inv.columns:
                 df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
                     qtd_inv=('id_inventario', 'nunique'),
-                    qtd_linhas=('id', 'size'), 
+                    qtd_linhas=('id', 'count'), # Conta todas as linhas registradas na base por empresa
                     saldo=('saldo_anterior_val', 'sum'),
                     div_abs=('diferenca_val', lambda x: abs(x).sum()),
                     ganho=('diferenca_val', lambda x: x[x > 0].sum()),
@@ -1077,7 +1077,7 @@ with aba_inventarios:
             else:
                 df_empresas_resumo = pd.DataFrame()
 
-            # 4. Construção das Linhas da Tabela
+            # 4. Construção das Linhas da Tabela (na ordem solicitada)
             linhas_tabela_html = ""
             if not df_empresas_resumo.empty:
                 for _, row in df_empresas_resumo.iterrows():
@@ -1094,31 +1094,6 @@ with aba_inventarios:
                     linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db;">{qtd}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; color: #ffffff;">{fmt_int(lin)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td><td style="padding: 12px; color: #ffffff; font-weight: bold;">{acur:.2f}%</td></tr>'
 
             # 5. Montagem Final da Tabela
-            html_tabela_geral = (
-                '<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">'
-                '<div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">INVENTÁRIO GERAL - RESUMO EXECUTIVO</div>'
-                '<table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">'
-                '<tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;">'
-                '<th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Empresa</th>'
-                '<th style="padding: 10px; border-right: 1px solid #232b36;">(Qt) Inventário</th>'
-                '<th style="padding: 10px; border-right: 1px solid #232b36;">Linhas</th>'
-                '<th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Ganhos</th>'
-                '<th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Perdas</th>'
-                '<th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Diferença</th>'
-                '<th style="padding: 10px;">(R$) Acuracia</th>'
-                '</tr>'
-                f'{linhas_tabela_html}'
-                f'<tr style="background-color: #1a222d; font-size: 15px; border-top: 2px solid #333d4d;">'
-                f'<td style="padding: 15px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; font-weight: 900; color: #ffffff;">TOTAL</td>'
-                f'<td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db; text-align: center;">{total_inventarios_distintos}</td>'
-                f'<td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff; text-align: center;">{fmt_int(len(df_inv))}</td>'
-                f'<td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>'
-                f'<td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>'
-                f'<td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>'
-                f'<td style="padding: 15px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>'
-                f'</tr>'
-                '</table>'
-                '</div>'
-            )
+            html_tabela_geral = '<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);"><div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">INVENTÁRIO GERAL - RESUMO EXECUTIVO</div><table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;"><tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;"><th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Empresa</th><th style="padding: 10px; border-right: 1px solid #232b36;">(Qtde) Inventário</th><th style="padding: 10px; border-right: 1px solid #232b36;">Linhas</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Ganhos</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Perdas</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Diferença</th><th style="padding: 10px;">Acuracia</th></tr>' + linhas_tabela_html + f'<tr style="background-color: #1a222d; font-size: 15px; border-top: 2px solid #333d4d;"><td style="padding: 15px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; font-weight: 900; color: #ffffff;">TOTAL</td><td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db; text-align: center;">{total_inventarios_distintos}</td><td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff; text-align: center;">{fmt_int(len(df_inv))}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td><td style="padding: 15px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td></tr></table></div>'
             
             st.write(html_tabela_geral, unsafe_allow_html=True)
