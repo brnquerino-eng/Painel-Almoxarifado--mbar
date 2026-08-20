@@ -1043,7 +1043,7 @@ with aba_inventarios:
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
-            # Agrupamento por empresa para gerar as linhas da tabela igual à referência
+            # Agrupamento por empresa para gerar as linhas da tabela
             if 'empresa_nome' in df_inv.columns:
                 df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
                     saldo=('saldo_anterior_val', 'sum'),
@@ -1074,7 +1074,7 @@ with aba_inventarios:
                         <td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td>
                         <td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td>
                         <td style="padding: 12px; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td>
-                    }
+                    </tr>
                     """
 
             html_tabela_geral = f"""
