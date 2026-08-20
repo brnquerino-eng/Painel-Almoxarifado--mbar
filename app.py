@@ -992,11 +992,12 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 with aba_inventarios:
-    
+    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
+
     if df_inventario.empty:
         st.warning("⚠️ Nenhum dado de inventário encontrado na base.")
     else:
-        # Filtros Superiores (Como você pediu antes)
+        # Filtros Superiores
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
             with col_inv_f1:
@@ -1027,18 +1028,14 @@ with aba_inventarios:
         if df_inv.empty:
             st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            # --- CÁLCULOS EXECUTIVOS (Baseados na imagem) ---
-            
-            # Período
+            # Cálculos Executivos
             dt_inicios = df_inv['data_inicio'].dropna().unique() if 'data_inicio' in df_inv.columns else []
             dt_fims = df_inv['data_fim'].dropna().unique() if 'data_fim' in df_inv.columns else []
             txt_periodo = f"{dt_inicios[0]} à {dt_fims[0]}" if len(dt_inicios)>0 and len(dt_fims)>0 else "Período Consolidado"
 
-            # Nome / Empresa
             nome_inv_str = df_inv['nome_inventario'].iloc[0] if 'nome_inventario' in df_inv.columns and not df_inv['nome_inventario'].empty else "Inventário Geral"
             empresa_str = empresa_sel if empresa_sel != "Todas as Empresas" else "Consolidado Geral"
 
-            # Financeiro
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
             val_inventariado = df_inv['inventario_val'].sum() if 'inventario_val' in df_inv.columns else 0.0
             
@@ -1046,14 +1043,12 @@ with aba_inventarios:
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             diferenca_liq = ganhos + perdas
             
-            # Acurácia Financeira: (1 - Abs(Divergência) / Saldo Sistema)
             divergencia_absoluta = abs(df_inv['diferenca_val']).sum() if 'diferenca_val' in df_inv.columns else 0.0
             if saldo_sistema > 0:
                 acuracia_fin = max(0, (1 - (divergencia_absoluta / saldo_sistema)) * 100)
             else:
                 acuracia_fin = 100.0 if divergencia_absoluta == 0 else 0.0
 
-            # Operacional
             total_linhas = len(df_inv)
             total_skus = df_inv['codigo_produto'].nunique() if 'codigo_produto' in df_inv.columns else 0
             
@@ -1061,7 +1056,6 @@ with aba_inventarios:
             itens_negativos = len(df_inv[df_inv['diferenca_val'] < 0]) if 'diferenca_val' in df_inv.columns else 0
             itens_positivos = len(df_inv[df_inv['diferenca_val'] > 0]) if 'diferenca_val' in df_inv.columns else 0
             
-            # Acuracidade de Linhas
             if total_linhas > 0:
                 acuracia_linhas = ((total_linhas - itens_divergentes) / total_linhas) * 100
                 pct_div = (itens_divergentes / total_linhas) * 100
@@ -1070,9 +1064,10 @@ with aba_inventarios:
             else:
                 acuracia_linhas, pct_div, pct_neg, pct_pos = 100.0, 0.0, 0.0, 0.0
 
-            # --- RENDERIZAÇÃO DO LAYOUT TIPO DASHBOARD BRANCO/LARANJA (Dark Mode adaptado) ---
-            
-            # HEADER (CABECALHO)
+            cor_ganho = "#2ecc71"
+            cor_perda = "#e74c3c"
+
+            # Cabeçalho do Relatório
             st.markdown(f"""
             <div style="background-color: #ffffff; border: 2px solid #d85c27; border-radius: 8px; padding: 15px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
                 <div style="flex: 1; text-align: left;">
@@ -1087,11 +1082,8 @@ with aba_inventarios:
             </div>
             """, unsafe_allow_html=True)
 
-            # TABELA FINANCEIRA SUPERIOR (Estilo Tabela HTML Bonita)
-            cor_ganho = "#2ecc71"
-            cor_perda = "#e74c3c"
-            
-            st.markdown(f"""
+            # Tabela Financeira Superior
+            html_tabela_superior = f"""
             <div style="background-color: #ffffff; border: 1px solid #333d4d; border-radius: 6px; overflow: hidden; margin-bottom: 20px;">
                 <div style="background-color: #f8f9fa; padding: 10px; text-align: center; font-weight: bold; color: #12161f; border-bottom: 1px solid #333d4d; font-size: 16px;">
                     INVENTÁRIO GERAL
@@ -1120,9 +1112,10 @@ with aba_inventarios:
                     </tr>
                 </table>
             </div>
-            """, unsafe_allow_html=True)
+            """
+            st.markdown(html_tabela_superior, unsafe_allow_html=True)
 
-            # GRÁFICO E DETALHES LADO A LADO
+            # Gráfico e Detalhes Lado a Lado
             col_graf, col_det = st.columns([1, 1.2], gap="large")
 
             with col_graf:
@@ -1153,8 +1146,7 @@ with aba_inventarios:
 
             with col_det:
                 with st.container(border=True):
-                    # Tabela de Detalhes Idêntica à da Imagem (Feita com HTML para controle perfeito)
-                    st.markdown(f"""
+                    html_tabela_detalhes = f"""
                     <div style="background-color: #ffffff; border-radius: 6px; padding: 0px; color: #12161f;">
                         <div style="text-align: center; font-size: 18px; font-weight: bold; padding: 12px; border-bottom: 2px solid #12161f;">
                             Detalhes - Inventário
@@ -1166,7 +1158,6 @@ with aba_inventarios:
                                 <td style="padding: 8px; text-align: center;">Valor (R$)</td>
                                 <td style="padding: 8px; text-align: center;">%</td>
                             </tr>
-                            
                             <tr>
                                 <td style="padding: 8px; font-weight: bold;">Total Geral Inventário - Contagem (Linhas/Localização)</td>
                                 <td style="padding: 8px; text-align: center;">{fmt_int(total_linhas)}</td>
@@ -1179,14 +1170,12 @@ with aba_inventarios:
                                 <td style="padding: 8px; text-align: center;">-</td>
                                 <td style="padding: 8px; text-align: center;">-</td>
                             </tr>
-                            
                             <tr style="border-bottom: 1px dashed #ced4da;">
                                 <td style="padding: 8px; font-weight: bold;">Itens Contados - Inventariados</td>
                                 <td style="padding: 8px; text-align: center;">{fmt_int(total_linhas)}</td>
                                 <td style="padding: 8px; text-align: center;">{fmt_brl(val_inventariado)}</td>
                                 <td style="padding: 8px; text-align: center;">100,00%</td>
                             </tr>
-                            
                             <tr>
                                 <td style="padding: 8px; font-weight: bold;">Itens Divergentes</td>
                                 <td style="padding: 8px; text-align: center;">{fmt_int(itens_divergentes)}</td>
@@ -1205,7 +1194,6 @@ with aba_inventarios:
                                 <td style="padding: 4px 8px; text-align: center; color: {cor_ganho};">{fmt_brl(ganhos)}</td>
                                 <td style="padding: 4px 8px; text-align: center;">{pct_pos:.2f}%</td>
                             </tr>
-                            
                             <tr>
                                 <td style="padding: 8px; font-weight: bold;">Acuracidade - Itens Contados (R$)</td>
                                 <td style="padding: 8px; text-align: center;">-</td>
@@ -1220,4 +1208,5 @@ with aba_inventarios:
                             </tr>
                         </table>
                     </div>
-                    """, unsafe_allow_html=True)
+                    """
+                    st.markdown(html_tabela_detalhes, unsafe_allow_html=True)
