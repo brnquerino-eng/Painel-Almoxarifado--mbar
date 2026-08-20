@@ -991,147 +991,233 @@ with aba_geral:
             else:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
-# ==========================================
-# ABA 2: INVENTÁRIOS (Dados Reais do Supabase)
-# ==========================================
 with aba_inventarios:
-    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (RESULTADOS REAIS)</div>", unsafe_allow_html=True)
-
+    
     if df_inventario.empty:
-        st.warning("⚠️ Nenhum dado de inventário encontrado. Por favor, verifique se a tabela 'painel_inventario' foi carregada corretamente no Supabase.")
+        st.warning("⚠️ Nenhum dado de inventário encontrado na base.")
     else:
+        # Filtros Superiores (Como você pediu antes)
         with st.container(border=True):
-            # 🆕 Novos 4 Filtros alinhados na mesma linha
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
-            
             with col_inv_f1:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Empresa:</div>", unsafe_allow_html=True)
                 lista_empresas = sorted([str(x) for x in df_inventario.get('empresa_nome', pd.Series()).dropna().unique()]) if 'empresa_nome' in df_inventario.columns else []
-                empresa_sel = st.selectbox("Empresa:", ["Todas as Empresas"] + lista_empresas, key="inv_empresa_sel", label_visibility="collapsed")
-                
+                empresa_sel = st.selectbox("Empresa:", ["Todas as Empresas"] + lista_empresas, key="inv_empresa_sel")
             with col_inv_f2:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Ano:</div>", unsafe_allow_html=True)
                 df_ano = df_inventario if empresa_sel == "Todas as Empresas" else df_inventario[df_inventario.get('empresa_nome', '').astype(str) == empresa_sel]
                 lista_anos = sorted([str(x) for x in df_ano.get('ano_referencia', pd.Series()).dropna().unique()], reverse=True) if 'ano_referencia' in df_ano.columns else []
-                ano_sel = st.selectbox("Ano:", ["Todos os Anos"] + lista_anos, key="inv_ano_sel", label_visibility="collapsed")
-                
+                ano_sel = st.selectbox("Ano:", ["Todos os Anos"] + lista_anos, key="inv_ano_sel")
             with col_inv_f3:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Mês:</div>", unsafe_allow_html=True)
                 df_mes = df_ano if ano_sel == "Todos os Anos" else df_ano[df_ano.get('ano_referencia', '').astype(str) == ano_sel]
                 lista_meses = sorted([str(x) for x in df_mes.get('mes_referencia', pd.Series()).dropna().unique()]) if 'mes_referencia' in df_mes.columns else []
-                mes_sel = st.selectbox("Mês:", ["Todos os Meses"] + lista_meses, key="inv_mes_sel", label_visibility="collapsed")
-
+                mes_sel = st.selectbox("Mês:", ["Todos os Meses"] + lista_meses, key="inv_mes_sel")
             with col_inv_f4:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
                 df_tipo = df_mes if mes_sel == "Todos os Meses" else df_mes[df_mes.get('mes_referencia', '').astype(str) == mes_sel]
                 lista_tipos = sorted([str(x) for x in df_tipo.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_tipo.columns else []
-                tipo_sel = st.selectbox("Tipo de Inventário:", ["Todos os Tipos"] + lista_tipos, key="inv_tipo_sel", label_visibility="collapsed")
+                tipo_sel = st.selectbox("Tipo de Inventário:", ["Todos os Tipos"] + lista_tipos, key="inv_tipo_sel")
 
-        # 🆕 Lógica de filtragem atualizada
-        df_inv_filtrado = df_inventario.copy()
-        if empresa_sel != "Todas as Empresas" and 'empresa_nome' in df_inv_filtrado.columns:
-            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['empresa_nome'].astype(str) == empresa_sel]
-        if ano_sel != "Todos os Anos" and 'ano_referencia' in df_inv_filtrado.columns:
-            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['ano_referencia'].astype(str) == ano_sel]
-        if mes_sel != "Todos os Meses" and 'mes_referencia' in df_inv_filtrado.columns:
-            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['mes_referencia'].astype(str) == mes_sel]
-        if tipo_sel != "Todos os Tipos" and 'tipo_inventario' in df_inv_filtrado.columns:
-            df_inv_filtrado = df_inv_filtrado[df_inv_filtrado['tipo_inventario'].astype(str) == tipo_sel]
+        # Filtragem dos dados
+        df_inv = df_inventario.copy()
+        if empresa_sel != "Todas as Empresas": df_inv = df_inv[df_inv['empresa_nome'].astype(str) == empresa_sel]
+        if ano_sel != "Todos os Anos": df_inv = df_inv[df_inv['ano_referencia'].astype(str) == ano_sel]
+        if mes_sel != "Todos os Meses": df_inv = df_inv[df_inv['mes_referencia'].astype(str) == mes_sel]
+        if tipo_sel != "Todos os Tipos": df_inv = df_inv[df_inv['tipo_inventario'].astype(str) == tipo_sel]
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # 🆕 Formatação do texto do período para o banner
-        txt_periodo = "Todos os Períodos"
-        if ano_sel != "Todos os Anos" or mes_sel != "Todos os Meses":
-            m_txt = mes_sel if mes_sel != "Todos os Meses" else "Histórico"
-            a_txt = ano_sel if ano_sel != "Todos os Anos" else ""
-            txt_periodo = f"{m_txt}/{a_txt}".strip('/')
-
-        # 🆕 Banner Luminoso Atualizado
-        st.markdown(f"""
-        <div style='background: linear-gradient(90deg, #161c24 0%, #1a222d 100%); border: 1px solid #d85c27; padding: 12px; border-radius: 8px; text-align: center; color: white; font-weight: bold; font-size: 14px; margin-bottom: 20px;'>
-            🏢 EMPRESA: <span style='color: #d85c27;'>{empresa_sel}</span> | 📅 PERÍODO: <span style='color: #3498db;'>{txt_periodo}</span> | 📋 TIPO: <span style='color: #2ecc71;'>{tipo_sel}</span>
-        </div>
-        """, unsafe_allow_html=True)
-
-        saldo_sistema_inv = df_inv_filtrado['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv_filtrado.columns else 0.0
-        total_contado_inv = df_inv_filtrado['inventario_val'].sum() if 'inventario_val' in df_inv_filtrado.columns else 0.0
-        
-        ganhos_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv_filtrado.columns else 0.0
-        perdas_reais = df_inv_filtrado[df_inv_filtrado['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv_filtrado.columns else 0.0
-        dif_liquida_real = df_inv_filtrado['diferenca_val'].sum() if 'diferenca_val' in df_inv_filtrado.columns else 0.0
-
-        dif_absoluta = abs(df_inv_filtrado['diferenca_val']).sum() if 'diferenca_val' in df_inv_filtrado.columns else 0.0
-        if saldo_sistema_inv > 0:
-            acuracia_real = max(0, 100.0 - (dif_absoluta / saldo_sistema_inv * 100.0))
+        if df_inv.empty:
+            st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            acuracia_real = 100.0 if dif_absoluta == 0 else 0.0
+            # --- CÁLCULOS EXECUTIVOS (Baseados na imagem) ---
+            
+            # Período
+            dt_inicios = df_inv['data_inicio'].dropna().unique() if 'data_inicio' in df_inv.columns else []
+            dt_fims = df_inv['data_fim'].dropna().unique() if 'data_fim' in df_inv.columns else []
+            txt_periodo = f"{dt_inicios[0]} à {dt_fims[0]}" if len(dt_inicios)>0 and len(dt_fims)>0 else "Período Consolidado"
 
-        c_k1, c_k2, c_k3, c_k4 = st.columns(4)
-        with c_k1: st.markdown(render_card("💻", "icon-estoque", "SALDO SISTEMA (R$)", fmt_brl(saldo_sistema_inv), saldo_sistema_inv, saldo_sistema_inv), unsafe_allow_html=True)
-        with c_k2: st.markdown(render_card("📋", "icon-skus", "TOTAL CONTADO (R$)", fmt_brl(total_contado_inv), total_contado_inv, total_contado_inv), unsafe_allow_html=True)
-        with c_k3: st.markdown(render_card("📈", "icon-obra", "SOBRAS / GANHOS", fmt_brl(ganhos_reais), ganhos_reais, ganhos_reais), unsafe_allow_html=True)
-        with c_k4: st.markdown(render_card("📉", "icon-critico", "FALTAS / PERDAS", fmt_brl(perdas_reais), perdas_reais, perdas_reais), unsafe_allow_html=True)
+            # Nome / Empresa
+            nome_inv_str = df_inv['nome_inventario'].iloc[0] if 'nome_inventario' in df_inv.columns and not df_inv['nome_inventario'].empty else "Inventário Geral"
+            empresa_str = empresa_sel if empresa_sel != "Todas as Empresas" else "Consolidado Geral"
 
-        st.markdown("<br>", unsafe_allow_html=True)
+            # Financeiro
+            saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
+            val_inventariado = df_inv['inventario_val'].sum() if 'inventario_val' in df_inv.columns else 0.0
+            
+            ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
+            perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
+            diferenca_liq = ganhos + perdas
+            
+            # Acurácia Financeira: (1 - Abs(Divergência) / Saldo Sistema)
+            divergencia_absoluta = abs(df_inv['diferenca_val']).sum() if 'diferenca_val' in df_inv.columns else 0.0
+            if saldo_sistema > 0:
+                acuracia_fin = max(0, (1 - (divergencia_absoluta / saldo_sistema)) * 100)
+            else:
+                acuracia_fin = 100.0 if divergencia_absoluta == 0 else 0.0
 
-        col_inv1, col_inv2 = st.columns([4, 6], gap="medium")
-        
-        with col_inv1:
-            with st.container(border=True):
-                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📊 BALANÇO FINANCEIRO DO INVENTÁRIO (R$)</div>", unsafe_allow_html=True)
-                
-                df_inv_grafico = pd.DataFrame({
-                    'Categoria': ['SOBRAS (+)', 'FALTAS (-)', 'DIF. LÍQUIDA'],
-                    'Valor': [ganhos_reais, perdas_reais, dif_liquida_real],
-                    'Cor': ['#2ecc71', '#e74c3c', '#3498db']
-                })
-                
-                fig_inv = px.bar(
-                    df_inv_grafico, x='Categoria', y='Valor', color='Categoria', 
-                    color_discrete_map={'SOBRAS (+)': '#2ecc71', 'FALTAS (-)': '#e74c3c', 'DIF. LÍQUIDA': '#3498db'}, 
-                    text=[fmt_brl(ganhos_reais), fmt_brl(perdas_reais), fmt_brl(dif_liquida_real)]
-                )
-                fig_inv.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=20, r=20, t=10, b=10), height=350, showlegend=False)
-                fig_inv.update_traces(textposition='outside', textfont=dict(color='white'))
-                fig_inv.update_xaxes(title="")
-                fig_inv.update_yaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ")
-                st.plotly_chart(fig_inv, use_container_width=True, config={'displayModeBar': False})
+            # Operacional
+            total_linhas = len(df_inv)
+            total_skus = df_inv['codigo_produto'].nunique() if 'codigo_produto' in df_inv.columns else 0
+            
+            itens_divergentes = len(df_inv[df_inv['diferenca_val'] != 0]) if 'diferenca_val' in df_inv.columns else 0
+            itens_negativos = len(df_inv[df_inv['diferenca_val'] < 0]) if 'diferenca_val' in df_inv.columns else 0
+            itens_positivos = len(df_inv[df_inv['diferenca_val'] > 0]) if 'diferenca_val' in df_inv.columns else 0
+            
+            # Acuracidade de Linhas
+            if total_linhas > 0:
+                acuracia_linhas = ((total_linhas - itens_divergentes) / total_linhas) * 100
+                pct_div = (itens_divergentes / total_linhas) * 100
+                pct_neg = (itens_negativos / total_linhas) * 100
+                pct_pos = (itens_positivos / total_linhas) * 100
+            else:
+                acuracia_linhas, pct_div, pct_neg, pct_pos = 100.0, 0.0, 0.0, 0.0
 
-        with col_inv2:
-            with st.container(border=True):
-                st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>📑 AUDITORIA DE DIVERGÊNCIAS (SKUs)</div>", unsafe_allow_html=True)
-                
-                skus_total = df_inv_filtrado['codigo_produto'].nunique() if 'codigo_produto' in df_inv_filtrado.columns else 0
-                skus_divergentes = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0]['codigo_produto'].nunique() if 'diferenca_val' in df_inv_filtrado.columns and 'codigo_produto' in df_inv_filtrado.columns else 0
-                
-                st.markdown(f"""
-                <div style="display: flex; justify-content: space-between; margin-bottom: 15px; background-color: #161c24; padding: 10px; border-radius: 6px;">
-                    <div><span style="color:#8c9ba5; font-size:12px;">Total de SKUs Auditados:</span> <strong style="color:white; font-size:14px;">{fmt_int(skus_total)}</strong></div>
-                    <div><span style="color:#8c9ba5; font-size:12px;">SKUs com Divergência:</span> <strong style="color:#e74c3c; font-size:14px;">{fmt_int(skus_divergentes)}</strong></div>
-                    <div><span style="color:#8c9ba5; font-size:12px;">Acurácia (Valor):</span> <strong style="color:#2ecc71; font-size:14px;">{acuracia_real:.2f}%</strong></div>
+            # --- RENDERIZAÇÃO DO LAYOUT TIPO DASHBOARD BRANCO/LARANJA (Dark Mode adaptado) ---
+            
+            # HEADER (CABECALHO)
+            st.markdown(f"""
+            <div style="background-color: #ffffff; border: 2px solid #d85c27; border-radius: 8px; padding: 15px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <div style="flex: 1; text-align: left;">
+                    <div style="color: #12161f; font-weight: 900; font-size: 24px; line-height: 1;">Âmbar</div>
+                    <div style="color: #d85c27; font-size: 11px; font-weight: bold; letter-spacing: 1px;">ENERGIA</div>
                 </div>
-                """, unsafe_allow_html=True)
+                <div style="flex: 3; text-align: center;">
+                    <h3 style="color: #12161f; margin: 0; font-weight: bold; font-size: 18px;">{nome_inv_str} ({empresa_str})</h3>
+                    <p style="color: #333d4d; margin: 0; font-size: 14px; font-weight: 600;">Período: {txt_periodo}</p>
+                </div>
+                <div style="flex: 1;"></div>
+            </div>
+            """, unsafe_allow_html=True)
 
-                if 'diferenca_val' in df_inv_filtrado.columns:
-                    df_diverg = df_inv_filtrado[df_inv_filtrado['diferenca_val'] != 0].copy()
-                    if not df_diverg.empty:
-                        df_diverg = df_diverg.sort_values(by='diferenca_val', key=abs, ascending=False)
-                        
-                        df_tabela_div = pd.DataFrame()
-                        df_tabela_div['SKU'] = df_diverg['codigo_produto'] if 'codigo_produto' in df_diverg.columns else ''
-                        df_tabela_div['Nome do Produto'] = df_diverg['nome_produto'] if 'nome_produto' in df_diverg.columns else ''
-                        df_tabela_div['Local'] = df_diverg['localizacao'] if 'localizacao' in df_diverg.columns else ''
-                        
-                        if 'saldo_anterior_val' in df_diverg.columns:
-                            df_tabela_div['Sist. (R$)'] = df_diverg['saldo_anterior_val'].apply(fmt_brl)
-                        if 'inventario_val' in df_diverg.columns:
-                            df_tabela_div['Físico (R$)'] = df_diverg['inventario_val'].apply(fmt_brl)
-                        
-                        df_tabela_div['Diferença (R$)'] = df_diverg['diferenca_val'].apply(fmt_brl)
-                        
-                        st.dataframe(df_tabela_div, use_container_width=True, hide_index=True, height=250)
-                    else:
-                        st.success("✨ Excelente! Não há divergências financeiras nos filtros selecionados. Acurácia de 100%.")
-                else:
-                    st.info("Colunas de diferença não encontradas nos dados.")
+            # TABELA FINANCEIRA SUPERIOR (Estilo Tabela HTML Bonita)
+            cor_ganho = "#2ecc71"
+            cor_perda = "#e74c3c"
+            
+            st.markdown(f"""
+            <div style="background-color: #ffffff; border: 1px solid #333d4d; border-radius: 6px; overflow: hidden; margin-bottom: 20px;">
+                <div style="background-color: #f8f9fa; padding: 10px; text-align: center; font-weight: bold; color: #12161f; border-bottom: 1px solid #333d4d; font-size: 16px;">
+                    INVENTÁRIO GERAL
+                </div>
+                <table style="width: 100%; text-align: center; border-collapse: collapse; color: #12161f; font-size: 14px;">
+                    <tr style="background-color: #f1f3f5; font-weight: bold; font-size: 12px; border-bottom: 1px dashed #ced4da;">
+                        <th style="padding: 10px; border-right: 1px dashed #ced4da;">EMPRESA</th>
+                        <th style="padding: 10px; border-right: 1px dashed #ced4da;">ACURÁCIA</th>
+                        <th style="padding: 10px; border-right: 1px dashed #ced4da;">GANHOS</th>
+                        <th style="padding: 10px; border-right: 1px dashed #ced4da;">PERDAS</th>
+                        <th style="padding: 10px;">DIFERENÇA</th>
+                    </tr>
+                    <tr style="border-bottom: 2px solid #12161f;">
+                        <td style="padding: 12px; border-right: 1px dashed #ced4da;">{empresa_str}</td>
+                        <td style="padding: 12px; border-right: 1px dashed #ced4da; font-weight: bold;">{acuracia_fin:.2f}%</td>
+                        <td style="padding: 12px; border-right: 1px dashed #ced4da; color: {cor_ganho}; font-weight: bold;">{fmt_brl(ganhos)}</td>
+                        <td style="padding: 12px; border-right: 1px dashed #ced4da; color: {cor_perda}; font-weight: bold;">{fmt_brl(perdas)}</td>
+                        <td style="padding: 12px; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(diferenca_liq)}</td>
+                    </tr>
+                    <tr style="font-size: 18px;">
+                        <td style="padding: 15px; border-right: 1px dashed #ced4da; font-weight: 900;">TOTAL</td>
+                        <td style="padding: 15px; border-right: 1px dashed #ced4da; font-weight: 900;">{acuracia_fin:.2f}%</td>
+                        <td style="padding: 15px; border-right: 1px dashed #ced4da; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
+                        <td style="padding: 15px; border-right: 1px dashed #ced4da; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
+                        <td style="padding: 15px; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
+                    </tr>
+                </table>
+            </div>
+            """, unsafe_allow_html=True)
+
+            # GRÁFICO E DETALHES LADO A LADO
+            col_graf, col_det = st.columns([1, 1.2], gap="large")
+
+            with col_graf:
+                with st.container(border=True):
+                    st.markdown("<div style='text-align: center; color: white; font-weight: bold; font-size: 16px; margin-bottom: 10px;'>TOTAL (GANHOS x PERDAS)</div>", unsafe_allow_html=True)
+                    
+                    df_chart = pd.DataFrame({
+                        'Categoria': ['GANHOS', 'PERDAS', 'DIFERENÇA'],
+                        'Valor': [ganhos, perdas, diferenca_liq],
+                        'Cor': [cor_ganho, cor_perda, '#3498db']
+                    })
+                    
+                    fig = px.bar(
+                        df_chart, x='Categoria', y='Valor', color='Categoria',
+                        color_discrete_map={'GANHOS': cor_ganho, 'PERDAS': cor_perda, 'DIFERENÇA': '#3498db'},
+                        text=[fmt_brl(ganhos), fmt_brl(perdas), fmt_brl(diferenca_liq)]
+                    )
+                    fig.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', 
+                        font=dict(color='#8c9ba5'), margin=dict(l=10, r=10, t=10, b=10), 
+                        height=350, showlegend=False, hovermode=False
+                    )
+                    fig.update_traces(textposition='outside', textfont=dict(color='white', size=12))
+                    fig.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=True, zerolinecolor='#8c9ba5', showticklabels=False, title="")
+                    fig.update_xaxes(title="", tickfont=dict(size=12, color='white', weight='bold'))
+                    
+                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+            with col_det:
+                with st.container(border=True):
+                    # Tabela de Detalhes Idêntica à da Imagem (Feita com HTML para controle perfeito)
+                    st.markdown(f"""
+                    <div style="background-color: #ffffff; border-radius: 6px; padding: 0px; color: #12161f;">
+                        <div style="text-align: center; font-size: 18px; font-weight: bold; padding: 12px; border-bottom: 2px solid #12161f;">
+                            Detalhes - Inventário
+                        </div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <tr style="font-weight: bold; border-bottom: 1px solid #12161f;">
+                                <td style="padding: 8px;"></td>
+                                <td style="padding: 8px; text-align: center;">Quant.</td>
+                                <td style="padding: 8px; text-align: center;">Valor (R$)</td>
+                                <td style="padding: 8px; text-align: center;">%</td>
+                            </tr>
+                            
+                            <tr>
+                                <td style="padding: 8px; font-weight: bold;">Total Geral Inventário - Contagem (Linhas/Localização)</td>
+                                <td style="padding: 8px; text-align: center;">{fmt_int(total_linhas)}</td>
+                                <td style="padding: 8px; text-align: center;">{fmt_brl(saldo_sistema)}</td>
+                                <td style="padding: 8px; text-align: center;">100,00%</td>
+                            </tr>
+                            <tr style="border-bottom: 1px dashed #ced4da;">
+                                <td style="padding: 8px; font-weight: bold;">Total Geral - SKU's</td>
+                                <td style="padding: 8px; text-align: center;">{fmt_int(total_skus)}</td>
+                                <td style="padding: 8px; text-align: center;">-</td>
+                                <td style="padding: 8px; text-align: center;">-</td>
+                            </tr>
+                            
+                            <tr style="border-bottom: 1px dashed #ced4da;">
+                                <td style="padding: 8px; font-weight: bold;">Itens Contados - Inventariados</td>
+                                <td style="padding: 8px; text-align: center;">{fmt_int(total_linhas)}</td>
+                                <td style="padding: 8px; text-align: center;">{fmt_brl(val_inventariado)}</td>
+                                <td style="padding: 8px; text-align: center;">100,00%</td>
+                            </tr>
+                            
+                            <tr>
+                                <td style="padding: 8px; font-weight: bold;">Itens Divergentes</td>
+                                <td style="padding: 8px; text-align: center;">{fmt_int(itens_divergentes)}</td>
+                                <td style="padding: 8px; text-align: center; color: {cor_perda if diferenca_liq < 0 else cor_ganho};">{fmt_brl(diferenca_liq)}</td>
+                                <td style="padding: 8px; text-align: center;">{pct_div:.2f}%</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 4px 8px; font-style: italic;">Negativos (para menos)</td>
+                                <td style="padding: 4px 8px; text-align: center;">{fmt_int(itens_negativos)}</td>
+                                <td style="padding: 4px 8px; text-align: center; color: {cor_perda};">{fmt_brl(perdas)}</td>
+                                <td style="padding: 4px 8px; text-align: center;">{pct_neg:.2f}%</td>
+                            </tr>
+                            <tr style="border-bottom: 1px dashed #ced4da;">
+                                <td style="padding: 4px 8px; font-style: italic;">Positivos (para mais)</td>
+                                <td style="padding: 4px 8px; text-align: center;">{fmt_int(itens_positivos)}</td>
+                                <td style="padding: 4px 8px; text-align: center; color: {cor_ganho};">{fmt_brl(ganhos)}</td>
+                                <td style="padding: 4px 8px; text-align: center;">{pct_pos:.2f}%</td>
+                            </tr>
+                            
+                            <tr>
+                                <td style="padding: 8px; font-weight: bold;">Acuracidade - Itens Contados (R$)</td>
+                                <td style="padding: 8px; text-align: center;">-</td>
+                                <td style="padding: 8px; text-align: center;">-</td>
+                                <td style="padding: 8px; text-align: center; font-weight: bold;">{acuracia_fin:.2f}%</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 8px; font-weight: bold;">Acuracidade - Itens contados (Linhas/Localização)</td>
+                                <td style="padding: 8px; text-align: center;">-</td>
+                                <td style="padding: 8px; text-align: center;">-</td>
+                                <td style="padding: 8px; text-align: center; font-weight: bold;">{acuracia_linhas:.2f}%</td>
+                            </tr>
+                        </table>
+                    </div>
+                    """, unsafe_allow_html=True)
