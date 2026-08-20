@@ -128,31 +128,33 @@ def carregar_dados_inventario():
             res = supabase.table("painel_inventario").select("*").execute()
             if not res.data:
                 return pd.DataFrame()
-            
+
             df_inv = pd.DataFrame(res.data)
             df_inv = df_inv.replace({np.nan: None})
 
+            # Função de limpeza com a indentação correta
             def limpar_valor(val):
-            if pd.isna(val) or val is None:
-                return ""
-            s_val = str(val).strip()
-            if s_val.endswith('.0'):
-                s_val = s_val[:-2]
-            return s_val
+                if pd.isna(val) or val is None:
+                    return ""
+                s_val = str(val).strip()
+                if s_val.endswith('.0'):
+                    s_val = s_val[:-2]
+                return s_val
 
-        for col in ["mes_referencia", "ano_referencia"]:
-            if col in df_inv.columns:
-                df_inv[col] = df_inv[col].apply(limpar_valor)
-            
+            # Aplica a limpeza nas colunas de referência
+            for col in ["mes_referencia", "ano_referencia"]:
+                if col in df_inv.columns:
+                    df_inv[col] = df_inv[col].apply(limpar_valor)
+
             cols_numericas = [
-                "saldo_anterior_val", "inventario_val", "diferenca_val", 
+                "saldo_anterior_val", "inventario_val", "diferenca_val",
                 "saldo_anterior_consolidado", "inventario_consolidado", "diferenca_consolidada",
                 "valor_unitario"
             ]
             for col in cols_numericas:
                 if col in df_inv.columns:
                     df_inv[col] = pd.to_numeric(df_inv[col], errors='coerce').fillna(0.0)
-            
+
             return df_inv
     except Exception as e:
         st.error(f"Erro ao carregar dados da tabela painel_inventario: {e}")
