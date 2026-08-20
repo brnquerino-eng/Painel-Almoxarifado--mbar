@@ -1105,13 +1105,6 @@ with aba_inventarios:
         else:
             df_empresas_resumo = pd.DataFrame()
 
-        # --- DEBUG PARA VOCÊ TER CERTEZA ---
-        # Isso vai te mostrar a contagem real para a Saltinho antes de montar a tabela
-        if not df_empresas_resumo.empty:
-            debug_saltinho = df_empresas_resumo[df_empresas_resumo['empresa_nome'].str.contains("SALTINHO", case=False, na=False)]
-            if not debug_saltinho.empty:
-                st.sidebar.info(f"Debug Saltinho: {debug_saltinho.iloc[0]['qtd_linhas']} linhas carregadas.")
-        
         # 4. Construção das Linhas da Tabela
         linhas_tabela_html = ""
         if not df_empresas_resumo.empty:
