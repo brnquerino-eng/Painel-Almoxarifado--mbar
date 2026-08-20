@@ -991,13 +991,16 @@ with aba_geral:
             else:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
+# ==========================================
+# ABA 2: INVENTÁRIOS (Tema Escuro & Tabela Executiva)
+# ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
 
     if df_inventario.empty:
         st.warning("⚠️ Nenhum dado de inventário encontrado na base.")
     else:
-        # Filtros Superiores
+        # 1. Filtros Superiores (Mantidos no padrão escuro)
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
             with col_inv_f1:
@@ -1016,7 +1019,7 @@ with aba_inventarios:
                 lista_tipos = sorted([str(x) for x in df_tipo.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_tipo.columns else []
                 tipo_sel = st.selectbox("Tipo de Inventário:", ["Todos os Tipos"] + lista_tipos, key="inv_tipo_sel")
 
-        # Filtragem dos dados
+        # 2. Lógica de Filtragem
         df_inv = df_inventario.copy()
         if empresa_sel != "Todas as Empresas": df_inv = df_inv[df_inv['empresa_nome'].astype(str) == empresa_sel]
         if ano_sel != "Todos os Anos": df_inv = df_inv[df_inv['ano_referencia'].astype(str) == ano_sel]
@@ -1028,185 +1031,75 @@ with aba_inventarios:
         if df_inv.empty:
             st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            # Cálculos Executivos
-            dt_inicios = df_inv['data_inicio'].dropna().unique() if 'data_inicio' in df_inv.columns else []
-            dt_fims = df_inv['data_fim'].dropna().unique() if 'data_fim' in df_inv.columns else []
-            txt_periodo = f"{dt_inicios[0]} à {dt_fims[0]}" if len(dt_inicios)>0 and len(dt_fims)>0 else "Período Consolidado"
-
-            nome_inv_str = df_inv['nome_inventario'].iloc[0] if 'nome_inventario' in df_inv.columns and not df_inv['nome_inventario'].empty else "Inventário Geral"
-            empresa_str = empresa_sel if empresa_sel != "Todas as Empresas" else "Consolidado Geral"
-
+            # 3. Cálculos Consolidados
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
-            val_inventariado = df_inv['inventario_val'].sum() if 'inventario_val' in df_inv.columns else 0.0
-            
             ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             diferenca_liq = ganhos + perdas
             
             divergencia_absoluta = abs(df_inv['diferenca_val']).sum() if 'diferenca_val' in df_inv.columns else 0.0
-            if saldo_sistema > 0:
-                acuracia_fin = max(0, (1 - (divergencia_absoluta / saldo_sistema)) * 100)
-            else:
-                acuracia_fin = 100.0 if divergencia_absoluta == 0 else 0.0
-
-            total_linhas = len(df_inv)
-            total_skus = df_inv['codigo_produto'].nunique() if 'codigo_produto' in df_inv.columns else 0
-            
-            itens_divergentes = len(df_inv[df_inv['diferenca_val'] != 0]) if 'diferenca_val' in df_inv.columns else 0
-            itens_negativos = len(df_inv[df_inv['diferenca_val'] < 0]) if 'diferenca_val' in df_inv.columns else 0
-            itens_positivos = len(df_inv[df_inv['diferenca_val'] > 0]) if 'diferenca_val' in df_inv.columns else 0
-            
-            if total_linhas > 0:
-                acuracia_linhas = ((total_linhas - itens_divergentes) / total_linhas) * 100
-                pct_div = (itens_divergentes / total_linhas) * 100
-                pct_neg = (itens_negativos / total_linhas) * 100
-                pct_pos = (itens_positivos / total_linhas) * 100
-            else:
-                acuracia_linhas, pct_div, pct_neg, pct_pos = 100.0, 0.0, 0.0, 0.0
+            acuracia_fin = max(0, (1 - (divergencia_absoluta / saldo_sistema)) * 100) if saldo_sistema > 0 else (100.0 if divergencia_absoluta == 0 else 0.0)
 
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
-            # Cabeçalho do Relatório
-            st.markdown(f"""
-            <div style="background-color: #ffffff; border: 2px solid #d85c27; border-radius: 8px; padding: 15px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
-                <div style="flex: 1; text-align: left;">
-                    <div style="color: #12161f; font-weight: 900; font-size: 24px; line-height: 1;">Âmbar</div>
-                    <div style="color: #d85c27; font-size: 11px; font-weight: bold; letter-spacing: 1px;">ENERGIA</div>
-                </div>
-                <div style="flex: 3; text-align: center;">
-                    <h3 style="color: #12161f; margin: 0; font-weight: bold; font-size: 18px;">{nome_inv_str} ({empresa_str})</h3>
-                    <p style="color: #333d4d; margin: 0; font-size: 14px; font-weight: 600;">Período: {txt_periodo}</p>
-                </div>
-                <div style="flex: 1;"></div>
-            </div>
-            """, unsafe_allow_html=True)
+            # Agrupamento por empresa para gerar as linhas da tabela igual à referência
+            if 'empresa_nome' in df_inv.columns:
+                df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
+                    saldo=('saldo_anterior_val', 'sum'),
+                    div_abs=('diferenca_val', lambda x: abs(x).sum()),
+                    ganho=('diferenca_val', lambda x: x[x > 0].sum()),
+                    perda=('diferenca_val', lambda x: x[x < 0].sum()),
+                    liq=('diferenca_val', 'sum')
+                ).reset_index()
+            else:
+                df_empresas_resumo = pd.DataFrame()
 
-            # Tabela Financeira Superior
-            html_tabela_superior = f"""
-            <div style="background-color: #ffffff; border: 1px solid #333d4d; border-radius: 6px; overflow: hidden; margin-bottom: 20px;">
-                <div style="background-color: #f8f9fa; padding: 10px; text-align: center; font-weight: bold; color: #12161f; border-bottom: 1px solid #333d4d; font-size: 16px;">
-                    INVENTÁRIO GERAL
+            # 4. Construção da Tabela com Estilo Escuro (Dark Theme)
+            linhas_tabela_html = ""
+            if not df_empresas_resumo.empty:
+                for _, row in df_empresas_resumo.iterrows():
+                    emp = row['empresa_nome']
+                    sal = row['saldo']
+                    dab = row['div_abs']
+                    acur = max(0, (1 - (dab / sal)) * 100) if sal > 0 else 100.0
+                    gnh = row['ganho']
+                    prd = row['perda']
+                    liq = row['liq']
+                    
+                    linhas_tabela_html += f"""
+                    <tr style="border-bottom: 1px solid #232b36;">
+                        <td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td>
+                        <td style="padding: 12px; border-right: 1px solid #232b36; font-weight: bold; color: #ffffff;">{acur:.2f}%</td>
+                        <td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td>
+                        <td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td>
+                        <td style="padding: 12px; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td>
+                    }
+                    """
+
+            html_tabela_geral = f"""
+            <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
+                <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
+                    INVENTÁRIO GERAL - RESUMO EXECUTIVO
                 </div>
-                <table style="width: 100%; text-align: center; border-collapse: collapse; color: #12161f; font-size: 14px;">
-                    <tr style="background-color: #f1f3f5; font-weight: bold; font-size: 12px; border-bottom: 1px dashed #ced4da;">
-                        <th style="padding: 10px; border-right: 1px dashed #ced4da;">EMPRESA</th>
-                        <th style="padding: 10px; border-right: 1px dashed #ced4da;">ACURÁCIA</th>
-                        <th style="padding: 10px; border-right: 1px dashed #ced4da;">GANHOS</th>
-                        <th style="padding: 10px; border-right: 1px dashed #ced4da;">PERDAS</th>
-                        <th style="padding: 10px;">DIFERENÇA</th>
+                <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
+                    <tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;">
+                        <th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Empresa</th>
+                        <th style="padding: 10px; border-right: 1px solid #232b36;">Acurácia</th>
+                        <th style="padding: 10px; border-right: 1px solid #232b36;">Ganhos</th>
+                        <th style="padding: 10px; border-right: 1px solid #232b36;">Perdas</th>
+                        <th style="padding: 10px;">Diferença</th>
                     </tr>
-                    <tr style="border-bottom: 2px solid #12161f;">
-                        <td style="padding: 12px; border-right: 1px dashed #ced4da;">{empresa_str}</td>
-                        <td style="padding: 12px; border-right: 1px dashed #ced4da; font-weight: bold;">{acuracia_fin:.2f}%</td>
-                        <td style="padding: 12px; border-right: 1px dashed #ced4da; color: {cor_ganho}; font-weight: bold;">{fmt_brl(ganhos)}</td>
-                        <td style="padding: 12px; border-right: 1px dashed #ced4da; color: {cor_perda}; font-weight: bold;">{fmt_brl(perdas)}</td>
-                        <td style="padding: 12px; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(diferenca_liq)}</td>
-                    </tr>
-                    <tr style="font-size: 18px;">
-                        <td style="padding: 15px; border-right: 1px dashed #ced4da; font-weight: 900;">TOTAL</td>
-                        <td style="padding: 15px; border-right: 1px dashed #ced4da; font-weight: 900;">{acuracia_fin:.2f}%</td>
-                        <td style="padding: 15px; border-right: 1px dashed #ced4da; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
-                        <td style="padding: 15px; border-right: 1px dashed #ced4da; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
+                    {linhas_tabela_html}
+                    <tr style="background-color: #1a222d; font-size: 15px; border-top: 2px solid #333d4d;">
+                        <td style="padding: 15px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; font-weight: 900; color: #ffffff;">TOTAL</td>
+                        <td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
+                        <td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
+                        <td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
                         <td style="padding: 15px; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
                     </tr>
                 </table>
             </div>
             """
-            st.markdown(html_tabela_superior, unsafe_allow_html=True)
-
-            # Gráfico e Detalhes Lado a Lado
-            col_graf, col_det = st.columns([1, 1.2], gap="large")
-
-            with col_graf:
-                with st.container(border=True):
-                    st.markdown("<div style='text-align: center; color: white; font-weight: bold; font-size: 16px; margin-bottom: 10px;'>TOTAL (GANHOS x PERDAS)</div>", unsafe_allow_html=True)
-                    
-                    df_chart = pd.DataFrame({
-                        'Categoria': ['GANHOS', 'PERDAS', 'DIFERENÇA'],
-                        'Valor': [ganhos, perdas, diferenca_liq],
-                        'Cor': [cor_ganho, cor_perda, '#3498db']
-                    })
-                    
-                    fig = px.bar(
-                        df_chart, x='Categoria', y='Valor', color='Categoria',
-                        color_discrete_map={'GANHOS': cor_ganho, 'PERDAS': cor_perda, 'DIFERENÇA': '#3498db'},
-                        text=[fmt_brl(ganhos), fmt_brl(perdas), fmt_brl(diferenca_liq)]
-                    )
-                    fig.update_layout(
-                        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', 
-                        font=dict(color='#8c9ba5'), margin=dict(l=10, r=10, t=10, b=10), 
-                        height=350, showlegend=False, hovermode=False
-                    )
-                    fig.update_traces(textposition='outside', textfont=dict(color='white', size=12))
-                    fig.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=True, zerolinecolor='#8c9ba5', showticklabels=False, title="")
-                    fig.update_xaxes(title="", tickfont=dict(size=12, color='white', weight='bold'))
-                    
-                    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-            with col_det:
-                with st.container(border=True):
-                    html_tabela_detalhes = f"""
-                    <div style="background-color: #ffffff; border-radius: 6px; padding: 0px; color: #12161f;">
-                        <div style="text-align: center; font-size: 18px; font-weight: bold; padding: 12px; border-bottom: 2px solid #12161f;">
-                            Detalhes - Inventário
-                        </div>
-                        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-                            <tr style="font-weight: bold; border-bottom: 1px solid #12161f;">
-                                <td style="padding: 8px;"></td>
-                                <td style="padding: 8px; text-align: center;">Quant.</td>
-                                <td style="padding: 8px; text-align: center;">Valor (R$)</td>
-                                <td style="padding: 8px; text-align: center;">%</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px; font-weight: bold;">Total Geral Inventário - Contagem (Linhas/Localização)</td>
-                                <td style="padding: 8px; text-align: center;">{fmt_int(total_linhas)}</td>
-                                <td style="padding: 8px; text-align: center;">{fmt_brl(saldo_sistema)}</td>
-                                <td style="padding: 8px; text-align: center;">100,00%</td>
-                            </tr>
-                            <tr style="border-bottom: 1px dashed #ced4da;">
-                                <td style="padding: 8px; font-weight: bold;">Total Geral - SKU's</td>
-                                <td style="padding: 8px; text-align: center;">{fmt_int(total_skus)}</td>
-                                <td style="padding: 8px; text-align: center;">-</td>
-                                <td style="padding: 8px; text-align: center;">-</td>
-                            </tr>
-                            <tr style="border-bottom: 1px dashed #ced4da;">
-                                <td style="padding: 8px; font-weight: bold;">Itens Contados - Inventariados</td>
-                                <td style="padding: 8px; text-align: center;">{fmt_int(total_linhas)}</td>
-                                <td style="padding: 8px; text-align: center;">{fmt_brl(val_inventariado)}</td>
-                                <td style="padding: 8px; text-align: center;">100,00%</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px; font-weight: bold;">Itens Divergentes</td>
-                                <td style="padding: 8px; text-align: center;">{fmt_int(itens_divergentes)}</td>
-                                <td style="padding: 8px; text-align: center; color: {cor_perda if diferenca_liq < 0 else cor_ganho};">{fmt_brl(diferenca_liq)}</td>
-                                <td style="padding: 8px; text-align: center;">{pct_div:.2f}%</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 4px 8px; font-style: italic;">Negativos (para menos)</td>
-                                <td style="padding: 4px 8px; text-align: center;">{fmt_int(itens_negativos)}</td>
-                                <td style="padding: 4px 8px; text-align: center; color: {cor_perda};">{fmt_brl(perdas)}</td>
-                                <td style="padding: 4px 8px; text-align: center;">{pct_neg:.2f}%</td>
-                            </tr>
-                            <tr style="border-bottom: 1px dashed #ced4da;">
-                                <td style="padding: 4px 8px; font-style: italic;">Positivos (para mais)</td>
-                                <td style="padding: 4px 8px; text-align: center;">{fmt_int(itens_positivos)}</td>
-                                <td style="padding: 4px 8px; text-align: center; color: {cor_ganho};">{fmt_brl(ganhos)}</td>
-                                <td style="padding: 4px 8px; text-align: center;">{pct_pos:.2f}%</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px; font-weight: bold;">Acuracidade - Itens Contados (R$)</td>
-                                <td style="padding: 8px; text-align: center;">-</td>
-                                <td style="padding: 8px; text-align: center;">-</td>
-                                <td style="padding: 8px; text-align: center; font-weight: bold;">{acuracia_fin:.2f}%</td>
-                            </tr>
-                            <tr>
-                                <td style="padding: 8px; font-weight: bold;">Acuracidade - Itens contados (Linhas/Localização)</td>
-                                <td style="padding: 8px; text-align: center;">-</td>
-                                <td style="padding: 8px; text-align: center;">-</td>
-                                <td style="padding: 8px; text-align: center; font-weight: bold;">{acuracia_linhas:.2f}%</td>
-                            </tr>
-                        </table>
-                    </div>
-                    """
-                    st.markdown(html_tabela_detalhes, unsafe_allow_html=True)
+            
+            st.markdown(html_tabela_geral, unsafe_allow_html=True)
