@@ -1,6 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import time
 import io
+import html
 import pandas as pd
 import numpy as np
 import streamlit as st
@@ -121,23 +122,43 @@ def carregar_dados():
         st.error(f"Erro ao carregar dados do Supabase: {e}")
         return _df_vazio_padrao()
 
+# CORREÇÃO: o loader de inventário agora segue o mesmo padrão de robustez do
+# loader principal — contagem real via count="exact" (em vez de um limite
+# fixo de 100.000 linhas, que truncaria dados silenciosamente se a tabela
+# crescesse), busca paralela com ThreadPoolExecutor, e retry com backoff por
+# lote pra absorver falhas transitórias de conexão.
 @st.cache_data()
 def carregar_dados_inventario():
     try:
-        with st.spinner("Baixando 100% da base de inventários..."):
-            all_data = []
+        with st.spinner("Baixando base de inventários..."):
+            count_res = supabase.table("painel_inventario").select("*", count="exact", head=True).execute()
+            total_rows = getattr(count_res, 'count', None)
+
+            if not total_rows or total_rows == 0:
+                total_rows = 100000  # Fallback de segurança
+
             batch_size = 1000
-            
-            # Loop de paginação para burlar o limite de 1000 linhas do Supabase
-            for offset in range(0, 100000, batch_size): 
-                res = supabase.table("painel_inventario").select("*").range(offset, offset + batch_size - 1).execute()
-                
-                if res.data:
-                    all_data.extend(res.data)
-                
-                # Se vieram menos linhas que o tamanho do lote, significa que puxamos tudo
-                if not res.data or len(res.data) < batch_size:
-                    break 
+            ranges = [(i, min(i + batch_size - 1, total_rows - 1)) for i in range(0, total_rows, batch_size)]
+            all_data = []
+
+            def fetch_range_inv(start_r, end_r, tentativas=3):
+                ultimo_erro = None
+                for tentativa in range(1, tentativas + 1):
+                    try:
+                        res = supabase.table("painel_inventario").select("*").range(start_r, end_r).execute()
+                        return res.data if res.data else []
+                    except Exception as e:
+                        ultimo_erro = e
+                        if tentativa < tentativas:
+                            time.sleep(0.5 * tentativa)
+                raise ultimo_erro
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(fetch_range_inv, s, e) for s, e in ranges]
+                for future in futures:
+                    data = future.result()
+                    if data:
+                        all_data.extend(data)
 
             if not all_data:
                 return pd.DataFrame()
@@ -145,7 +166,6 @@ def carregar_dados_inventario():
             df_inv = pd.DataFrame(all_data)
             df_inv = df_inv.replace({np.nan: None})
 
-            # Função de limpeza para os meses e anos (remove o .0)
             def limpar_valor(val):
                 if pd.isna(val) or val is None:
                     return ""
@@ -154,7 +174,6 @@ def carregar_dados_inventario():
                     s_val = s_val[:-2]
                 return s_val
 
-            # Aplica a limpeza nas colunas de referência
             for col in ["mes_referencia", "ano_referencia"]:
                 if col in df_inv.columns:
                     df_inv[col] = df_inv[col].apply(limpar_valor)
@@ -276,10 +295,15 @@ def fmt_dec(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').repla
 def fmt_mes(val): return f"{val:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
 def render_card(icon, icon_class, title, val_formatado, val_atual, val_ant, font_size="21px", invert_color=False):
-    if val_ant == 0 and val_atual == 0:
+    # CORREÇÃO: "sem mudança" (val_ant == val_atual) e "saiu do zero"
+    # (val_ant == 0 mas val_atual > 0) são casos diferentes e não podem
+    # cair na mesma condição neutra — o segundo é justamente o tipo de
+    # alerta que os cards de tendência existem para destacar (ex: Estoque
+    # Crítico saindo de R$ 0 para R$ 80 mil).
+    if val_ant == val_atual:
         pct_str, trend_class, arrow = "0,0%", "trend-neutral", "➖"
-    elif val_ant == 0 or val_ant == val_atual: 
-        pct_str, trend_class, arrow = "0,0%", "trend-neutral", "➖"
+    elif val_ant == 0:
+        pct_str, trend_class, arrow = "100,0%", "trend-down" if invert_color else "trend-up", "🔺"
     else:
         pct = ((val_atual - val_ant) / val_ant) * 100
         pct_str = f"{abs(pct):.1f}%".replace('.', ',')
@@ -440,7 +464,7 @@ with aba_geral:
             x=df_estoque_mes['Periodo'], y=df_estoque_mes['valor_saldo_atual'],
             name='Estoque Total', mode='lines+markers+text', text=df_estoque_mes['texto_labels'],
             textposition='top center', textfont=dict(color='white', size=11),
-            line=dict(color='#e74c3c', width=3, shape='spline', smoothing=1.3), 
+            line=dict(color='#e74c3c', width=3, shape='spline', smoothing=1.3),
             marker=dict(size=9, color='#e74c3c', line=dict(color='#ffffff', width=2)),
             fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.08)', hoverinfo='none',
             visible=get_vis('vis_total')
@@ -449,7 +473,7 @@ with aba_geral:
         if not df_estoque_mes.empty:
             max_idx = df_estoque_mes['valor_saldo_atual'].idxmax()
             min_idx = df_estoque_mes['valor_saldo_atual'].idxmin()
-            
+
             fig_linha_estoque.add_annotation(x=df_estoque_mes.loc[max_idx, 'Periodo'], y=df_estoque_mes.loc[max_idx, 'valor_saldo_atual'], text="▲ PICO", showarrow=True, arrowhead=2, ax=0, ay=-35, font=dict(color="#e74c3c", size=10, family="monospace"), bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#e74c3c", borderwidth=1)
             fig_linha_estoque.add_annotation(x=df_estoque_mes.loc[min_idx, 'Periodo'], y=df_estoque_mes.loc[min_idx, 'valor_saldo_atual'], text="▼ VALE", showarrow=True, arrowhead=2, ax=0, ay=35, font=dict(color="#2ecc71", size=10, family="monospace"), bgcolor="rgba(22, 28, 36, 0.85)", bordercolor="#2ecc71", borderwidth=1)
 
@@ -489,6 +513,19 @@ with aba_geral:
         fig_linha_estoque.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[-max_y_est * 0.08, max_y_est * 1.3], showticklabels=False)
 
         st.plotly_chart(fig_linha_estoque, use_container_width=True, config={'displayModeBar': False}, on_select="rerun", selection_mode="points", key="tendencia_geral")
+
+        # CORREÇÃO: botão de "Limpar Filtro do Gráfico" restaurado — sem
+        # isso, depois de clicar num ponto do gráfico para travar um mês
+        # específico, não havia mais nenhum jeito pela interface de voltar
+        # ao modo "período mais recente automático".
+        if st.session_state.get('filtro_periodo_grafico') and st.session_state.filtro_periodo_grafico != periodo_maximo_valido:
+            col_b_info, col_b_acao = st.columns([3, 1])
+            with col_b_info:
+                st.markdown(f"<span style='color: #d85c27; font-size: 12px;'>📌 Período fixado pelo gráfico: <b>{st.session_state.filtro_periodo_grafico}</b></span>", unsafe_allow_html=True)
+            with col_b_acao:
+                if st.button("🔄 Limpar Filtro do Gráfico", use_container_width=True):
+                    st.session_state.filtro_periodo_grafico = periodo_maximo_valido
+                    st.rerun()
 
     # 7. Criação do DataFrame de Snapshot Atual e Anterior
     df_snapshot = pd.DataFrame(columns=df_filtrado.columns)
@@ -594,7 +631,7 @@ with aba_geral:
     with c7: st.markdown(render_card("🏷️", "icon-skus", "SKUs ÚNICOS", fmt_int(val_skus), val_skus, val_skus_prev, "21px"), unsafe_allow_html=True)
 
     # Giro Card
-    if giro_mensal_prev == 0 and giro_mensal == 0: giro_pct_str, giro_trend, giro_arr = "0,0%", "trend-neutral", "➖"
+    if giro_mensal_prev == giro_mensal: giro_pct_str, giro_trend, giro_arr = "0,0%", "trend-neutral", "➖"
     elif giro_mensal_prev == 0: giro_pct_str, giro_trend, giro_arr = "100,0%", "trend-down", "🔺"
     else:
         g_pct = ((giro_mensal - giro_mensal_prev) / giro_mensal_prev) * 100
@@ -618,7 +655,7 @@ with aba_geral:
         """, unsafe_allow_html=True)
 
     # Cobertura Card
-    if cobertura_meses_prev == 0 and cobertura_meses == 0: cob_pct_str, cob_trend, cob_arr = "0,0%", "trend-neutral", "➖"
+    if cobertura_meses_prev == cobertura_meses: cob_pct_str, cob_trend, cob_arr = "0,0%", "trend-neutral", "➖"
     elif cobertura_meses_prev == 0: cob_pct_str, cob_trend, cob_arr = "100,0%", "trend-up", "🔺"
     else:
         c_pct = ((cobertura_meses - cobertura_meses_prev) / cobertura_meses_prev) * 100
@@ -650,7 +687,7 @@ with aba_geral:
         with col_c1:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🏆 ESTOQUE POR UNIDADE (R$)</div>", unsafe_allow_html=True)
-                
+
                 with st.container(height=380, border=False):
                     df_rank = df_snapshot.groupby('unidade_almoxarifado')['valor_saldo_atual'].sum().reset_index()
                     df_rank = df_rank[df_rank['valor_saldo_atual'] > 0].sort_values('valor_saldo_atual', ascending=True)
@@ -663,43 +700,42 @@ with aba_geral:
                     fig_bar.update_traces(textposition='auto', textfont=dict(color='white'), hoverinfo='none', hovertemplate=None)
                     fig_bar.update_xaxes(title="", showgrid=True, gridcolor='#232b36', tickprefix="R$ ", showticklabels=False, zeroline=False)
                     fig_bar.update_yaxes(title="", showgrid=False, tickfont=dict(size=10))
-                    
+
                     st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False}, key="ranking_estoque_unidade")
 
         with col_c2:
             with st.container(border=True):
                 st.markdown("<div style='color: #ffffff; font-size: 14px; font-weight: bold; margin-bottom: 15px; border-left: 3px solid #d85c27; padding-left: 10px;'>🍩 COMPOSIÇÃO DO ESTOQUE (%)</div>", unsafe_allow_html=True)
-                
+
                 m_obs = is_obsoleto_mask(df_snapshot)
                 m_obra = df_snapshot.get("nome_local_estoque", "").astype(str).str.contains("obra", case=False, na=False) & ~m_obs
                 m_crit = (df_snapshot.get("item_critico", "") == "1-Sim") & ~m_obs & ~m_obra
-                
+
                 val_obs_pizza = somar_coluna(df_snapshot[m_obs], "valor_saldo_atual")
                 val_obra_pizza = somar_coluna(df_snapshot[m_obra], "valor_saldo_atual")
                 val_crit_pizza = somar_coluna(df_snapshot[m_crit], "valor_saldo_atual")
                 val_operacional_pizza = max(0, val_estoque - (val_obs_pizza + val_obra_pizza + val_crit_pizza))
 
                 df_pizza = pd.DataFrame({
-                    'Categoria': ['Estoque Crítico', 'Estoque Obsoleto', 'Estoque Obra', 'Estoque Operacional'], 
-                    'Valor': [val_crit_pizza, val_obs_pizza, val_obra_pizza, val_operacional_pizza], 
+                    'Categoria': ['Estoque Crítico', 'Estoque Obsoleto', 'Estoque Obra', 'Estoque Operacional'],
+                    'Valor': [val_crit_pizza, val_obs_pizza, val_obra_pizza, val_operacional_pizza],
                     'Cor': ['#f39c12', '#9b59b6', '#1abc9c', '#3498db']
                 })
                 df_pizza = df_pizza[df_pizza['Valor'] > 0]
                 df_pizza['Valor_Formatado'] = df_pizza['Valor'].apply(fmt_brl)
-                
+
                 fig_rosca = go.Figure(data=[go.Pie(labels=df_pizza['Categoria'], values=df_pizza['Valor'], hole=0.65, marker=dict(colors=df_pizza['Cor'], line=dict(color='#161c24', width=2)), textinfo='label+percent', textposition='outside', hovertext=df_pizza['Valor_Formatado'], hovertemplate="<b>%{label}</b><br>%{hovertext}<extra></extra>", textfont=dict(size=11))])
                 fig_rosca.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=80, r=80, t=30, b=30), height=380, showlegend=False, annotations=[dict(text=f"<b>TOTAL</b><br><span style='font-size:20px'>{fmt_valor_milhoes(val_estoque) if val_estoque > 0 else 'R$ 0,00'}</span>", x=0.5, y=0.5, font_size=14, font_color='white', showarrow=False)])
                 st.plotly_chart(fig_rosca, use_container_width=True, config={'displayModeBar': False}, key="rosca_composicao")
 
         # ==========================================
-        # 🆕 NOVOS RANKINGS POR CATEGORIA E UNIDADE
+        # RANKINGS POR CATEGORIA E UNIDADE
         # ==========================================
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("<div class='section-title'>📊 RANKING POR CATEGORIA E UNIDADE (R$)</div>", unsafe_allow_html=True)
-        
+
         col_r1, col_r2, col_r3 = st.columns(3, gap="medium")
-        
-        # 1. Ranking Crítico por Unidade
+
         with col_r1:
             with st.container(border=True):
                 st.markdown("<div style='color: #f39c12; font-size: 13px; font-weight: bold; margin-bottom: 12px;'>⚠️ ESTOQUE CRÍTICO POR UNIDADE</div>", unsafe_allow_html=True)
@@ -708,9 +744,9 @@ with aba_geral:
                     df_crit_rank = df_crit_rank[df_crit_rank['valor_saldo_atual'] > 0].sort_values('valor_saldo_atual', ascending=True)
                     df_crit_rank['texto_formatado'] = df_crit_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     df_crit_rank['unidade_exibicao'] = df_crit_rank['unidade_almoxarifado'] + " "
-                    
-                    altura_crit = max(350, len(df_crit_rank) * 35) # Cálculo dinâmico para ativar a barra de rolagem
-                    
+
+                    altura_crit = max(350, len(df_crit_rank) * 35)
+
                     fig_bar_crit = px.bar(df_crit_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#f39c12'], text='texto_formatado')
                     fig_bar_crit.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=altura_crit, hovermode=False)
                     fig_bar_crit.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
@@ -718,7 +754,6 @@ with aba_geral:
                     fig_bar_crit.update_yaxes(title="", showgrid=False, tickfont=dict(size=9))
                     st.plotly_chart(fig_bar_crit, use_container_width=True, config={'displayModeBar': False}, key="ranking_critico_unidade")
 
-        # 2. Ranking Obsoleto por Unidade
         with col_r2:
             with st.container(border=True):
                 st.markdown("<div style='color: #9b59b6; font-size: 13px; font-weight: bold; margin-bottom: 12px;'>🗑️ ESTOQUE OBSOLETO POR UNIDADE</div>", unsafe_allow_html=True)
@@ -727,9 +762,9 @@ with aba_geral:
                     df_obs_rank = df_obs_rank[df_obs_rank['valor_saldo_atual'] > 0].sort_values('valor_saldo_atual', ascending=True)
                     df_obs_rank['texto_formatado'] = df_obs_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     df_obs_rank['unidade_exibicao'] = df_obs_rank['unidade_almoxarifado'] + " "
-                    
-                    altura_obs = max(350, len(df_obs_rank) * 35) # Cálculo dinâmico para ativar a barra de rolagem
-                    
+
+                    altura_obs = max(350, len(df_obs_rank) * 35)
+
                     fig_bar_obs = px.bar(df_obs_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#9b59b6'], text='texto_formatado')
                     fig_bar_obs.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=altura_obs, hovermode=False)
                     fig_bar_obs.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
@@ -737,7 +772,6 @@ with aba_geral:
                     fig_bar_obs.update_yaxes(title="", showgrid=False, tickfont=dict(size=9))
                     st.plotly_chart(fig_bar_obs, use_container_width=True, config={'displayModeBar': False}, key="ranking_obsoleto_unidade")
 
-        # 3. Ranking Obra por Unidade
         with col_r3:
             with st.container(border=True):
                 st.markdown("<div style='color: #1abc9c; font-size: 13px; font-weight: bold; margin-bottom: 12px;'>🏗️ ESTOQUE OBRA POR UNIDADE</div>", unsafe_allow_html=True)
@@ -746,9 +780,9 @@ with aba_geral:
                     df_obra_rank = df_obra_rank[df_obra_rank['valor_saldo_atual'] > 0].sort_values('valor_saldo_atual', ascending=True)
                     df_obra_rank['texto_formatado'] = df_obra_rank['valor_saldo_atual'].apply(lambda x: f"R$ {x/1e3:,.0f} mil".replace(',', 'X').replace('.', ',').replace('X', '.'))
                     df_obra_rank['unidade_exibicao'] = df_obra_rank['unidade_almoxarifado'] + " "
-                    
-                    altura_obra = max(350, len(df_obra_rank) * 35) # Cálculo dinâmico para ativar a barra de rolagem
-                    
+
+                    altura_obra = max(350, len(df_obra_rank) * 35)
+
                     fig_bar_obra = px.bar(df_obra_rank, x='valor_saldo_atual', y='unidade_exibicao', orientation='h', color_discrete_sequence=['#1abc9c'], text='texto_formatado')
                     fig_bar_obra.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=110, r=10, t=10, b=10), height=altura_obra, hovermode=False)
                     fig_bar_obra.update_traces(textposition='auto', textfont=dict(color='white', size=9), hoverinfo='none')
@@ -780,7 +814,7 @@ with aba_geral:
                 st.markdown("<div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;'><div style='color: #ffffff; font-size: 13px; font-weight: bold; border-left: 3px solid #d85c27; padding-left: 8px;'>📊 COMPRA x CONSUMO POR UNIDADE (R$)</div><div style='display: flex; gap: 10px; font-size: 11px; color: #8c9ba5; align-items: center; padding-right: 10px;'><span><span style='color: #e74c3c; font-size: 13px;'>■</span> Compras</span><span><span style='color: #f39c12; font-size: 13px;'>■</span> Consumo</span></div></div>", unsafe_allow_html=True)
                 with st.container(height=380, border=False):
                     df_diag = df_snapshot.groupby('unidade_almoxarifado').agg(Compras=('valor_entrada_compras', 'sum'), Consumo=('valor_saida_cons_interno', lambda x: x.abs().sum())).reset_index()
-                    
+
                     df_diag = df_diag[(df_diag['Compras'] > 0.01) | (df_diag['Consumo'] > 0.01)].sort_values('Compras', ascending=True)
                     ordem_unidades = df_diag['unidade_almoxarifado'].tolist()
 
@@ -792,11 +826,11 @@ with aba_geral:
                     df_diag['Compras_Label'] = df_diag['Compras'].apply(formata_mil_ou_zero)
                     df_diag['Consumo_Label'] = df_diag['Consumo'].apply(formata_mil_ou_zero)
                     df_diag_melted = df_diag.melt(id_vars=['unidade_almoxarifado', 'Compras_Label', 'Consumo_Label'], value_vars=['Compras', 'Consumo'], var_name='Métrica', value_name='Valor')
-                    
+
                     df_diag_melted['Métrica'] = pd.Categorical(df_diag_melted['Métrica'], categories=['Compras', 'Consumo'], ordered=True)
                     df_diag_melted = df_diag_melted.sort_values(['unidade_almoxarifado', 'Métrica'])
                     df_diag_melted['Texto_Barra'] = np.where(df_diag_melted['Métrica'] == 'Compras', df_diag_melted['Compras_Label'], df_diag_melted['Consumo_Label'])
-                    
+
                     fig_diag = px.bar(df_diag_melted, x='Valor', y='unidade_almoxarifado', color='Métrica', barmode='group', orientation='h', text='Texto_Barra', color_discrete_map={'Compras': '#e74c3c', 'Consumo': '#f39c12'}, category_orders={'unidade_almoxarifado': ordem_unidades, 'Métrica': ['Compras', 'Consumo']})
                     fig_diag.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=130, r=40, t=10, b=10), height=max(350, len(df_diag) * 60), showlegend=False, hovermode=False)
                     fig_diag.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
@@ -812,7 +846,7 @@ with aba_geral:
                     df_skus = df_skus_ativos.groupby('unidade_almoxarifado').agg(Total_SKUs=('codigo_produto', 'nunique')).reset_index().sort_values('Total_SKUs', ascending=True)
                     ordem_skus = df_skus['unidade_almoxarifado'].tolist()
                     df_skus['SKUs_Label'] = df_skus['Total_SKUs'].apply(lambda x: f"{x:,.0f} SKUs".replace(',', '.'))
-                    
+
                     fig_sku = px.bar(df_skus, x='Total_SKUs', y='unidade_almoxarifado', orientation='h', text='SKUs_Label', color_discrete_sequence=['#3498db'], category_orders={'unidade_almoxarifado': ordem_skus})
                     fig_sku.update_layout(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=130, r=40, t=10, b=10), height=max(350, len(df_skus) * 45), showlegend=False, hovermode=False)
                     fig_sku.update_xaxes(showgrid=False, zeroline=False, showticklabels=False, title="")
@@ -827,16 +861,16 @@ with aba_geral:
             df_sku_tempo = df_sku_trend.groupby(['ano_referencia', 'mes_referencia', 'tmp_ano_num', 'tmp_mes_num'])['codigo_produto'].nunique().reset_index().sort_values(['tmp_ano_num', 'tmp_mes_num'])
             df_sku_tempo['Periodo'] = df_sku_tempo['tmp_mes_num'].astype(int).astype(str).str.zfill(2) + '/' + df_sku_tempo['ano_referencia'].astype(str)
             textos_skus = [f"{val:,}".replace(',', '.') for val in df_sku_tempo['codigo_produto']]
-            
+
             layout_sku = dict(plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#8c9ba5'), margin=dict(l=40, r=40, t=20, b=10))
-            
+
             fig_sku_linha = go.Figure()
             fig_sku_linha.add_trace(go.Scatter(x=df_sku_tempo['Periodo'], y=df_sku_tempo['codigo_produto'], customdata=textos_skus, name='SKUs Ativos', mode='lines+markers+text', text=textos_skus, textposition='top center', textfont=dict(color='white', size=11), line=dict(color='#e74c3c', width=3, shape='spline', smoothing=1.3), fill='tozeroy', fillcolor='rgba(231, 76, 60, 0.1)', hoverinfo='none'))
-            
+
             if periodo_ativo and not df_sku_tempo.empty:
                 match_idx_sku = df_sku_tempo.index[df_sku_tempo['Periodo'] == periodo_ativo].tolist()
                 if match_idx_sku: fig_sku_linha.add_shape(type="rect", x0=match_idx_sku[0] - 0.25, x1=match_idx_sku[0] + 0.25, y0=0, y1=1, yref="paper", fillcolor="rgba(216, 92, 39, 0.18)", line=dict(width=1.5, color="rgba(216, 92, 39, 0.6)"), layer="below")
-            
+
             fig_sku_linha.update_layout(**layout_sku, hovermode='x', showlegend=False)
             fig_sku_linha.update_xaxes(showgrid=False, zeroline=False, range=[-0.8, len(df_sku_tempo) - 0.2])
             fig_sku_linha.update_yaxes(showgrid=True, gridcolor='#232b36', zeroline=False, range=[0, (df_sku_tempo['codigo_produto'].max() if not df_sku_tempo.empty else 100) * 1.15], showticklabels=False)
@@ -1027,11 +1061,10 @@ with aba_inventarios:
     if df_inventario.empty:
         st.warning("⚠️ Nenhum dado de inventário encontrado na base.")
     else:
-        # Dicionários de Tradução Visual (De-Para)
         mapa_meses = {
-            "1": "01 - Janeiro", "2": "02 - Fevereiro", "3": "03 - Março", 
-            "4": "04 - Abril", "5": "05 - Maio", "6": "06 - Junho", 
-            "7": "07 - Julho", "8": "08 - Agosto", "9": "09 - Setembro", 
+            "1": "01 - Janeiro", "2": "02 - Fevereiro", "3": "03 - Março",
+            "4": "04 - Abril", "5": "05 - Maio", "6": "06 - Junho",
+            "7": "07 - Julho", "8": "08 - Agosto", "9": "09 - Setembro",
             "10": "10 - Outubro", "11": "11 - Novembro", "12": "12 - Dezembro"
         }
         mapa_meses_inverso = {v: k for k, v in mapa_meses.items()}
@@ -1042,22 +1075,19 @@ with aba_inventarios:
         }
         mapa_tipos_inverso = {v: k for k, v in mapa_tipos.items()}
 
-        # Extração das listas brutas para os filtros
         lista_empresas = sorted([str(x) for x in df_inventario.get('empresa_nome', pd.Series()).dropna().unique()]) if 'empresa_nome' in df_inventario.columns else []
         lista_anos = sorted([str(x) for x in df_inventario.get('ano_referencia', pd.Series()).dropna().unique()], reverse=True) if 'ano_referencia' in df_inventario.columns else []
-        
+
         lista_meses_bruto = sorted([str(x) for x in df_inventario.get('mes_referencia', pd.Series()).dropna().unique()], key=lambda x: int(x) if str(x).isdigit() else 0, reverse=True) if 'mes_referencia' in df_inventario.columns else []
         lista_meses_visual = [mapa_meses.get(str(int(m)), m) if str(m).isdigit() else m for m in lista_meses_bruto]
 
         lista_tipos_bruto = sorted([str(x) for x in df_inventario.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_inventario.columns else []
         lista_tipos_visual = [mapa_tipos.get(t, t) for t in lista_tipos_bruto]
 
-        # Definindo os valores padrão para o fallback inteligente
         ano_padrao_str = lista_anos[0] if lista_anos else "2026"
         mes_padrao_bruto = lista_meses_bruto[0] if lista_meses_bruto else "8"
         mes_padrao_visual = mapa_meses.get(str(int(mes_padrao_bruto)), "08 - Agosto") if mes_padrao_bruto.isdigit() else "08 - Agosto"
 
-        # Inicializando o session_state VAZIO para evitar tags vermelhas na abertura
         if 'inv_empresa_sel' not in st.session_state:
             st.session_state.inv_empresa_sel = []
         if 'inv_ano_sel' not in st.session_state:
@@ -1067,10 +1097,9 @@ with aba_inventarios:
         if 'inv_tipo_sel' not in st.session_state:
             st.session_state.inv_tipo_sel = []
 
-        # 1. Filtros Superiores Compactos com Rótulos Brancos/Negrito e Placeholders Dinâmicos
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
-            
+
             with col_inv_f1:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Empresa:</div>", unsafe_allow_html=True)
                 empresas_sel = st.multiselect("Empresa:", lista_empresas, key="inv_empresa_sel", placeholder="Todas as Empresas", label_visibility="collapsed")
@@ -1084,18 +1113,15 @@ with aba_inventarios:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
                 tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos_visual, key="inv_tipo_sel", placeholder="Todos os Tipos", label_visibility="collapsed")
 
-        # 2. Lógica de Filtragem com Fallback Automático para o Período Atual
         df_inv = df_inventario.copy()
-        
-        if empresas_sel: 
+
+        if empresas_sel:
             df_inv = df_inv[df_inv['empresa_nome'].astype(str).isin(empresas_sel)]
-        
-        # Se vazio, assume o ano atual automaticamente
+
         anos_para_filtrar = anos_sel if anos_sel else [ano_padrao_str]
         if anos_para_filtrar:
             df_inv = df_inv[df_inv['ano_referencia'].astype(str).isin(anos_para_filtrar)]
-            
-        # Se vazio, assume o mês atual automaticamente
+
         meses_selecionados_efetivos = meses_sel if meses_sel else [mes_padrao_visual]
         if meses_selecionados_efetivos:
             meses_para_filtrar = []
@@ -1105,8 +1131,8 @@ with aba_inventarios:
                 if val_original.isdigit():
                     meses_para_filtrar.append(str(int(val_original)))
             df_inv = df_inv[df_inv['mes_referencia'].astype(str).isin(meses_para_filtrar)]
-            
-        if tipos_sel: 
+
+        if tipos_sel:
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
             df_inv = df_inv[df_inv['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
@@ -1115,12 +1141,11 @@ with aba_inventarios:
         if df_inv.empty:
             st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            # 3. Cálculos Consolidados
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
             ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             diferenca_liq = ganhos + perdas
-            
+
             total_inventarios_distintos = df_inv['id_inventario'].nunique() if 'id_inventario' in df_inv.columns else 0
 
             divergencia_absoluta = abs(df_inv['diferenca_val']).sum() if 'diferenca_val' in df_inv.columns else 0.0
@@ -1129,7 +1154,6 @@ with aba_inventarios:
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
-            # Agrupamento por empresa contando os inventários distintos e as linhas totais
             if 'empresa_nome' in df_inv.columns:
                 df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
                     qtd_inv=('id_inventario', 'nunique'),
@@ -1143,11 +1167,12 @@ with aba_inventarios:
             else:
                 df_empresas_resumo = pd.DataFrame()
 
-            # 4. Construção das Linhas da Tabela
+            # CORREÇÃO: escapa o nome da empresa antes de inserir no HTML,
+            # evitando que caracteres como & < > quebrem a renderização da tabela.
             linhas_tabela_html = ""
             if not df_empresas_resumo.empty:
                 for _, row in df_empresas_resumo.iterrows():
-                    emp = row['empresa_nome']
+                    emp = html.escape(str(row['empresa_nome']))
                     qtd = row['qtd_inv']
                     lin = row['qtd_linhas']
                     sal = row['saldo']
@@ -1156,10 +1181,9 @@ with aba_inventarios:
                     gnh = row['ganho']
                     prd = row['perda']
                     liq = row['liq']
-                    
+
                     linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db;">{qtd}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; color: #ffffff;">{int(lin)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td><td style="padding: 12px; color: #ffffff; font-weight: bold;">{acur:.2f}%</td></tr>'
 
-            # 5. Montagem Final da Tabela
             html_tabela_geral = '<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);"><div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">INVENTÁRIO GERAL - RESUMO EXECUTIVO</div><table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;"><tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;"><th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Empresa</th><th style="padding: 10px; border-right: 1px solid #232b36;">(Qtde) Inventário</th><th style="padding: 10px; border-right: 1px solid #232b36;">Linhas</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Ganhos</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Perdas</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Diferença</th><th style="padding: 10px;">Acuracia</th></tr>' + linhas_tabela_html + f'<tr style="background-color: #1a222d; font-size: 15px; border-top: 2px solid #333d4d;"><td style="padding: 15px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; font-weight: 900; color: #ffffff;">TOTAL</td><td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db; text-align: center;">{total_inventarios_distintos}</td><td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff; text-align: center;">{fmt_int(len(df_inv))}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td><td style="padding: 15px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td></tr></table></div>'
-            
+
             st.write(html_tabela_geral, unsafe_allow_html=True)
