@@ -1052,51 +1052,60 @@ with aba_inventarios:
         lista_tipos_bruto = sorted([str(x) for x in df_inventario.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_inventario.columns else []
         lista_tipos_visual = [mapa_tipos.get(t, t) for t in lista_tipos_bruto]
 
-        # Limpando o session_state e mapeando para o formato visual padrão
+        # Definindo os valores padrão para o fallback inteligente
+        ano_padrao_str = lista_anos[0] if lista_anos else "2026"
+        mes_padrao_bruto = lista_meses_bruto[0] if lista_meses_bruto else "8"
+        mes_padrao_visual = mapa_meses.get(str(int(mes_padrao_bruto)), "08 - Agosto") if mes_padrao_bruto.isdigit() else "08 - Agosto"
+
+        # Inicializando o session_state VAZIO para evitar tags vermelhas na abertura
         if 'inv_empresa_sel' not in st.session_state:
             st.session_state.inv_empresa_sel = []
         if 'inv_ano_sel' not in st.session_state:
-            st.session_state.inv_ano_sel = [lista_anos[0]] if lista_anos else []
+            st.session_state.inv_ano_sel = []
         if 'inv_mes_sel' not in st.session_state:
-            if lista_meses_bruto:
-                primeiro_mes_visual = mapa_meses.get(str(int(lista_meses_bruto[0])), lista_meses_bruto[0])
-                st.session_state.inv_mes_sel = [primeiro_mes_visual]
-            else:
-                st.session_state.inv_mes_sel = []
+            st.session_state.inv_mes_sel = []
         if 'inv_tipo_sel' not in st.session_state:
             st.session_state.inv_tipo_sel = []
 
-        # 1. Filtros Superiores Compactos e Dinâmicos
+        # 1. Filtros Superiores Compactos com Rótulos Brancos/Negrito e Placeholders Dinâmicos
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
             
             with col_inv_f1:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Empresa:</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Empresa:</div>", unsafe_allow_html=True)
                 empresas_sel = st.multiselect("Empresa:", lista_empresas, key="inv_empresa_sel", placeholder="Todas as Empresas", label_visibility="collapsed")
             with col_inv_f2:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Ano:</div>", unsafe_allow_html=True)
-                anos_sel = st.multiselect("Ano:", lista_anos, key="inv_ano_sel", placeholder="Todos os Anos", label_visibility="collapsed")
+                st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Ano:</div>", unsafe_allow_html=True)
+                anos_sel = st.multiselect("Ano:", lista_anos, key="inv_ano_sel", placeholder=f"Ano Atual ({ano_padrao_str})", label_visibility="collapsed")
             with col_inv_f3:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Mês:</div>", unsafe_allow_html=True)
-                meses_sel = st.multiselect("Mês:", lista_meses_visual, key="inv_mes_sel", placeholder="Todos os Meses", label_visibility="collapsed")
+                st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Mês:</div>", unsafe_allow_html=True)
+                meses_sel = st.multiselect("Mês:", lista_meses_visual, key="inv_mes_sel", placeholder=f"Mês Atual ({mes_padrao_visual})", label_visibility="collapsed")
             with col_inv_f4:
-                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
+                st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
                 tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos_visual, key="inv_tipo_sel", placeholder="Todos os Tipos", label_visibility="collapsed")
 
-        # 2. Lógica de Filtragem Dinâmica (Traduzindo do visual para o banco)
+        # 2. Lógica de Filtragem com Fallback Automático para o Período Atual
         df_inv = df_inventario.copy()
+        
         if empresas_sel: 
             df_inv = df_inv[df_inv['empresa_nome'].astype(str).isin(empresas_sel)]
-        if anos_sel: 
-            df_inv = df_inv[df_inv['ano_referencia'].astype(str).isin(anos_sel)]
-        if meses_sel: 
+        
+        # Se vazio, assume o ano atual automaticamente
+        anos_para_filtrar = anos_sel if anos_sel else [ano_padrao_str]
+        if anos_para_filtrar:
+            df_inv = df_inv[df_inv['ano_referencia'].astype(str).isin(anos_para_filtrar)]
+            
+        # Se vazio, assume o mês atual automaticamente
+        meses_selecionados_efetivos = meses_sel if meses_sel else [mes_padrao_visual]
+        if meses_selecionados_efetivos:
             meses_para_filtrar = []
-            for m in meses_sel:
+            for m in meses_selecionados_efetivos:
                 val_original = mapa_meses_inverso.get(m, m)
                 meses_para_filtrar.append(val_original)
                 if val_original.isdigit():
                     meses_para_filtrar.append(str(int(val_original)))
             df_inv = df_inv[df_inv['mes_referencia'].astype(str).isin(meses_para_filtrar)]
+            
         if tipos_sel: 
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
             df_inv = df_inv[df_inv['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
