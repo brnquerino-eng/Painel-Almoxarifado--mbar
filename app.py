@@ -1037,7 +1037,6 @@ with aba_inventarios:
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             diferenca_liq = ganhos + perdas
             
-            # Contagem distinta de id_inventario seguindo os filtros
             total_inventarios_distintos = df_inv['id_inventario'].nunique() if 'id_inventario' in df_inv.columns else 0
 
             divergencia_absoluta = abs(df_inv['diferenca_val']).sum() if 'diferenca_val' in df_inv.columns else 0.0
@@ -1046,7 +1045,7 @@ with aba_inventarios:
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
-            # Card Executivo mostrando o Total de Inventários Filtrados
+            # Card Executivo Superior
             st.markdown(f"""
             <div style="background-color: #161c24; border: 1px solid #232b36; border-left: 4px solid #d85c27; padding: 12px 20px; border-radius: 6px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
                 <span style="color: #8c9ba5; font-size: 13px; font-weight: bold;">TOTAL DE INVENTÁRIOS FILTRADOS:</span>
@@ -1054,9 +1053,10 @@ with aba_inventarios:
             </div>
             """, unsafe_allow_html=True)
 
-            # Agrupamento por empresa
+            # Agrupamento por empresa contando os inventários distintos
             if 'empresa_nome' in df_inv.columns:
                 df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
+                    qtd_inv=('id_inventario', 'nunique'),
                     saldo=('saldo_anterior_val', 'sum'),
                     div_abs=('diferenca_val', lambda x: abs(x).sum()),
                     ganho=('diferenca_val', lambda x: x[x > 0].sum()),
@@ -1066,11 +1066,12 @@ with aba_inventarios:
             else:
                 df_empresas_resumo = pd.DataFrame()
 
-            # 4. Construção das Linhas da Tabela
+            # 4. Construção das Linhas da Tabela com a coluna Inventário
             linhas_tabela_html = ""
             if not df_empresas_resumo.empty:
                 for _, row in df_empresas_resumo.iterrows():
                     emp = row['empresa_nome']
+                    qtd = row['qtd_inv']
                     sal = row['saldo']
                     dab = row['div_abs']
                     acur = max(0, (1 - (dab / sal)) * 100) if sal > 0 else 100.0
@@ -1078,15 +1079,16 @@ with aba_inventarios:
                     prd = row['perda']
                     liq = row['liq']
                     
-                    linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; font-weight: bold; color: #ffffff;">{acur:.2f}%</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td><td style="padding: 12px; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td></tr>'
+                    linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db;">{qtd}</td><td style="padding: 12px; border-right: 1px solid #232b36; font-weight: bold; color: #ffffff;">{acur:.2f}%</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td><td style="padding: 12px; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td></tr>'
 
-            # 5. Montagem Final da Tabela
+            # 5. Montagem Final da Tabela com a nova coluna
             html_tabela_geral = (
                 '<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">'
                 '<div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">INVENTÁRIO GERAL - RESUMO EXECUTIVO</div>'
                 '<table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">'
                 '<tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;">'
                 '<th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Empresa</th>'
+                '<th style="padding: 10px; border-right: 1px solid #232b36;">Inventário</th>'
                 '<th style="padding: 10px; border-right: 1px solid #232b36;">Acurácia</th>'
                 '<th style="padding: 10px; border-right: 1px solid #232b36;">Ganhos</th>'
                 '<th style="padding: 10px; border-right: 1px solid #232b36;">Perdas</th>'
@@ -1095,6 +1097,7 @@ with aba_inventarios:
                 f'{linhas_tabela_html}'
                 f'<tr style="background-color: #1a222d; font-size: 15px; border-top: 2px solid #333d4d;">'
                 f'<td style="padding: 15px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; font-weight: 900; color: #ffffff;">TOTAL</td>'
+                f'<td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db; text-align: center;">{total_inventarios_distintos}</td>'
                 f'<td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>'
                 f'<td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>'
                 f'<td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>'
