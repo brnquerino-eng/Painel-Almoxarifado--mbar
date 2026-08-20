@@ -1063,37 +1063,46 @@ with aba_inventarios:
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
-# Agrupamento por empresa contando os inventários distintos e as linhas totais
-            if 'empresa_nome' in df_inv.columns:
-                df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
-                    qtd_inv=('id_inventario', 'nunique'),
-                    qtd_linhas=('id', 'count'), # Conta todas as linhas registradas na base por empresa
-                    saldo=('saldo_anterior_val', 'sum'),
-                    div_abs=('diferenca_val', lambda x: abs(x).sum()),
-                    ganho=('diferenca_val', lambda x: x[x > 0].sum()),
-                    perda=('diferenca_val', lambda x: x[x < 0].sum()),
-                    liq=('diferenca_val', 'sum')
-                ).reset_index()
-            else:
-                df_empresas_resumo = pd.DataFrame()
+# 3. Cálculos Consolidados e Contagem de Linhas
+        # Aqui a gente usa o .size() que conta cada linha bruta do DataFrame, sem filtrar nada
+        if 'empresa_nome' in df_inv.columns:
+            df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
+                qtd_inv=('id_inventario', 'nunique'),
+                qtd_linhas=('empresa_nome', 'size'), # .size() conta exatamente o número de linhas existentes
+                saldo=('saldo_anterior_val', 'sum'),
+                div_abs=('diferenca_val', lambda x: abs(x).sum()),
+                ganho=('diferenca_val', lambda x: x[x > 0].sum()),
+                perda=('diferenca_val', lambda x: x[x < 0].sum()),
+                liq=('diferenca_val', 'sum')
+            ).reset_index()
+        else:
+            df_empresas_resumo = pd.DataFrame()
 
-            # 4. Construção das Linhas da Tabela (na ordem solicitada)
-            linhas_tabela_html = ""
-            if not df_empresas_resumo.empty:
-                for _, row in df_empresas_resumo.iterrows():
-                    emp = row['empresa_nome']
-                    qtd = row['qtd_inv']
-                    lin = row['qtd_linhas']
-                    sal = row['saldo']
-                    dab = row['div_abs']
-                    acur = max(0, (1 - (dab / sal)) * 100) if sal > 0 else 100.0
-                    gnh = row['ganho']
-                    prd = row['perda']
-                    liq = row['liq']
-                    
-                    linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db;">{qtd}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; color: #ffffff;">{fmt_int(lin)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td><td style="padding: 12px; color: #ffffff; font-weight: bold;">{acur:.2f}%</td></tr>'
+        # --- DEBUG PARA VOCÊ TER CERTEZA ---
+        # Isso vai te mostrar a contagem real para a Saltinho antes de montar a tabela
+        if not df_empresas_resumo.empty:
+            debug_saltinho = df_empresas_resumo[df_empresas_resumo['empresa_nome'].str.contains("SALTINHO", case=False, na=False)]
+            if not debug_saltinho.empty:
+                st.sidebar.info(f"Debug Saltinho: {debug_saltinho.iloc[0]['qtd_linhas']} linhas carregadas.")
+        
+        # 4. Construção das Linhas da Tabela
+        linhas_tabela_html = ""
+        if not df_empresas_resumo.empty:
+            for _, row in df_empresas_resumo.iterrows():
+                # ... (o resto da sua lógica de montagem continua igual)
+                emp = row['empresa_nome']
+                qtd = row['qtd_inv']
+                lin = row['qtd_linhas'] # Agora esse valor vem do .size()
+                sal = row['saldo']
+                dab = row['div_abs']
+                acur = max(0, (1 - (dab / sal)) * 100) if sal > 0 else 100.0
+                gnh = row['ganho']
+                prd = row['perda']
+                liq = row['liq']
+                
+                linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db;">{qtd}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; color: #ffffff;">{int(lin)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td><td style="padding: 12px; color: #ffffff; font-weight: bold;">{acur:.2f}%</td></tr>'
 
-            # 5. Montagem Final da Tabela
-            html_tabela_geral = '<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);"><div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">INVENTÁRIO GERAL - RESUMO EXECUTIVO</div><table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;"><tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;"><th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Empresa</th><th style="padding: 10px; border-right: 1px solid #232b36;">(Qtde) Inventário</th><th style="padding: 10px; border-right: 1px solid #232b36;">Linhas</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Ganhos</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Perdas</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Diferença</th><th style="padding: 10px;">Acuracia</th></tr>' + linhas_tabela_html + f'<tr style="background-color: #1a222d; font-size: 15px; border-top: 2px solid #333d4d;"><td style="padding: 15px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; font-weight: 900; color: #ffffff;">TOTAL</td><td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db; text-align: center;">{total_inventarios_distintos}</td><td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff; text-align: center;">{fmt_int(len(df_inv))}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td><td style="padding: 15px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td></tr></table></div>'
-            
-            st.write(html_tabela_geral, unsafe_allow_html=True)
+        # 5. Montagem Final da Tabela
+        html_tabela_geral = '<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);"><div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">INVENTÁRIO GERAL - RESUMO EXECUTIVO</div><table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;"><tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;"><th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Empresa</th><th style="padding: 10px; border-right: 1px solid #232b36;">(Qtde) Inventário</th><th style="padding: 10px; border-right: 1px solid #232b36;">Linhas</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Ganhos</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Perdas</th><th style="padding: 10px; border-right: 1px solid #232b36;">(R$) Diferença</th><th style="padding: 10px;">Acuracia</th></tr>' + linhas_tabela_html + f'<tr style="background-color: #1a222d; font-size: 15px; border-top: 2px solid #333d4d;"><td style="padding: 15px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; font-weight: 900; color: #ffffff;">TOTAL</td><td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db; text-align: center;">{total_inventarios_distintos}</td><td style="padding: 15px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff; text-align: center;">{fmt_int(len(df_inv))}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td><td style="padding: 15px; border-right: 1px solid #232b36; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td><td style="padding: 15px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td></tr></table></div>'
+        
+        st.write(html_tabela_geral, unsafe_allow_html=True)
