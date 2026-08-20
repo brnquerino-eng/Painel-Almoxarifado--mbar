@@ -1031,17 +1031,28 @@ with aba_inventarios:
         if df_inv.empty:
             st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            # 3. Cálculos Consolidados
+            # 3. Cálculos Consolidados e Contagem Distinta de Inventários
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
             ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             diferenca_liq = ganhos + perdas
             
+            # Contagem distinta de id_inventario seguindo os filtros
+            total_inventarios_distintos = df_inv['id_inventario'].nunique() if 'id_inventario' in df_inv.columns else 0
+
             divergencia_absoluta = abs(df_inv['diferenca_val']).sum() if 'diferenca_val' in df_inv.columns else 0.0
             acuracia_fin = max(0, (1 - (divergencia_absoluta / saldo_sistema)) * 100) if saldo_sistema > 0 else (100.0 if divergencia_absoluta == 0 else 0.0)
 
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
+
+            # Card Executivo mostrando o Total de Inventários Filtrados
+            st.markdown(f"""
+            <div style="background-color: #161c24; border: 1px solid #232b36; border-left: 4px solid #d85c27; padding: 12px 20px; border-radius: 6px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="color: #8c9ba5; font-size: 13px; font-weight: bold;">TOTAL DE INVENTÁRIOS FILTRADOS:</span>
+                <span style="color: #ffffff; font-size: 16px; font-weight: 900; font-family: monospace;">{total_inventarios_distintos}</span>
+            </div>
+            """, unsafe_allow_html=True)
 
             # Agrupamento por empresa
             if 'empresa_nome' in df_inv.columns:
@@ -1069,7 +1080,7 @@ with aba_inventarios:
                     
                     linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; font-weight: bold; color: #ffffff;">{acur:.2f}%</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td><td style="padding: 12px; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td></tr>'
 
-            # 5. Montagem Final sem Indentação Indesejada
+            # 5. Montagem Final da Tabela
             html_tabela_geral = (
                 '<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">'
                 '<div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">INVENTÁRIO GERAL - RESUMO EXECUTIVO</div>'
