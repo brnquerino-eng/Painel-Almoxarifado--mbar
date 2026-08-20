@@ -992,7 +992,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Tabela Executiva)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Tabela Executiva Dinâmica)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1000,38 +1000,41 @@ with aba_inventarios:
     if df_inventario.empty:
         st.warning("⚠️ Nenhum dado de inventário encontrado na base.")
     else:
-        # 1. Filtros Superiores (Mantidos no padrão escuro)
+        # 1. Filtros Superiores Dinâmicos (Multiselect)
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
-            with col_inv_f1:
-                lista_empresas = sorted([str(x) for x in df_inventario.get('empresa_nome', pd.Series()).dropna().unique()]) if 'empresa_nome' in df_inventario.columns else []
-                empresa_sel = st.selectbox("Empresa:", ["Todas as Empresas"] + lista_empresas, key="inv_empresa_sel")
-            with col_inv_f2:
-                df_ano = df_inventario if empresa_sel == "Todas as Empresas" else df_inventario[df_inventario.get('empresa_nome', '').astype(str) == empresa_sel]
-                lista_anos = sorted([str(x) for x in df_ano.get('ano_referencia', pd.Series()).dropna().unique()], reverse=True) if 'ano_referencia' in df_ano.columns else []
-                ano_sel = st.selectbox("Ano:", ["Todos os Anos"] + lista_anos, key="inv_ano_sel")
-            with col_inv_f3:
-                df_mes = df_ano if ano_sel == "Todos os Anos" else df_ano[df_ano.get('ano_referencia', '').astype(str) == ano_sel]
-                lista_meses = sorted([str(x) for x in df_mes.get('mes_referencia', pd.Series()).dropna().unique()]) if 'mes_referencia' in df_mes.columns else []
-                mes_sel = st.selectbox("Mês:", ["Todos os Meses"] + lista_meses, key="inv_mes_sel")
-            with col_inv_f4:
-                df_tipo = df_mes if mes_sel == "Todos os Meses" else df_mes[df_mes.get('mes_referencia', '').astype(str) == mes_sel]
-                lista_tipos = sorted([str(x) for x in df_tipo.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_tipo.columns else []
-                tipo_sel = st.selectbox("Tipo de Inventário:", ["Todos os Tipos"] + lista_tipos, key="inv_tipo_sel")
+            
+            lista_empresas = sorted([str(x) for x in df_inventario.get('empresa_nome', pd.Series()).dropna().unique()]) if 'empresa_nome' in df_inventario.columns else []
+            lista_anos = sorted([str(x) for x in df_inventario.get('ano_referencia', pd.Series()).dropna().unique()], reverse=True) if 'ano_referencia' in df_inventario.columns else []
+            lista_meses = sorted([str(x) for x in df_inventario.get('mes_referencia', pd.Series()).dropna().unique()]) if 'mes_referencia' in df_inventario.columns else []
+            lista_tipos = sorted([str(x) for x in df_inventario.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_inventario.columns else []
 
-        # 2. Lógica de Filtragem
+            with col_inv_f1:
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Empresa:</div>", unsafe_allow_html=True)
+                empresas_sel = st.multiselect("Empresa:", lista_empresas, default=lista_empresas, key="inv_empresa_sel", label_visibility="collapsed")
+            with col_inv_f2:
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Ano:</div>", unsafe_allow_html=True)
+                anos_sel = st.multiselect("Ano:", lista_anos, default=lista_anos, key="inv_ano_sel", label_visibility="collapsed")
+            with col_inv_f3:
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Mês:</div>", unsafe_allow_html=True)
+                meses_sel = st.multiselect("Mês:", lista_meses, default=lista_meses, key="inv_mes_sel", label_visibility="collapsed")
+            with col_inv_f4:
+                st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: -4px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
+                tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos, default=lista_tipos, key="inv_tipo_sel", label_visibility="collapsed")
+
+        # 2. Lógica de Filtragem Dinâmica (.isin)
         df_inv = df_inventario.copy()
-        if empresa_sel != "Todas as Empresas": df_inv = df_inv[df_inv['empresa_nome'].astype(str) == empresa_sel]
-        if ano_sel != "Todos os Anos": df_inv = df_inv[df_inv['ano_referencia'].astype(str) == ano_sel]
-        if mes_sel != "Todos os Meses": df_inv = df_inv[df_inv['mes_referencia'].astype(str) == mes_sel]
-        if tipo_sel != "Todos os Tipos": df_inv = df_inv[df_inv['tipo_inventario'].astype(str) == tipo_sel]
+        if empresas_sel: df_inv = df_inv[df_inv['empresa_nome'].astype(str).isin(empresas_sel)]
+        if anos_sel: df_inv = df_inv[df_inv['ano_referencia'].astype(str).isin(anos_sel)]
+        if meses_sel: df_inv = df_inv[df_inv['mes_referencia'].astype(str).isin(meses_sel)]
+        if tipos_sel: df_inv = df_inv[df_inv['tipo_inventario'].astype(str).isin(tipos_sel)]
 
         st.markdown("<br>", unsafe_allow_html=True)
 
         if df_inv.empty:
             st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            # 3. Cálculos Consolidados e Contagem Distinta de Inventários
+            # 3. Cálculos Consolidados
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
             ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
@@ -1044,14 +1047,6 @@ with aba_inventarios:
 
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
-
-            # Card Executivo Superior
-            st.markdown(f"""
-            <div style="background-color: #161c24; border: 1px solid #232b36; border-left: 4px solid #d85c27; padding: 12px 20px; border-radius: 6px; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
-                <span style="color: #8c9ba5; font-size: 13px; font-weight: bold;">TOTAL DE INVENTÁRIOS FILTRADOS:</span>
-                <span style="color: #ffffff; font-size: 16px; font-weight: 900; font-family: monospace;">{total_inventarios_distintos}</span>
-            </div>
-            """, unsafe_allow_html=True)
 
             # Agrupamento por empresa contando os inventários distintos
             if 'empresa_nome' in df_inv.columns:
@@ -1066,7 +1061,7 @@ with aba_inventarios:
             else:
                 df_empresas_resumo = pd.DataFrame()
 
-            # 4. Construção das Linhas da Tabela com a coluna Inventário
+            # 4. Construção das Linhas da Tabela
             linhas_tabela_html = ""
             if not df_empresas_resumo.empty:
                 for _, row in df_empresas_resumo.iterrows():
@@ -1081,7 +1076,7 @@ with aba_inventarios:
                     
                     linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db;">{qtd}</td><td style="padding: 12px; border-right: 1px solid #232b36; font-weight: bold; color: #ffffff;">{acur:.2f}%</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: bold;">{fmt_brl(gnh)}</td><td style="padding: 12px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: bold;">{fmt_brl(prd)}</td><td style="padding: 12px; color: {cor_perda if liq < 0 else cor_ganho}; font-weight: bold;">{fmt_brl(liq)}</td></tr>'
 
-            # 5. Montagem Final da Tabela com a nova coluna
+            # 5. Montagem Final da Tabela
             html_tabela_geral = (
                 '<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">'
                 '<div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">INVENTÁRIO GERAL - RESUMO EXECUTIVO</div>'
