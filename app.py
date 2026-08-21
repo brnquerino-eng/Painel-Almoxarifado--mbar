@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros com Formulário e Botão Aplicar)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Performance Otimizada - V. Diamante)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1076,7 +1076,7 @@ with aba_inventarios:
         }
         mapa_tipos_inverso = {v: k for k, v in mapa_tipos.items()}
 
-        # Extração das listas brutas
+        # Extração das listas brutas para filtros
         lista_empresas = sorted([str(x) for x in df_inventario.get('empresa_nome', pd.Series()).dropna().unique()]) if 'empresa_nome' in df_inventario.columns else []
         lista_anos = sorted([str(x) for x in df_inventario.get('ano_referencia', pd.Series()).dropna().unique()], reverse=True) if 'ano_referencia' in df_inventario.columns else []
         
@@ -1091,10 +1091,9 @@ with aba_inventarios:
         mes_padrao_visual = mapa_meses.get(str(int(mes_padrao_bruto)), "08 - Agosto") if mes_padrao_bruto.isdigit() else "08 - Agosto"
 
         # Inicialização do session_state dos Filtros Superiores
-        if 'inv_empresa_sel' not in st.session_state: st.session_state.inv_empresa_sel = []
-        if 'inv_ano_sel' not in st.session_state: st.session_state.inv_ano_sel = []
-        if 'inv_mes_sel' not in st.session_state: st.session_state.inv_mes_sel = []
-        if 'inv_tipo_sel' not in st.session_state: st.session_state.inv_tipo_sel = []
+        for key in ['inv_empresa_sel', 'inv_ano_sel', 'inv_mes_sel', 'inv_tipo_sel']:
+            if key not in st.session_state:
+                st.session_state[key] = []
 
         # 1. Filtros Superiores Compactos
         with st.container(border=True):
@@ -1113,7 +1112,7 @@ with aba_inventarios:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
                 tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos_visual, key="inv_tipo_sel", placeholder="Todos os Tipos", label_visibility="collapsed")
 
-        # 2. Lógica de Filtragem Global (O CHEFE DO PAINEL)
+        # 2. Lógica de Filtragem Global
         df_base_global = df_inventario.copy()
         if empresas_sel: df_base_global = df_base_global[df_base_global['empresa_nome'].astype(str).isin(empresas_sel)]
         
@@ -1133,7 +1132,7 @@ with aba_inventarios:
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
             df_base_global = df_base_global[df_base_global['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
-        # Blindagem: Apenas empresas que possuem ID válido no período
+        # Blindagem contra IDs vazios ou inválidos
         if 'id_inventario' in df_base_global.columns:
             df_base_global = df_base_global[
                 df_base_global['id_inventario'].notna() & 
@@ -1142,26 +1141,48 @@ with aba_inventarios:
             ]
 
         # =========================================================================
-        # O FILTRO POR IDs (Gerenciado via st.form para acumular as seleções)
+        # OTIMIZAÇÃO: PROCESSAMENTO ÚNICO DE IDs E DICIONÁRIO DE MEMÓRIA
         # =========================================================================
         empresas_disponiveis = sorted([str(x) for x in df_base_global['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_base_global.columns else []
 
         ids_excluidos = set()
+        dict_empresas_dados = {} # Memória cache para não precisarmos filtrar o DF de novo na hora de desenhar a tela
+
+        # Função auxiliar de blindagem para garantir que IDs decimais (ex: 939.0) virem texto limpo (939)
+        def limpar_id(val):
+            try: return str(int(float(val)))
+            except: return str(val).strip()
+
         for emp_nome in empresas_disponiveis:
             df_emp_subset = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
-            todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_subset['id_inventario'].dropna() if str(i).strip()])), key=lambda val: int(val) if val.isdigit() else 0)
+            
+            # Extrai, limpa e ordena os IDs reais desta empresa
+            todos_ids_emp = sorted(list(set([limpar_id(i) for i in df_emp_subset['id_inventario'].dropna()])), key=lambda val: int(val) if val.isdigit() else 0)
 
+            ids_ativos_nesta_emp = []
+            
             for uid in todos_ids_emp:
                 chk_key = f"chk_id_{emp_nome}_{uid}"
                 if chk_key not in st.session_state:
-                    st.session_state[chk_key] = True
+                    st.session_state[chk_key] = True # Padrão: marcado
                 
-                if not st.session_state[chk_key]:
-                    ids_excluidos.add(f"{emp_nome}||{uid}")
+                if st.session_state[chk_key]:
+                    ids_ativos_nesta_emp.append(uid)
+                else:
+                    ids_excluidos.add(f"{emp_nome}||{uid}") # Adiciona à lista de exclusão global
 
+            # Guarda os resultados no dicionário para a interface
+            dict_empresas_dados[emp_nome] = {
+                'todos_ids': todos_ids_emp,
+                'ids_ativos': ids_ativos_nesta_emp,
+                'qtd_ativa': len(ids_ativos_nesta_emp)
+            }
+
+        # Aplica a exclusão de IDs na base principal de forma vetorizada (muito mais rápido)
         if ids_excluidos:
-            temp_key = df_base_global['empresa_nome'].astype(str) + "||" + df_base_global['id_inventario'].astype(str).str.strip()
-            df_inv = df_base_global[~temp_key.isin(ids_excluidos)].copy()
+            # Cria uma chave composta temporária e limpa os IDs da mesma forma
+            chave_temp = df_base_global['empresa_nome'].astype(str) + "||" + df_base_global['id_inventario'].apply(limpar_id)
+            df_inv = df_base_global[~chave_temp.isin(ids_excluidos)].copy()
         else:
             df_inv = df_base_global.copy()
         # =========================================================================
@@ -1185,6 +1206,7 @@ with aba_inventarios:
 
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
+            cor_liq = cor_perda if diferenca_liq < 0 else (cor_ganho if diferenca_liq > 0 else "#8c9ba5")
 
             # 4. Montagem Visual Macro (Fixa no Topo)
             html_tabela_geral = f"""
@@ -1206,7 +1228,7 @@ with aba_inventarios:
                         <td style="padding: 18px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff;">{fmt_int(len(df_inv))}</td>
                         <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
                         <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
-                        <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
+                        <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_liq}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
                         <td style="padding: 18px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
                     </tr>
                 </table>
@@ -1215,7 +1237,7 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Sanfona com Formulário e Botão Aplicar
+            # 5. Sanfona com Formulário e Fechamento Automático Otimizados
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS IDs POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1227,14 +1249,15 @@ with aba_inventarios:
                     
                     st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
 
+                    # Agora usamos nosso Dicionário de Memória! Nada de recalcular o DataFrame linha por linha.
                     for emp_nome in empresas_disponiveis:
-                        df_emp_full = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
-                        todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_full['id_inventario'].dropna() if str(i).strip()])), key=lambda val: int(val) if val.isdigit() else 0)
+                        dados_emp = dict_empresas_dados[emp_nome]
                         
-                        ids_ativos_tela = [uid for uid in todos_ids_emp if st.session_state.get(f"chk_id_{emp_nome}_{uid}", True)]
+                        todos_ids_emp = dados_emp['todos_ids']
+                        ids_ativos_tela = dados_emp['ids_ativos']
+                        qtd_ativa_emp = dados_emp['qtd_ativa']
                         
                         ids_str = ", ".join([f"#{uid}" for uid in ids_ativos_tela]) if ids_ativos_tela else "Nenhum ativo"
-                        qtd_ativa_emp = len(ids_ativos_tela)
 
                         c1, c2, c3, c4 = st.columns([2.5, 0.8, 2.5, 1.5], vertical_alignment="center")
                         
@@ -1244,7 +1267,6 @@ with aba_inventarios:
                         
                         with c4:
                             with st.popover("🔎 Filtrar IDs", use_container_width=True):
-                                # Usando st.form para acumular todas as marcações antes de atualizar a página!
                                 with st.form(key=f"form_filtro_{emp_nome}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar IDs:</div>", unsafe_allow_html=True)
                                     
@@ -1253,11 +1275,11 @@ with aba_inventarios:
                                         chk_key = f"chk_id_{emp_nome}_{uid}"
                                         temp_vals[uid] = st.checkbox(f"ID #{uid}", value=st.session_state.get(chk_key, True))
                                     
-                                    # O Botão de Aplicar que batch (agrupa) todas as alterações de uma vez só!
                                     submitted = st.form_submit_button("Aplicar Filtro", use_container_width=True)
                                     if submitted:
                                         for uid, val in temp_vals.items():
                                             st.session_state[f"chk_id_{emp_nome}_{uid}"] = val
+                                        # O comando st.rerun() força a atualização do servidor na hora e recolhe o popover.
                                         st.rerun()
                         
                         st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
