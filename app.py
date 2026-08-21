@@ -1180,7 +1180,7 @@ with aba_inventarios:
             ]
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Grid Executivo de Células)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Grid Executivo de Células - Versão Única)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
