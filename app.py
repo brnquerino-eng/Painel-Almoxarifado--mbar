@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro, Grid Executivo & Painel Congelado Completo)
+# ABA 2: INVENTÁRIOS (Tema Escuro, Grid Executivo, Inventário Congelado & Callbacks)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1097,7 +1097,15 @@ with aba_inventarios:
         if 'inv_tipo_sel' not in st.session_state: st.session_state.inv_tipo_sel = []
 
         # =========================================================================
-        # 1. FILTROS SUPERIORES COMPACTOS (POPOVER COM MULTISELECT)
+        # CALLBACKS PARA EVITAR "ESTALOS" NA TELA (MÁGICA DO STREAMLIT)
+        # =========================================================================
+        def update_emp(): st.session_state.inv_empresa_sel = st.session_state.temp_emp
+        def update_ano(): st.session_state.inv_ano_sel = st.session_state.temp_ano
+        def update_mes(): st.session_state.inv_mes_sel = st.session_state.temp_mes
+        def update_tipo(): st.session_state.inv_tipo_sel = st.session_state.temp_tipo
+
+        # =========================================================================
+        # 1. FILTROS SUPERIORES COMPACTOS (POPOVER COM MULTISELECT OTIMIZADO)
         # =========================================================================
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
@@ -1109,10 +1117,8 @@ with aba_inventarios:
                 with st.popover(f"🔎 Empresa ({lbl_emp})", use_container_width=True):
                     with st.form("form_g_emp"):
                         st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Empresa(s):</div>", unsafe_allow_html=True)
-                        novo_emp = st.multiselect("Empresa", lista_empresas, default=sel_emp, label_visibility="collapsed")
-                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
-                            st.session_state.inv_empresa_sel = novo_emp
-                            st.rerun()
+                        st.multiselect("Empresa", lista_empresas, default=sel_emp, key="temp_emp", label_visibility="collapsed")
+                        st.form_submit_button("Aplicar Filtro", on_click=update_emp, use_container_width=True)
 
             with col_inv_f2:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Ano:</div>", unsafe_allow_html=True)
@@ -1121,10 +1127,8 @@ with aba_inventarios:
                 with st.popover(f"🔎 Ano ({lbl_ano})", use_container_width=True):
                     with st.form("form_g_ano"):
                         st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Ano(s):</div>", unsafe_allow_html=True)
-                        novo_ano = st.multiselect("Ano", lista_anos, default=sel_ano, label_visibility="collapsed")
-                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
-                            st.session_state.inv_ano_sel = novo_ano
-                            st.rerun()
+                        st.multiselect("Ano", lista_anos, default=sel_ano, key="temp_ano", label_visibility="collapsed")
+                        st.form_submit_button("Aplicar Filtro", on_click=update_ano, use_container_width=True)
 
             with col_inv_f3:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Mês:</div>", unsafe_allow_html=True)
@@ -1133,10 +1137,8 @@ with aba_inventarios:
                 with st.popover(f"🔎 Mês ({lbl_mes})", use_container_width=True):
                     with st.form("form_g_mes"):
                         st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Mês(es):</div>", unsafe_allow_html=True)
-                        novo_mes = st.multiselect("Mês", lista_meses_visual, default=sel_mes, label_visibility="collapsed")
-                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
-                            st.session_state.inv_mes_sel = novo_mes
-                            st.rerun()
+                        st.multiselect("Mês", lista_meses_visual, default=sel_mes, key="temp_mes", label_visibility="collapsed")
+                        st.form_submit_button("Aplicar Filtro", on_click=update_mes, use_container_width=True)
 
             with col_inv_f4:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
@@ -1145,12 +1147,12 @@ with aba_inventarios:
                 with st.popover(f"🔎 Tipo ({lbl_tipo})", use_container_width=True):
                     with st.form("form_g_tipo"):
                         st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Tipo(s):</div>", unsafe_allow_html=True)
-                        novo_tipo = st.multiselect("Tipo", lista_tipos_visual, default=sel_tipo, label_visibility="collapsed")
-                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
-                            st.session_state.inv_tipo_sel = novo_tipo
-                            st.rerun()
+                        st.multiselect("Tipo", lista_tipos_visual, default=sel_tipo, key="temp_tipo", label_visibility="collapsed")
+                        st.form_submit_button("Aplicar Filtro", on_click=update_tipo, use_container_width=True)
 
-        # 2. Lógica de Filtragem Global
+        # =========================================================================
+        # 2. LÓGICA DE FILTRAGEM GLOBAL
+        # =========================================================================
         df_base_global = df_inventario.copy()
         
         if st.session_state.inv_empresa_sel: 
@@ -1248,11 +1250,10 @@ with aba_inventarios:
             st.info("Nenhum dado de inventário encontrado para os filtros selecionados.")
         else:
             # =========================================================================
-            # CÁLCULOS COMPLETOS DO INVENTÁRIO CONGELADO (BASELINE x RESULTADO)
+            # CÁLCULOS COMPLETOS DO INVENTÁRIO CONGELADO (BLINDADO)
             # =========================================================================
             total_invs = df_inv['id_inventario'].nunique() if 'id_inventario' in df_inv.columns else 0
             
-            # Contagem de Rotativo vs Geral
             invs_rotativos = 0
             invs_geral = 0
             if 'id_inventario' in df_inv.columns and 'tipo_inventario' in df_inv.columns:
@@ -1266,8 +1267,8 @@ with aba_inventarios:
 
             total_linhas = len(df_inv)
             
-            # Radar Inteligente de SKUs Únicos (corrige o bug do 0)
-            colunas_possiveis_sku = ['codigo_material', 'cod_material', 'sku', 'id_produto', 'material', 'codigo']
+            # NOVO RADAR DE SKUS: Agora buscando sua coluna exata 'codigo_produto'
+            colunas_possiveis_sku = ['codigo_produto', 'codigo_material', 'cod_material', 'sku', 'id_produto', 'material', 'codigo']
             col_sku = next((col for col in colunas_possiveis_sku if col in df_inv.columns), None)
             skus_unicos = df_inv[col_sku].nunique() if col_sku else 0
 
@@ -1307,12 +1308,11 @@ with aba_inventarios:
             divergencia_absoluta_val = df_inv['diferenca_val'].abs().sum() if 'diferenca_val' in df_inv.columns else 0.0
             acuracia_valor = max(0, (1 - (divergencia_absoluta_val / val_congelado)) * 100) if val_congelado > 0 else (100.0 if divergencia_absoluta_val == 0 else 0.0)
 
-            # Cores Semânticas
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
             # =========================================================================
-            # TABELA MACRO EXECUTIVA - 3 ANDARES (VOLUMETRIA, QUANTIDADE, FINANCEIRO)
+            # TABELA MACRO EXECUTIVA - 3 ANDARES
             # =========================================================================
             html_tabela_geral = f"""
             <div style="background-color: #161c24; border: 1px solid #2f3b4c; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
@@ -1321,7 +1321,6 @@ with aba_inventarios:
                 </div>
                 <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 12px;">
                     
-                    <!-- LINHA 1: VOLUMETRIA DE INVENTÁRIOS -->
                     <tr style="background-color: #1f2836; font-weight: bold; color: #8c9ba5; text-transform: uppercase; font-size: 10px;">
                         <th style="padding: 10px; border: 1px solid #2f3b4c; width: 20%;">Qtd. Inv. Total</th>
                         <th style="padding: 10px; border: 1px solid #2f3b4c; width: 20%;">Inv. Rotativo</th>
@@ -1337,7 +1336,6 @@ with aba_inventarios:
                         <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #1abc9c;">{fmt_int(skus_unicos)}</td>
                     </tr>
 
-                    <!-- LINHA 2: BALANÇO DE QUANTIDADES FÍSICAS (PEÇAS) -->
                     <tr style="background-color: #1f2836; font-weight: bold; color: #8c9ba5; text-transform: uppercase; font-size: 10px;">
                         <th style="padding: 10px; border: 1px solid #2f3b4c;">(Qtd) Itens Congelados</th>
                         <th style="padding: 10px; border: 1px solid #2f3b4c;">(Qtd) Itens Contados</th>
@@ -1353,7 +1351,6 @@ with aba_inventarios:
                         <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{acuracia_itens:.2f}%</td>
                     </tr>
 
-                    <!-- LINHA 3: BALANÇO FINANCEIRO (R$) -->
                     <tr style="background-color: #1f2836; font-weight: bold; color: #8c9ba5; text-transform: uppercase; font-size: 10px;">
                         <th style="padding: 10px; border: 1px solid #2f3b4c;">(R$) Valor Congelado</th>
                         <th style="padding: 10px; border: 1px solid #2f3b4c;">(R$) Valor Contado</th>
@@ -1376,8 +1373,13 @@ with aba_inventarios:
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
             # =========================================================================
-            # SANFONA COM DETALHAMENTO EM ESTILO GRID DE CÉLULAS (UNIDADES)
+            # CALLBACK E SANFONA DE UNIDADES (SEM PISCAR A TELA)
             # =========================================================================
+            def update_unit(emp_nome, todos_ids):
+                selecionados = st.session_state[f"temp_multi_{emp_nome}"]
+                for uid in todos_ids:
+                    st.session_state[f"inv_active_{emp_nome}_{uid}"] = (uid in selecionados)
+
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1431,17 +1433,12 @@ with aba_inventarios:
                                     
                                     default_vals = [uid for uid in todos_ids_emp if st.session_state.get(f"inv_active_{emp_nome}_{uid}", True)]
                                     
-                                    selecionados_multi = st.multiselect(
+                                    st.multiselect(
                                         "Inventários",
                                         options=todos_ids_emp,
                                         default=default_vals,
-                                        key=f"multi_{emp_nome}",
+                                        key=f"temp_multi_{emp_nome}",
                                         label_visibility="collapsed"
                                     )
                                     
-                                    btn_aplicar = st.form_submit_button("Aplicar Filtro", use_container_width=True)
-
-                                    if btn_aplicar:
-                                        for uid in todos_ids_emp:
-                                            st.session_state[f"inv_active_{emp_nome}_{uid}"] = (uid in selecionados_multi)
-                                        st.rerun()
+                                    st.form_submit_button("Aplicar Filtro", on_click=update_unit, args=(emp_nome, todos_ids_emp), use_container_width=True)
