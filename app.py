@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros Elegantes por Popover de Linha)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros com Checkboxes por Linha)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1113,13 +1113,12 @@ with aba_inventarios:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
                 tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos_visual, key="inv_tipo_sel", placeholder="Todos os Tipos", label_visibility="collapsed")
 
-        # 2. Lógica de Filtragem Base
-        df_inv = df_inventario.copy()
-        
-        if empresas_sel: df_inv = df_inv[df_inv['empresa_nome'].astype(str).isin(empresas_sel)]
+        # 2. Lógica de Filtragem Base Global
+        df_base_global = df_inventario.copy()
+        if empresas_sel: df_base_global = df_base_global[df_base_global['empresa_nome'].astype(str).isin(empresas_sel)]
         
         anos_para_filtrar = anos_sel if anos_sel else [ano_padrao_str]
-        if anos_para_filtrar: df_inv = df_inv[df_inv['ano_referencia'].astype(str).isin(anos_para_filtrar)]
+        if anos_para_filtrar: df_base_global = df_base_global[df_base_global['ano_referencia'].astype(str).isin(anos_para_filtrar)]
             
         meses_selecionados_efetivos = meses_sel if meses_sel else [mes_padrao_visual]
         if meses_selecionados_efetivos:
@@ -1128,30 +1127,31 @@ with aba_inventarios:
                 val_original = mapa_meses_inverso.get(m, m)
                 meses_para_filtrar.append(val_original)
                 if val_original.isdigit(): meses_para_filtrar.append(str(int(val_original)))
-            df_inv = df_inv[df_inv['mes_referencia'].astype(str).isin(meses_para_filtrar)]
+            df_base_global = df_base_global[df_base_global['mes_referencia'].astype(str).isin(meses_para_filtrar)]
             
         if tipos_sel: 
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
-            df_inv = df_inv[df_inv['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
+            df_base_global = df_base_global[df_base_global['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
-        # Coletando empresas para o filtro por linha
-        empresas_disponiveis_base = sorted([str(x) for x in df_inv['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_inv.columns else []
+        # Lista de empresas presentes na base global filtrada
+        empresas_disponiveis_base = sorted([str(x) for x in df_base_global['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_base_global.columns else []
 
+        # Aplicar filtro por linha via checkbox de IDs
         dfs_filtrados_por_empresa = []
         for emp_nome in empresas_disponiveis_base:
-            df_emp_subset = df_inv[df_inv['empresa_nome'].astype(str) == emp_nome]
-            ids_da_empresa = sorted([str(i).strip() for i in df_emp_subset['id_inventario'].dropna().unique() if str(i).strip() != ''], key=lambda val: int(val) if val.isdigit() else 0)
+            df_emp_subset = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
+            todos_ids_emp = sorted([str(i).strip() for i in df_emp_subset['id_inventario'].dropna().unique() if str(i).strip() != ''], key=lambda val: int(val) if val.isdigit() else 0)
             
-            key_state_emp = f"popover_ids_emp_{emp_nome}"
-            if key_state_emp not in st.session_state:
-                st.session_state[key_state_emp] = ids_da_empresa
+            state_key_ids = f"ids_ativos_emp_{emp_nome}"
+            if state_key_ids not in st.session_state:
+                st.session_state[state_key_ids] = todos_ids_emp
             
-            ids_selecionados_nesta_emp = [i for i in st.session_state[key_state_emp] if i in ids_da_empresa]
-            if not ids_selecionados_nesta_emp and ids_da_empresa:
-                ids_selecionados_nesta_emp = ids_da_empresa
-
-            if ids_selecionados_nesta_emp:
-                df_emp_filtrado = df_emp_subset[df_emp_subset['id_inventario'].astype(str).isin(ids_selecionados_nesta_emp)]
+            ids_ativos = [i for i in st.session_state[state_key_ids] if i in todos_ids_emp]
+            if not ids_ativos and todos_ids_emp:
+                ids_ativos = todos_ids_emp
+            
+            if ids_ativos:
+                df_emp_filtrado = df_emp_subset[df_emp_subset['id_inventario'].astype(str).isin(ids_ativos)]
                 dfs_filtrados_por_empresa.append(df_emp_filtrado)
 
         if dfs_filtrados_por_empresa:
@@ -1161,8 +1161,8 @@ with aba_inventarios:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        if df_inv.empty and not df_inventario.empty:
-            st.info("⚠️ Todos os IDs foram desmarcados nos filtros por linha. Selecione pelo menos um ID para visualizar os dados.")
+        if df_inv.empty and not df_base_global.empty:
+            st.info("⚠️ Todos os IDs foram desmarcados nos filtros por linha. Marque pelo menos um ID para visualizar os dados.")
         elif df_inv.empty:
             st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
@@ -1208,7 +1208,7 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Efeito Sanfona Interativo com Coluna de Texto Limpa + Popover de Filtro Isolado
+            # 5. Efeito Sanfona com Checkboxes Individuais Dinâmicos
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS IDs POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1220,33 +1220,18 @@ with aba_inventarios:
                     c_h4.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>Filtro por Linha</div>", unsafe_allow_html=True)
                     
                     st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
-                    
-                    # Base de empresas para as linhas
-                    df_empresas_base_unidades = df_inventario.copy()
-                    if empresas_sel: df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['empresa_nome'].astype(str).isin(empresas_sel)]
-                    if anos_para_filtrar: df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['ano_referencia'].astype(str).isin(anos_para_filtrar)]
-                    if meses_selecionados_efetivos:
-                        meses_para_filtrar_u = []
-                        for m in meses_selecionados_efetivos:
-                            val_orig_u = mapa_meses_inverso.get(m, m)
-                            meses_para_filtrar_u.append(val_orig_u)
-                            if val_orig_u.isdigit(): meses_para_filtrar_u.append(str(int(val_orig_u)))
-                        df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['mes_referencia'].astype(str).isin(meses_para_filtrar_u)]
-                    if tipos_sel: 
-                        tipos_para_filtrar_u = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
-                        df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['tipo_inventario'].astype(str).isin(tipos_para_filtrar_u)]
 
-                    lista_empresas_linhas = sorted([str(x) for x in df_empresas_base_unidades['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_empresas_base_unidades.columns else []
-
-                    for emp_nome in lista_empresas_linhas:
-                        df_emp_full = df_empresas_base_unidades[df_empresas_base_unidades['empresa_nome'].astype(str) == emp_nome]
+                    for emp_nome in empresas_disponiveis_base:
+                        df_emp_full = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
                         todos_ids_emp = sorted([str(i).strip() for i in df_emp_full['id_inventario'].dropna().unique() if str(i).strip() != ''], key=lambda val: int(val) if val.isdigit() else 0)
                         
-                        ids_str = ", ".join([f"#{uid}" for uid in todos_ids_emp]) if todos_ids_emp else "-"
-
-                        key_state_emp = f"popover_ids_emp_{emp_nome}"
-                        ids_ativos_emp = st.session_state.get(key_state_emp, todos_ids_emp)
-                        qtd_ativa_emp = len([i for i in ids_ativos_emp if i in todos_ids_emp])
+                        state_key_ids = f"ids_ativos_emp_{emp_nome}"
+                        ids_ativos_emp = st.session_state.get(state_key_ids, todos_ids_emp)
+                        
+                        # IDs visíveis e sincronizados em tempo real com a seleção das checkboxes
+                        ids_visiveis = [uid for uid in todos_ids_emp if uid in ids_ativos_emp]
+                        ids_str = ", ".join([f"#{uid}" for uid in ids_visiveis]) if ids_visiveis else "-"
+                        qtd_ativa_emp = len(ids_visiveis)
 
                         # Criando as 4 colunas perfeitas por linha
                         c1, c2, c3, c4 = st.columns([2.5, 0.8, 2.5, 1.5], vertical_alignment="center")
@@ -1254,22 +1239,29 @@ with aba_inventarios:
                         # Coluna 1: Nome da Empresa
                         c1.markdown(f"<div style='color: #ffffff; font-size: 13px; font-weight: 500;'>{html.escape(emp_nome)}</div>", unsafe_allow_html=True)
                         
-                        # Coluna 2: Quantidade de Inventários Ativos
+                        # Coluna 2: Quantidade Dinâmica Atualizada
                         c2.markdown(f"<div style='color: #3498db; font-size: 14px; font-weight: bold; text-align: center;'>{qtd_ativa_emp}</div>", unsafe_allow_html=True)
                         
-                        # Coluna 3: Texto Limpo com os IDs (Ex: #859, #862)
+                        # Coluna 3: Texto Limpo Sincronizado
                         c3.markdown(f"<div style='color: #8c9ba5; font-size: 13px; font-family: monospace;'>{ids_str}</div>", unsafe_allow_html=True)
                         
-                        # Coluna 4: O Botão Popover (A caixinha flutuante de filtro da linha!)
+                        # Coluna 4: O Popover contendo as caixinhas de marcação/desmarcação (Checkboxes reais)
                         with c4:
                             with st.popover("🔎 Filtrar IDs", use_container_width=True):
-                                st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff;'>Gerenciar IDs:</div>", unsafe_allow_html=True)
-                                st.multiselect(
-                                    f"IDs {emp_nome}",
-                                    options=todos_ids_emp,
-                                    default=ids_ativos_emp,
-                                    key=key_state_emp,
-                                    label_visibility="collapsed"
-                                )
+                                st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 6px;'>Marcar / Desmarcar IDs:</div>", unsafe_allow_html=True)
+                                
+                                novas_selecoes = []
+                                for uid in todos_ids_emp:
+                                    chk_key = f"chk_id_{emp_nome}_{uid}"
+                                    if chk_key not in st.session_state:
+                                        st.session_state[chk_key] = (uid in ids_ativos_emp)
+                                    
+                                    marcado = st.checkbox(f"ID #{uid}", key=chk_key)
+                                    if marcado:
+                                        novas_selecoes.append(uid)
+                                
+                                if set(novas_selecoes) != set(ids_ativos_emp):
+                                    st.session_state[state_key_ids] = novas_selecoes
+                                    st.rerun()
                         
                         st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
