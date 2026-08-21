@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro, Separação Geral/Rotativo & Filtro Limpo)
+# ABA 2: INVENTÁRIOS (Tema Escuro, Separação Geral/Rotativo & Filtros Globais Popover)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1090,46 +1090,103 @@ with aba_inventarios:
         mes_padrao_bruto = lista_meses_bruto[0] if lista_meses_bruto else "8"
         mes_padrao_visual = mapa_meses.get(str(int(mes_padrao_bruto)), "08 - Agosto") if mes_padrao_bruto.isdigit() else "08 - Agosto"
 
-        # Inicialização do session_state dos Filtros Superiores
-        for key in ['inv_empresa_sel', 'inv_ano_sel', 'inv_mes_sel', 'inv_tipo_sel']:
-            if key not in st.session_state:
-                st.session_state[key] = []
+        # Inicialização do session_state dos Filtros Superiores com Valores Padrão
+        if 'inv_empresa_sel' not in st.session_state: st.session_state.inv_empresa_sel = []
+        if 'inv_ano_sel' not in st.session_state: st.session_state.inv_ano_sel = [ano_padrao_str] if ano_padrao_str else []
+        if 'inv_mes_sel' not in st.session_state: st.session_state.inv_mes_sel = [mes_padrao_visual] if mes_padrao_visual else []
+        if 'inv_tipo_sel' not in st.session_state: st.session_state.inv_tipo_sel = []
 
-        # 1. Filtros Superiores Compactos
+        # =========================================================================
+        # 1. FILTROS SUPERIORES COMPACTOS (NOVO PADRÃO POPOVER EXECUTIVO)
+        # =========================================================================
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
             
             with col_inv_f1:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Empresa:</div>", unsafe_allow_html=True)
-                empresas_sel = st.multiselect("Empresa:", lista_empresas, key="inv_empresa_sel", placeholder="Todas as Empresas", label_visibility="collapsed")
+                sel_emp = st.session_state.inv_empresa_sel
+                lbl_emp = "Todas" if not sel_emp else f"{len(sel_emp)} sel."
+                with st.popover(f"🔎 Empresa ({lbl_emp})", use_container_width=True):
+                    with st.form("form_g_emp"):
+                        st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 2px;'>Filtrar Empresa(s):</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: 8px;'>Nenhum marcado = Mostrar Todas</div>", unsafe_allow_html=True)
+                        novo_emp = []
+                        for op in lista_empresas:
+                            if st.checkbox(op, value=(op in sel_emp), key=f"chk_g_emp_{op}"):
+                                novo_emp.append(op)
+                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
+                            st.session_state.inv_empresa_sel = novo_emp
+                            st.rerun()
+
             with col_inv_f2:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Ano:</div>", unsafe_allow_html=True)
-                anos_sel = st.multiselect("Ano:", lista_anos, key="inv_ano_sel", placeholder=f"Ano Atual ({ano_padrao_str})", label_visibility="collapsed")
+                sel_ano = st.session_state.inv_ano_sel
+                lbl_ano = "Todos" if not sel_ano else ", ".join(sel_ano)
+                with st.popover(f"🔎 Ano ({lbl_ano})", use_container_width=True):
+                    with st.form("form_g_ano"):
+                        st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 2px;'>Filtrar Ano(s):</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: 8px;'>Nenhum marcado = Mostrar Todos</div>", unsafe_allow_html=True)
+                        novo_ano = []
+                        for op in lista_anos:
+                            if st.checkbox(op, value=(op in sel_ano), key=f"chk_g_ano_{op}"):
+                                novo_ano.append(op)
+                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
+                            st.session_state.inv_ano_sel = novo_ano
+                            st.rerun()
+
             with col_inv_f3:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Mês:</div>", unsafe_allow_html=True)
-                meses_sel = st.multiselect("Mês:", lista_meses_visual, key="inv_mes_sel", placeholder=f"Mês Atual ({mes_padrao_visual})", label_visibility="collapsed")
+                sel_mes = st.session_state.inv_mes_sel
+                lbl_mes = "Todos" if not sel_mes else f"{len(sel_mes)} sel."
+                with st.popover(f"🔎 Mês ({lbl_mes})", use_container_width=True):
+                    with st.form("form_g_mes"):
+                        st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 2px;'>Filtrar Mês(es):</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: 8px;'>Nenhum marcado = Mostrar Todos</div>", unsafe_allow_html=True)
+                        novo_mes = []
+                        for op in lista_meses_visual:
+                            if st.checkbox(op, value=(op in sel_mes), key=f"chk_g_mes_{op}"):
+                                novo_mes.append(op)
+                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
+                            st.session_state.inv_mes_sel = novo_mes
+                            st.rerun()
+
             with col_inv_f4:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
-                tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos_visual, key="inv_tipo_sel", placeholder="Todos os Tipos", label_visibility="collapsed")
+                sel_tipo = st.session_state.inv_tipo_sel
+                lbl_tipo = "Todos" if not sel_tipo else f"{len(sel_tipo)} sel."
+                with st.popover(f"🔎 Tipo ({lbl_tipo})", use_container_width=True):
+                    with st.form("form_g_tipo"):
+                        st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 2px;'>Filtrar Tipo(s):</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='font-size: 10px; color: #8c9ba5; margin-bottom: 8px;'>Nenhum marcado = Mostrar Todos</div>", unsafe_allow_html=True)
+                        novo_tipo = []
+                        for op in lista_tipos_visual:
+                            if st.checkbox(op, value=(op in sel_tipo), key=f"chk_g_tipo_{op}"):
+                                novo_tipo.append(op)
+                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
+                            st.session_state.inv_tipo_sel = novo_tipo
+                            st.rerun()
 
+        # =========================================================================
         # 2. Lógica de Filtragem Global
+        # =========================================================================
         df_base_global = df_inventario.copy()
-        if empresas_sel: df_base_global = df_base_global[df_base_global['empresa_nome'].astype(str).isin(empresas_sel)]
         
-        anos_para_filtrar = anos_sel if anos_sel else [ano_padrao_str]
-        if anos_para_filtrar: df_base_global = df_base_global[df_base_global['ano_referencia'].astype(str).isin(anos_para_filtrar)]
+        if st.session_state.inv_empresa_sel: 
+            df_base_global = df_base_global[df_base_global['empresa_nome'].astype(str).isin(st.session_state.inv_empresa_sel)]
+        
+        if st.session_state.inv_ano_sel: 
+            df_base_global = df_base_global[df_base_global['ano_referencia'].astype(str).isin(st.session_state.inv_ano_sel)]
             
-        meses_selecionados_efetivos = meses_sel if meses_sel else [mes_padrao_visual]
-        if meses_selecionados_efetivos:
+        if st.session_state.inv_mes_sel:
             meses_para_filtrar = []
-            for m in meses_selecionados_efetivos:
+            for m in st.session_state.inv_mes_sel:
                 val_original = mapa_meses_inverso.get(m, m)
                 meses_para_filtrar.append(val_original)
                 if val_original.isdigit(): meses_para_filtrar.append(str(int(val_original)))
             df_base_global = df_base_global[df_base_global['mes_referencia'].astype(str).isin(meses_para_filtrar)]
             
-        if tipos_sel: 
-            tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
+        if st.session_state.inv_tipo_sel: 
+            tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in st.session_state.inv_tipo_sel]
             df_base_global = df_base_global[df_base_global['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
         # Blindagem contra IDs vazios
@@ -1252,7 +1309,7 @@ with aba_inventarios:
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
             # =========================================================================
-            # SANFONA COM FORMULÁRIO LIMPO (SÓ BOTÃO APLICAR)
+            # SANFONA COM FORMULÁRIO LIMPO
             # =========================================================================
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
@@ -1291,7 +1348,6 @@ with aba_inventarios:
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar Inventários:</div>", unsafe_allow_html=True)
                                     
                                     for uid in todos_ids_emp:
-                                        # Puxa a versão ativa (oficial)
                                         active_key = f"inv_active_{emp_nome}_{uid}"
                                         valor_oficial = st.session_state.get(active_key, True)
                                         
@@ -1301,7 +1357,6 @@ with aba_inventarios:
                                     btn_aplicar = st.form_submit_button("Aplicar Filtro", use_container_width=True)
 
                                     if btn_aplicar:
-                                        # Salva o rascunho como oficial e atualiza
                                         for uid in todos_ids_emp:
                                             st.session_state[f"inv_active_{emp_nome}_{uid}"] = st.session_state[f"chk_{emp_nome}_{uid}"]
                                         st.rerun()
