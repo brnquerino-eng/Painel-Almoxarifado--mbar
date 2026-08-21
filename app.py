@@ -1115,7 +1115,8 @@ with aba_inventarios:
                 sel_emp = st.session_state.inv_empresa_sel
                 lbl_emp = "Todas" if not sel_emp else f"{len(sel_emp)} sel."
                 with st.popover(f"🔎 Empresa ({lbl_emp})", use_container_width=True):
-                    with st.form("form_g_emp"):
+                    # 🟢 CORREÇÃO: Chave renomeada para ser 100% única nesta aba
+                    with st.form("form_aba2_filtro_emp"):
                         st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Empresa(s):</div>", unsafe_allow_html=True)
                         st.multiselect("Empresa", lista_empresas, default=sel_emp, key="temp_emp", label_visibility="collapsed")
                         st.form_submit_button("Aplicar Filtro", on_click=update_emp, use_container_width=True)
@@ -1125,7 +1126,8 @@ with aba_inventarios:
                 sel_ano = st.session_state.inv_ano_sel
                 lbl_ano = "Todos" if not sel_ano else ", ".join(sel_ano)
                 with st.popover(f"🔎 Ano ({lbl_ano})", use_container_width=True):
-                    with st.form("form_g_ano"):
+                    # 🟢 CORREÇÃO: Chave única
+                    with st.form("form_aba2_filtro_ano"):
                         st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Ano(s):</div>", unsafe_allow_html=True)
                         st.multiselect("Ano", lista_anos, default=sel_ano, key="temp_ano", label_visibility="collapsed")
                         st.form_submit_button("Aplicar Filtro", on_click=update_ano, use_container_width=True)
@@ -1135,7 +1137,8 @@ with aba_inventarios:
                 sel_mes = st.session_state.inv_mes_sel
                 lbl_mes = "Todos" if not sel_mes else f"{len(sel_mes)} sel."
                 with st.popover(f"🔎 Mês ({lbl_mes})", use_container_width=True):
-                    with st.form("form_g_mes"):
+                    # 🟢 CORREÇÃO: Chave única
+                    with st.form("form_aba2_filtro_mes"):
                         st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Mês(es):</div>", unsafe_allow_html=True)
                         st.multiselect("Mês", lista_meses_visual, default=sel_mes, key="temp_mes", label_visibility="collapsed")
                         st.form_submit_button("Aplicar Filtro", on_click=update_mes, use_container_width=True)
@@ -1145,7 +1148,8 @@ with aba_inventarios:
                 sel_tipo = st.session_state.inv_tipo_sel
                 lbl_tipo = "Todos" if not sel_tipo else f"{len(sel_tipo)} sel."
                 with st.popover(f"🔎 Tipo ({lbl_tipo})", use_container_width=True):
-                    with st.form("form_g_tipo"):
+                    # 🟢 CORREÇÃO: Chave única
+                    with st.form("form_aba2_filtro_tipo"):
                         st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Tipo(s):</div>", unsafe_allow_html=True)
                         st.multiselect("Tipo", lista_tipos_visual, default=sel_tipo, key="temp_tipo", label_visibility="collapsed")
                         st.form_submit_button("Aplicar Filtro", on_click=update_tipo, use_container_width=True)
@@ -1412,6 +1416,7 @@ with aba_inventarios:
                         col_r1, col_r2 = st.columns([8.6, 1.4], vertical_alignment="center")
                         
                         with col_r1:
+                            import html # Certifique-se de que o import esteja no topo do seu arquivo principal
                             html_linha_celulas = f"""
                             <div style="background-color: #161c24; border: 1px solid #2f3b4c; border-radius: 6px; padding: 10px; margin-bottom: 6px;">
                                 <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
@@ -1428,7 +1433,9 @@ with aba_inventarios:
                         
                         with col_r2:
                             with st.popover("🔎 Filtrar", use_container_width=True):
-                                with st.form(key=f"form_filtro_{emp_nome}"):
+                                # 🟢 CORREÇÃO: Blindagem extra para nomes de empresa com espaços ou hífens
+                                chave_segura_emp = str(emp_nome).replace(" ", "_").replace("-", "")
+                                with st.form(key=f"form_aba2_unidade_{chave_segura_emp}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Selecionar Inventários:</div>", unsafe_allow_html=True)
                                     
                                     default_vals = [uid for uid in todos_ids_emp if st.session_state.get(f"inv_active_{emp_nome}_{uid}", True)]
