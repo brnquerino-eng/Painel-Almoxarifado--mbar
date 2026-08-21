@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros Nativos Livres de Fantasmas)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros com Formulário e Botão Aplicar)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1133,8 +1133,7 @@ with aba_inventarios:
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
             df_base_global = df_base_global[df_base_global['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
-        # --- A BLINDAGEM DO GOL ---
-        # Garantir que só ficam na base empresas que TÊM um ID de inventário válido no período!
+        # Blindagem: Apenas empresas que possuem ID válido no período
         if 'id_inventario' in df_base_global.columns:
             df_base_global = df_base_global[
                 df_base_global['id_inventario'].notna() & 
@@ -1143,15 +1142,14 @@ with aba_inventarios:
             ]
 
         # =========================================================================
-        # O SEGREDO DOS IDs (Checkboxes Nativas)
+        # O FILTRO POR IDs (Gerenciado via st.form para acumular as seleções)
         # =========================================================================
-        # A lista de empresas agora SÓ contém quem passou no filtro rigoroso acima
         empresas_disponiveis = sorted([str(x) for x in df_base_global['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_base_global.columns else []
 
         ids_excluidos = set()
         for emp_nome in empresas_disponiveis:
             df_emp_subset = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
-            todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_subset['id_inventario'].dropna()])), key=lambda val: int(val) if val.isdigit() else 0)
+            todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_subset['id_inventario'].dropna() if str(i).strip()])), key=lambda val: int(val) if val.isdigit() else 0)
 
             for uid in todos_ids_emp:
                 chk_key = f"chk_id_{emp_nome}_{uid}"
@@ -1171,7 +1169,7 @@ with aba_inventarios:
         st.markdown("<br>", unsafe_allow_html=True)
 
         if df_inv.empty and not df_base_global.empty:
-            st.info("⚠️ Você desmarcou todos os IDs nas linhas. Volte na caixinha e marque pelo menos um para recalcular os totais.")
+            st.info("⚠️ Você desmarcou todos os IDs nas linhas. Abra o filtro e clique em Aplicar marcando pelo menos um ID.")
         elif df_inv.empty:
             st.info("Nenhum dado de inventário encontrado para os filtros selecionados.")
         else:
@@ -1217,7 +1215,7 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Sanfona com Checkboxes Nativas
+            # 5. Sanfona com Formulário e Botão Aplicar
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS IDs POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1229,10 +1227,9 @@ with aba_inventarios:
                     
                     st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
 
-                    # O loop agora só roda para as empresas que SOBREVIVERAM aos filtros superiores!
                     for emp_nome in empresas_disponiveis:
                         df_emp_full = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
-                        todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_full['id_inventario'].dropna()])), key=lambda val: int(val) if val.isdigit() else 0)
+                        todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_full['id_inventario'].dropna() if str(i).strip()])), key=lambda val: int(val) if val.isdigit() else 0)
                         
                         ids_ativos_tela = [uid for uid in todos_ids_emp if st.session_state.get(f"chk_id_{emp_nome}_{uid}", True)]
                         
@@ -1247,9 +1244,20 @@ with aba_inventarios:
                         
                         with c4:
                             with st.popover("🔎 Filtrar IDs", use_container_width=True):
-                                st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar IDs:</div>", unsafe_allow_html=True)
-                                
-                                for uid in todos_ids_emp:
-                                    st.checkbox(f"ID #{uid}", key=f"chk_id_{emp_nome}_{uid}")
+                                # Usando st.form para acumular todas as marcações antes de atualizar a página!
+                                with st.form(key=f"form_filtro_{emp_nome}"):
+                                    st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar IDs:</div>", unsafe_allow_html=True)
+                                    
+                                    temp_vals = {}
+                                    for uid in todos_ids_emp:
+                                        chk_key = f"chk_id_{emp_nome}_{uid}"
+                                        temp_vals[uid] = st.checkbox(f"ID #{uid}", value=st.session_state.get(chk_key, True))
+                                    
+                                    # O Botão de Aplicar que batch (agrupa) todas as alterações de uma vez só!
+                                    submitted = st.form_submit_button("Aplicar Filtro", use_container_width=True)
+                                    if submitted:
+                                        for uid, val in temp_vals.items():
+                                            st.session_state[f"chk_id_{emp_nome}_{uid}"] = val
+                                        st.rerun()
                         
                         st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
