@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Performance Otimizada - V. Diamante)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Performance Máxima Sem Estalos)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1141,22 +1141,19 @@ with aba_inventarios:
             ]
 
         # =========================================================================
-        # OTIMIZAÇÃO: PROCESSAMENTO ÚNICO DE IDs E DICIONÁRIO DE MEMÓRIA
+        # OTIMIZAÇÃO: PROCESSAMENTO DIRETO DA MEMÓRIA (Fim do Estalo)
         # =========================================================================
         empresas_disponiveis = sorted([str(x) for x in df_base_global['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_base_global.columns else []
 
         ids_excluidos = set()
-        dict_empresas_dados = {} # Memória cache para não precisarmos filtrar o DF de novo na hora de desenhar a tela
+        dict_empresas_dados = {} 
 
-        # Função auxiliar de blindagem para garantir que IDs decimais (ex: 939.0) virem texto limpo (939)
         def limpar_id(val):
             try: return str(int(float(val)))
             except: return str(val).strip()
 
         for emp_nome in empresas_disponiveis:
             df_emp_subset = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
-            
-            # Extrai, limpa e ordena os IDs reais desta empresa
             todos_ids_emp = sorted(list(set([limpar_id(i) for i in df_emp_subset['id_inventario'].dropna()])), key=lambda val: int(val) if val.isdigit() else 0)
 
             ids_ativos_nesta_emp = []
@@ -1164,23 +1161,22 @@ with aba_inventarios:
             for uid in todos_ids_emp:
                 chk_key = f"chk_id_{emp_nome}_{uid}"
                 if chk_key not in st.session_state:
-                    st.session_state[chk_key] = True # Padrão: marcado
+                    st.session_state[chk_key] = True 
                 
+                # O sistema lê a memória instantaneamente, sem precisar de recargas secundárias!
                 if st.session_state[chk_key]:
                     ids_ativos_nesta_emp.append(uid)
                 else:
-                    ids_excluidos.add(f"{emp_nome}||{uid}") # Adiciona à lista de exclusão global
+                    ids_excluidos.add(f"{emp_nome}||{uid}") 
 
-            # Guarda os resultados no dicionário para a interface
             dict_empresas_dados[emp_nome] = {
                 'todos_ids': todos_ids_emp,
                 'ids_ativos': ids_ativos_nesta_emp,
                 'qtd_ativa': len(ids_ativos_nesta_emp)
             }
 
-        # Aplica a exclusão de IDs na base principal de forma vetorizada (muito mais rápido)
+        # Aplica exclusão na base principal
         if ids_excluidos:
-            # Cria uma chave composta temporária e limpa os IDs da mesma forma
             chave_temp = df_base_global['empresa_nome'].astype(str) + "||" + df_base_global['id_inventario'].apply(limpar_id)
             df_inv = df_base_global[~chave_temp.isin(ids_excluidos)].copy()
         else:
@@ -1208,7 +1204,7 @@ with aba_inventarios:
             cor_perda = "#e74c3c"
             cor_liq = cor_perda if diferenca_liq < 0 else (cor_ganho if diferenca_liq > 0 else "#8c9ba5")
 
-            # 4. Montagem Visual Macro (Fixa no Topo)
+            # 4. Montagem Visual Macro
             html_tabela_geral = f"""
             <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
                 <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
@@ -1237,7 +1233,7 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Sanfona com Formulário e Fechamento Automático Otimizados
+            # 5. Sanfona com Formulário Limpo (Sem duplo reload)
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS IDs POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1249,7 +1245,6 @@ with aba_inventarios:
                     
                     st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
 
-                    # Agora usamos nosso Dicionário de Memória! Nada de recalcular o DataFrame linha por linha.
                     for emp_nome in empresas_disponiveis:
                         dados_emp = dict_empresas_dados[emp_nome]
                         
@@ -1270,16 +1265,12 @@ with aba_inventarios:
                                 with st.form(key=f"form_filtro_{emp_nome}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar IDs:</div>", unsafe_allow_html=True)
                                     
-                                    temp_vals = {}
+                                    # As caixinhas agora são gerenciadas de forma nativa e segura pelo Streamlit
                                     for uid in todos_ids_emp:
                                         chk_key = f"chk_id_{emp_nome}_{uid}"
-                                        temp_vals[uid] = st.checkbox(f"ID #{uid}", value=st.session_state.get(chk_key, True))
+                                        st.checkbox(f"ID #{uid}", key=chk_key)
                                     
-                                    submitted = st.form_submit_button("Aplicar Filtro", use_container_width=True)
-                                    if submitted:
-                                        for uid, val in temp_vals.items():
-                                            st.session_state[f"chk_id_{emp_nome}_{uid}"] = val
-                                        # O comando st.rerun() força a atualização do servidor na hora e recolhe o popover.
-                                        st.rerun()
+                                    # O botão aplica sem precisar do estalo do rerun manual
+                                    st.form_submit_button("Aplicar Filtro", use_container_width=True)
                         
                         st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
