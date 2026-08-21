@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Grid Executivo de Células - Versão Única)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Grid Executivo de Células nas Unidades)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1293,19 +1293,26 @@ with aba_inventarios:
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
             # =========================================================================
-            # SANFONA COM MULTISELECT NO FORMULÁRIO (UNIDADES)
+            # SANFONA COM DETALHAMENTO EM ESTILO GRID DE CÉLULAS (CARDS)
             # =========================================================================
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
                     
-                    c_h1, c_h2, c_h3, c_h4, c_h5 = st.columns([2.2, 0.7, 2.0, 2.0, 1.4])
-                    c_h1.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nome da Empresa</div>", unsafe_allow_html=True)
-                    c_h2.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>(QT) INV.'S</div>", unsafe_allow_html=True)
-                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nº INV. GERAL</div>", unsafe_allow_html=True)
-                    c_h4.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nº INV. ROTATIVO</div>", unsafe_allow_html=True)
-                    c_h5.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>GERENCIAR</div>", unsafe_allow_html=True)
-                    
-                    st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
+                    # Cabeçalho da tabela com fundo e bordas de grade idênticas ao resumo
+                    html_cabecalho_detalhe = """
+                    <div style="background-color: #1f2836; border: 1px solid #2f3b4c; border-radius: 6px; padding: 10px; margin-bottom: 8px;">
+                        <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 11px; font-weight: bold; color: #8c9ba5; text-transform: uppercase;">
+                            <tr>
+                                <th style="text-align: left; padding: 6px; border-right: 1px solid #2f3b4c; width: 30%;">Nome da Empresa</th>
+                                <th style="padding: 6px; border-right: 1px solid #2f3b4c; width: 12%;">(QT) INV.'S</th>
+                                <th style="padding: 6px; border-right: 1px solid #2f3b4c; width: 22%;">Nº INV. GERAL</th>
+                                <th style="padding: 6px; border-right: 1px solid #2f3b4c; width: 22%;">Nº INV. ROTATIVO</th>
+                                <th style="padding: 6px; width: 14%;">Gerenciar</th>
+                            </tr>
+                        </table>
+                    </div>
+                    """.replace('\n', '')
+                    st.markdown(html_cabecalho_detalhe, unsafe_allow_html=True)
 
                     for emp_nome in empresas_disponiveis:
                         dados_emp = dict_empresas_dados[emp_nome]
@@ -1318,16 +1325,27 @@ with aba_inventarios:
                         str_geral = ", ".join(ids_geral) if ids_geral else "-"
                         str_rotativo = ", ".join(ids_rotativo) if ids_rotativo else "-"
 
-                        c1, c2, c3, c4, c5 = st.columns([2.2, 0.7, 2.0, 2.0, 1.4], vertical_alignment="center")
+                        # Cada linha agora é um grid card com bordas e células bem definidas
+                        col_r1, col_r2 = st.columns([8.6, 1.4], vertical_alignment="center")
                         
-                        c1.markdown(f"<div style='color: #ffffff; font-size: 13px; font-weight: 500;'>{html.escape(emp_nome)}</div>", unsafe_allow_html=True)
-                        c2.markdown(f"<div style='color: #ffffff; font-size: 14px; font-weight: bold; text-align: center;'>{qtd_ativa_emp}</div>", unsafe_allow_html=True)
-                        c3.markdown(f"<div style='color: #ffffff; font-size: 13px; font-family: monospace;'>{str_geral}</div>", unsafe_allow_html=True)
-                        c4.markdown(f"<div style='color: #ffffff; font-size: 13px; font-family: monospace;'>{str_rotativo}</div>", unsafe_allow_html=True)
+                        with col_r1:
+                            html_linha_celulas = f"""
+                            <div style="background-color: #161c24; border: 1px solid #2f3b4c; border-radius: 6px; padding: 10px; margin-bottom: 6px;">
+                                <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
+                                    <tr>
+                                        <td style="text-align: left; padding: 6px; border-right: 1px solid #2f3b4c; width: 35%; color: #ffffff; font-weight: 500;">{html.escape(emp_nome)}</td>
+                                        <td style="padding: 6px; border-right: 1px solid #2f3b4c; width: 14%; color: #ffffff; font-weight: bold;">{qtd_ativa_emp}</td>
+                                        <td style="padding: 6px; border-right: 1px solid #2f3b4c; width: 25%; color: #ffffff; font-family: monospace;">{str_geral}</td>
+                                        <td style="padding: 6px; width: 26%; color: #ffffff; font-family: monospace;">{str_rotativo}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            """.replace('\n', '')
+                            st.markdown(html_linha_celulas, unsafe_allow_html=True)
                         
-                        with c5:
-                            with st.popover("🔎 Filtrar Inventário", use_container_width=True):
-                                
+                        with col_r2:
+                            # O botão popover fica perfeitamente alinhado ao lado do grid da linha
+                            with st.popover("🔎 Filtrar", use_container_width=True):
                                 with st.form(key=f"form_filtro_{emp_nome}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Selecionar Inventários:</div>", unsafe_allow_html=True)
                                     
@@ -1347,5 +1365,3 @@ with aba_inventarios:
                                         for uid in todos_ids_emp:
                                             st.session_state[f"inv_active_{emp_nome}_{uid}"] = (uid in selecionados_multi)
                                         st.rerun()
-                        
-                        st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
