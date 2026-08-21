@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros por Linha de Empresa)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros Elegantes por Popover de Linha)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1134,21 +1134,18 @@ with aba_inventarios:
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
             df_inv = df_inv[df_inv['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
-        # Coletando todas as empresas únicas disponíveis para criar os estados de filtro por linha
+        # Coletando empresas para o filtro por linha
         empresas_disponiveis_base = sorted([str(x) for x in df_inv['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_inv.columns else []
 
-        # Aplicando os filtros linha por linha definidos nas caixinhas de cada empresa
         dfs_filtrados_por_empresa = []
         for emp_nome in empresas_disponiveis_base:
             df_emp_subset = df_inv[df_inv['empresa_nome'].astype(str) == emp_nome]
             ids_da_empresa = sorted([str(i).strip() for i in df_emp_subset['id_inventario'].dropna().unique() if str(i).strip() != ''], key=lambda val: int(val) if val.isdigit() else 0)
             
-            # Chave única de session_state para a caixinha desta empresa
-            key_state_emp = f"filtro_ids_emp_{emp_nome}"
+            key_state_emp = f"popover_ids_emp_{emp_nome}"
             if key_state_emp not in st.session_state:
-                st.session_state[key_state_emp] = ids_da_empresa # Por padrão, todos selecionados
+                st.session_state[key_state_emp] = ids_da_empresa
             
-            # Garantir que se a base mudar, os IDs válidos estejam selecionados
             ids_selecionados_nesta_emp = [i for i in st.session_state[key_state_emp] if i in ids_da_empresa]
             if not ids_selecionados_nesta_emp and ids_da_empresa:
                 ids_selecionados_nesta_emp = ids_da_empresa
@@ -1211,19 +1208,20 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Efeito Sanfona Interativo com Caixinha de Filtro por Linha de Empresa
+            # 5. Efeito Sanfona Interativo com Coluna de Texto Limpa + Popover de Filtro Isolado
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS IDs POR UNIDADE"):
                 with st.container(border=True):
                     
-                    # Cabeçalho da tabela interna
-                    c_h1, c_h2, c_h3 = st.columns([2.5, 1, 3.5])
+                    # Cabeçalho da tabela interna com 4 colunas perfeitas
+                    c_h1, c_h2, c_h3, c_h4 = st.columns([2.5, 0.8, 2.5, 1.5])
                     c_h1.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nome da Empresa</div>", unsafe_allow_html=True)
-                    c_h2.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>(Qtde) Inv.</div>", unsafe_allow_html=True)
-                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Filtrar / Gerenciar IDs desta Unidade</div>", unsafe_allow_html=True)
+                    c_h2.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>(Qtde)</div>", unsafe_allow_html=True)
+                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>IDs Rastreados</div>", unsafe_allow_html=True)
+                    c_h4.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>Filtro por Linha</div>", unsafe_allow_html=True)
                     
                     st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
                     
-                    # Pegamos a lista de empresas presentes na base filtrada original para exibir as linhas
+                    # Base de empresas para as linhas
                     df_empresas_base_unidades = df_inventario.copy()
                     if empresas_sel: df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['empresa_nome'].astype(str).isin(empresas_sel)]
                     if anos_para_filtrar: df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['ano_referencia'].astype(str).isin(anos_para_filtrar)]
@@ -1244,11 +1242,14 @@ with aba_inventarios:
                         df_emp_full = df_empresas_base_unidades[df_empresas_base_unidades['empresa_nome'].astype(str) == emp_nome]
                         todos_ids_emp = sorted([str(i).strip() for i in df_emp_full['id_inventario'].dropna().unique() if str(i).strip() != ''], key=lambda val: int(val) if val.isdigit() else 0)
                         
-                        key_state_emp = f"filtro_ids_emp_{emp_nome}"
+                        ids_str = ", ".join([f"#{uid}" for uid in todos_ids_emp]) if todos_ids_emp else "-"
+
+                        key_state_emp = f"popover_ids_emp_{emp_nome}"
                         ids_ativos_emp = st.session_state.get(key_state_emp, todos_ids_emp)
                         qtd_ativa_emp = len([i for i in ids_ativos_emp if i in todos_ids_emp])
 
-                        c1, c2, c3 = st.columns([2.5, 1, 3.5], vertical_alignment="center")
+                        # Criando as 4 colunas perfeitas por linha
+                        c1, c2, c3, c4 = st.columns([2.5, 0.8, 2.5, 1.5], vertical_alignment="center")
                         
                         # Coluna 1: Nome da Empresa
                         c1.markdown(f"<div style='color: #ffffff; font-size: 13px; font-weight: 500;'>{html.escape(emp_nome)}</div>", unsafe_allow_html=True)
@@ -1256,15 +1257,19 @@ with aba_inventarios:
                         # Coluna 2: Quantidade de Inventários Ativos
                         c2.markdown(f"<div style='color: #3498db; font-size: 14px; font-weight: bold; text-align: center;'>{qtd_ativa_emp}</div>", unsafe_allow_html=True)
                         
-                        # Coluna 3: A caixinha de multiselect exclusiva para filtrar os IDs desta linha
-                        with c3:
-                            st.multiselect(
-                                f"IDs {emp_nome}",
-                                options=todos_ids_emp,
-                                default=ids_ativos_emp,
-                                key=key_state_emp,
-                                placeholder="Selecione os IDs...",
-                                label_visibility="collapsed"
-                            )
+                        # Coluna 3: Texto Limpo com os IDs (Ex: #859, #862)
+                        c3.markdown(f"<div style='color: #8c9ba5; font-size: 13px; font-family: monospace;'>{ids_str}</div>", unsafe_allow_html=True)
+                        
+                        # Coluna 4: O Botão Popover (A caixinha flutuante de filtro da linha!)
+                        with c4:
+                            with st.popover("🔎 Filtrar IDs", use_container_width=True):
+                                st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff;'>Gerenciar IDs:</div>", unsafe_allow_html=True)
+                                st.multiselect(
+                                    f"IDs {emp_nome}",
+                                    options=todos_ids_emp,
+                                    default=ids_ativos_emp,
+                                    key=key_state_emp,
+                                    label_visibility="collapsed"
+                                )
                         
                         st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
