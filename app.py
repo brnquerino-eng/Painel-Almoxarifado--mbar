@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros Compactos com Gestão de IDs)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros por Linha de Empresa)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1095,7 +1095,6 @@ with aba_inventarios:
         if 'inv_ano_sel' not in st.session_state: st.session_state.inv_ano_sel = []
         if 'inv_mes_sel' not in st.session_state: st.session_state.inv_mes_sel = []
         if 'inv_tipo_sel' not in st.session_state: st.session_state.inv_tipo_sel = []
-        if 'inv_ids_excluidos' not in st.session_state: st.session_state.inv_ids_excluidos = []
 
         # 1. Filtros Superiores Compactos
         with st.container(border=True):
@@ -1135,30 +1134,42 @@ with aba_inventarios:
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
             df_inv = df_inv[df_inv['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
-        # Extraindo todos os IDs disponíveis no período filtrado para alimentar a caixinha de exclusão
-        todos_ids_disponiveis = sorted(df_inv['id_inventario'].dropna().astype(str).unique().tolist(), key=lambda val: int(val) if val.isdigit() else 0)
+        # Coletando todas as empresas únicas disponíveis para criar os estados de filtro por linha
+        empresas_disponiveis_base = sorted([str(x) for x in df_inv['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_inv.columns else []
 
-        # 3. CAIXA DE FILTRO DE IDs (Para ocultar/excluir IDs específicos da conta)
-        with st.container(border=True):
-            st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: 5px;'>🔎 Filtro de Auditoria (Exclusão por ID de Inventário):</div>", unsafe_allow_html=True)
-            ids_excluidos_sel = st.multiselect(
-                "Excluir IDs:", 
-                todos_ids_disponiveis, 
-                key="inv_ids_excluidos", 
-                placeholder="Selecione IDs para remover do cálculo global...", 
-                label_visibility="collapsed"
-            )
+        # Aplicando os filtros linha por linha definidos nas caixinhas de cada empresa
+        dfs_filtrados_por_empresa = []
+        for emp_nome in empresas_disponiveis_base:
+            df_emp_subset = df_inv[df_inv['empresa_nome'].astype(str) == emp_nome]
+            ids_da_empresa = sorted([str(i).strip() for i in df_emp_subset['id_inventario'].dropna().unique() if str(i).strip() != ''], key=lambda val: int(val) if val.isdigit() else 0)
+            
+            # Chave única de session_state para a caixinha desta empresa
+            key_state_emp = f"filtro_ids_emp_{emp_nome}"
+            if key_state_emp not in st.session_state:
+                st.session_state[key_state_emp] = ids_da_empresa # Por padrão, todos selecionados
+            
+            # Garantir que se a base mudar, os IDs válidos estejam selecionados
+            ids_selecionados_nesta_emp = [i for i in st.session_state[key_state_emp] if i in ids_da_empresa]
+            if not ids_selecionados_nesta_emp and ids_da_empresa:
+                ids_selecionados_nesta_emp = ids_da_empresa
 
-        # Aplicando a exclusão de IDs na base
-        if ids_excluidos_sel:
-            df_inv = df_inv[~df_inv['id_inventario'].astype(str).isin([str(x) for x in ids_excluidos_sel])]
+            if ids_selecionados_nesta_emp:
+                df_emp_filtrado = df_emp_subset[df_emp_subset['id_inventario'].astype(str).isin(ids_selecionados_nesta_emp)]
+                dfs_filtrados_por_empresa.append(df_emp_filtrado)
+
+        if dfs_filtrados_por_empresa:
+            df_inv = pd.concat(dfs_filtrados_por_empresa, ignore_index=True)
+        else:
+            df_inv = pd.DataFrame(columns=df_inventario.columns)
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        if df_inv.empty:
+        if df_inv.empty and not df_inventario.empty:
+            st.info("⚠️ Todos os IDs foram desmarcados nos filtros por linha. Selecione pelo menos um ID para visualizar os dados.")
+        elif df_inv.empty:
             st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            # 4. Cálculos Macro (Totais Globais)
+            # 3. Cálculos Macro (Totais Globais)
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
             ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
@@ -1171,38 +1182,12 @@ with aba_inventarios:
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
-            # 5. Agrupamento para a Sanfona (Texto limpo com todos os IDs unidos)
-            if 'empresa_nome' in df_inv.columns:
-                def get_ids_str(x):
-                    ids_limpos = [str(i).strip() for i in x.dropna() if str(i).strip() != '']
-                    ids_unicos = sorted(list(set(ids_limpos)), key=lambda val: int(val) if val.isdigit() else 0)
-                    return ", ".join([f"#{uid}" for uid in ids_unicos]) if ids_unicos else "-"
-
-                df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
-                    qtd_inv=('id_inventario', 'nunique'),
-                    lista_ids=('id_inventario', get_ids_str)
-                ).reset_index()
-            else:
-                df_empresas_resumo = pd.DataFrame()
-
-            # Construção das linhas da Sanfona em HTML Puro e Limpo
-            linhas_tabela_html = ""
-            if not df_empresas_resumo.empty:
-                for _, row in df_empresas_resumo.iterrows():
-                    emp = html.escape(str(row['empresa_nome']))
-                    qtd = row['qtd_inv']
-                    ids = html.escape(str(row['lista_ids']))
-                    
-                    linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db; width: 160px;">{qtd}</td><td style="padding: 12px; text-align: left; padding-left: 15px; color: #8c9ba5; font-family: monospace; font-size: 13px;">{ids}</td></tr>'
-
-            # 6. Montagem Final (Painel Macro + Sanfona HTML Perfeita)
+            # 4. Montagem Visual Macro (Sempre Fixa no Topo)
             html_tabela_geral = f"""
             <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
-                
                 <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
                     INVENTÁRIO GERAL - RESUMO EXECUTIVO
                 </div>
-                
                 <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
                     <tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; text-transform: uppercase;">
                         <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(Qtde) Inventários</th>
@@ -1221,25 +1206,65 @@ with aba_inventarios:
                         <td style="padding: 18px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
                     </tr>
                 </table>
-
-                <details style="background-color: #1a222d; border-top: 2px solid #333d4d;">
-                    <summary style="padding: 12px 15px; color: #ffffff; font-weight: bold; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s; background-color: #1f2836;">
-                        <span style="color: #d85c27; margin-right: 8px;">📂</span> CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO (IDs POR UNIDADE)
-                    </summary>
-                    
-                    <div style="border-top: 1px solid #232b36;">
-                        <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
-                            <tr style="background-color: #161c24; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;">
-                                <th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Nome da Empresa</th>
-                                <th style="padding: 10px; border-right: 1px solid #232b36; width: 160px;">(Qtde) Inventários</th>
-                                <th style="padding: 10px; text-align: left; padding-left: 15px;">IDs Rastreados</th>
-                            </tr>
-                            {linhas_tabela_html}
-                        </table>
-                    </div>
-                </details>
-                
             </div>
             """.replace('\n', '')
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
+
+            # 5. Efeito Sanfona Interativo com Caixinha de Filtro por Linha de Empresa
+            with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS IDs POR UNIDADE"):
+                with st.container(border=True):
+                    
+                    # Cabeçalho da tabela interna
+                    c_h1, c_h2, c_h3 = st.columns([2.5, 1, 3.5])
+                    c_h1.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nome da Empresa</div>", unsafe_allow_html=True)
+                    c_h2.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>(Qtde) Inv.</div>", unsafe_allow_html=True)
+                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Filtrar / Gerenciar IDs desta Unidade</div>", unsafe_allow_html=True)
+                    
+                    st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
+                    
+                    # Pegamos a lista de empresas presentes na base filtrada original para exibir as linhas
+                    df_empresas_base_unidades = df_inventario.copy()
+                    if empresas_sel: df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['empresa_nome'].astype(str).isin(empresas_sel)]
+                    if anos_para_filtrar: df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['ano_referencia'].astype(str).isin(anos_para_filtrar)]
+                    if meses_selecionados_efetivos:
+                        meses_para_filtrar_u = []
+                        for m in meses_selecionados_efetivos:
+                            val_orig_u = mapa_meses_inverso.get(m, m)
+                            meses_para_filtrar_u.append(val_orig_u)
+                            if val_orig_u.isdigit(): meses_para_filtrar_u.append(str(int(val_orig_u)))
+                        df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['mes_referencia'].astype(str).isin(meses_para_filtrar_u)]
+                    if tipos_sel: 
+                        tipos_para_filtrar_u = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
+                        df_empresas_base_unidades = df_empresas_base_unidades[df_empresas_base_unidades['tipo_inventario'].astype(str).isin(tipos_para_filtrar_u)]
+
+                    lista_empresas_linhas = sorted([str(x) for x in df_empresas_base_unidades['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_empresas_base_unidades.columns else []
+
+                    for emp_nome in lista_empresas_linhas:
+                        df_emp_full = df_empresas_base_unidades[df_empresas_base_unidades['empresa_nome'].astype(str) == emp_nome]
+                        todos_ids_emp = sorted([str(i).strip() for i in df_emp_full['id_inventario'].dropna().unique() if str(i).strip() != ''], key=lambda val: int(val) if val.isdigit() else 0)
+                        
+                        key_state_emp = f"filtro_ids_emp_{emp_nome}"
+                        ids_ativos_emp = st.session_state.get(key_state_emp, todos_ids_emp)
+                        qtd_ativa_emp = len([i for i in ids_ativos_emp if i in todos_ids_emp])
+
+                        c1, c2, c3 = st.columns([2.5, 1, 3.5], vertical_alignment="center")
+                        
+                        # Coluna 1: Nome da Empresa
+                        c1.markdown(f"<div style='color: #ffffff; font-size: 13px; font-weight: 500;'>{html.escape(emp_nome)}</div>", unsafe_allow_html=True)
+                        
+                        # Coluna 2: Quantidade de Inventários Ativos
+                        c2.markdown(f"<div style='color: #3498db; font-size: 14px; font-weight: bold; text-align: center;'>{qtd_ativa_emp}</div>", unsafe_allow_html=True)
+                        
+                        # Coluna 3: A caixinha de multiselect exclusiva para filtrar os IDs desta linha
+                        with c3:
+                            st.multiselect(
+                                f"IDs {emp_nome}",
+                                options=todos_ids_emp,
+                                default=ids_ativos_emp,
+                                key=key_state_emp,
+                                placeholder="Selecione os IDs...",
+                                label_visibility="collapsed"
+                            )
+                        
+                        st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
