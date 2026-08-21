@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Grid Executivo de Células nas Unidades)
+# ABA 2: INVENTÁRIOS (Tema Escuro, Grid Executivo & Inventário Congelado)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1247,44 +1247,95 @@ with aba_inventarios:
         elif df_inv.empty:
             st.info("Nenhum dado de inventário encontrado para os filtros selecionados.")
         else:
-            # Cálculos Macro (Totais Globais)
-            saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
-            ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
-            perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
-            diferenca_liq = ganhos + perdas
+            # =========================================================================
+            # CÁLCULOS COMPLETOS DO INVENTÁRIO CONGELADO (BASELINE x RESULTADO)
+            # =========================================================================
+            total_invs = df_inv['id_inventario'].nunique() if 'id_inventario' in df_inv.columns else 0
             
-            total_inventarios_distintos = df_inv['id_inventario'].nunique() if 'id_inventario' in df_inv.columns else 0
-            divergencia_absoluta = abs(df_inv['diferenca_val']).sum() if 'diferenca_val' in df_inv.columns else 0.0
-            acuracia_fin = max(0, (1 - (divergencia_absoluta / saldo_sistema)) * 100) if saldo_sistema > 0 else (100.0 if divergencia_absoluta == 0 else 0.0)
+            # Contagem de Rotativo vs Geral baseada no tipo
+            invs_rotativos = 0
+            invs_geral = 0
+            if 'id_inventario' in df_inv.columns and 'tipo_inventario' in df_inv.columns:
+                for inv_id in df_inv['id_inventario'].unique():
+                    subset_inv = df_inv[df_inv['id_inventario'] == inv_id]
+                    tipos_inv = subset_inv['tipo_inventario'].astype(str).unique()
+                    if any(eh_rotativo(t) for t in tipos_inv):
+                        invs_rotativos += 1
+                    else:
+                        invs_geral += 1
+
+            total_linhas = len(df_inv)
+            skus_unicos = df_inv['sku'].nunique() if 'sku' in df_inv.columns else (df_inv['codigo_material'].nunique() if 'codigo_material' in df_inv.columns else 0)
+
+            # Itens Contados / Quantidades (Baseline vs Físico)
+            col_qtd_sistema = 'saldo_anterior_qtd' if 'saldo_anterior_qtd' in df_inv.columns else ('quantidade_sistema' if 'quantidade_sistema' in df_inv.columns else None)
+            col_qtd_fisico = 'quantidade_fisica' if 'quantidade_fisica' in df_inv.columns else ('quantidade_contada' if 'quantidade_contada' in df_inv.columns else None)
+
+            itens_contados_total = df_inv[col_qtd_fisico].sum() if col_qtd_fisico and col_qtd_fisico in df_inv.columns else total_linhas
+            
+            # Divergências para mais e para menos
+            col_diff_val = 'diferenca_val' if 'diferenca_val' in df_inv.columns else 0.0
+            ganhos_val = df_inv[df_inv[col_diff_val] > 0][col_diff_val].sum() if col_diff_val in df_inv.columns else 0.0
+            perdas_val = df_inv[df_inv[col_diff_val] < 0][col_diff_val].sum() if col_diff_val in df_inv.columns else 0.0
+            diferenca_liq = ganhos_val + perdas_val
+
+            # Contagem de linhas divergentes (para mais / para menos)
+            itens_diverg_mais = len(df_inv[df_inv[col_diff_val] > 0]) if col_diff_val in df_inv.columns else 0
+            itens_diverg_menos = len(df_inv[df_inv[col_diff_val] < 0]) if col_diff_val in df_inv.columns else 0
+
+            # Acurácias
+            saldo_sistema_val = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
+            divergencia_absoluta = abs(df_inv[col_diff_val]).sum() if col_diff_val in df_inv.columns else 0.0
+            acuracia_valor = max(0, (1 - (divergencia_absoluta / saldo_sistema_val)) * 100) if saldo_sistema_val > 0 else (100.0 if divergencia_absoluta == 0 else 0.0)
+
+            # Acurácia de itens (linhas sem divergência vs total de linhas)
+            linhas_sem_divergencia = len(df_inv[df_inv[col_diff_val] == 0]) if col_diff_val in df_inv.columns else total_linhas
+            acuracia_itens = (linhas_sem_divergencia / total_linhas * 100) if total_linhas > 0 else 100.0
 
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
             cor_liq = cor_perda if diferenca_liq < 0 else (cor_ganho if diferenca_liq > 0 else "#8c9ba5")
 
             # =========================================================================
-            # TABELA MACRO COM ESTILO DE GRID E CÉLULAS DEFINIDAS
+            # TABELA MACRO EXECUTIVA - INVENTÁRIO CONGELADO (GRID DE CÉLULAS)
             # =========================================================================
             html_tabela_geral = f"""
             <div style="background-color: #161c24; border: 1px solid #2f3b4c; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
                 <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
-                    INVENTÁRIO GERAL - RESUMO EXECUTIVO
+                    INVENTÁRIO CONGELADO - PAINEL EXECUTIVO DE RESULTADOS
                 </div>
-                <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
-                    <tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; text-transform: uppercase;">
-                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">(QT) INV.'S</th>
-                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">Total Linhas</th>
-                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">(R$) Ganhos</th>
-                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">(R$) Perdas</th>
-                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">(R$) Diferença</th>
-                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 20%;">Acurácia Global</th>
+                <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 12px;">
+                    <!-- Linha 1: Escopo e Volumetria -->
+                    <tr style="background-color: #1f2836; font-weight: bold; color: #8c9ba5; text-transform: uppercase; font-size: 10px;">
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">Qtd. Inv. Total</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">Inv. Rotativo</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">Inv. Geral</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">Total Linhas</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">SKUs Únicos</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 30%;">Itens Contados</th>
                     </tr>
-                    <tr style="background-color: #161c24; font-size: 16px;">
-                        <td style="padding: 16px; border: 1px solid #2f3b4c; font-weight: 900; color: #3498db;">{total_inventarios_distintos}</td>
-                        <td style="padding: 16px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{fmt_int(len(df_inv))}</td>
-                        <td style="padding: 16px; border: 1px solid #2f3b4c; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
-                        <td style="padding: 16px; border: 1px solid #2f3b4c; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
-                        <td style="padding: 16px; border: 1px solid #2f3b4c; color: {cor_liq}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
-                        <td style="padding: 16px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
+                    <tr style="background-color: #161c24; font-size: 15px;">
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #3498db;">{total_invs}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #f39c12;">{invs_rotativos}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #9b59b6;">{invs_geral}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{fmt_int(total_linhas)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #1abc9c;">{fmt_int(skus_unicos)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{fmt_int(itens_contados_total)}</td>
+                    </tr>
+                    <!-- Linha 2: Divergências e Acurácias -->
+                    <tr style="background-color: #1f2836; font-weight: bold; color: #8c9ba5; text-transform: uppercase; font-size: 10px;">
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">Diverg. (+) Sobras</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">Diverg. (-) Perdas</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(R$) Ganhos / Perdas</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">Acurácia de Itens</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;" colspan="2">Acurácia de Valor</th>
+                    </tr>
+                    <tr style="background-color: #161c24; font-size: 15px;">
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_ganho};">{fmt_int(itens_diverg_mais)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_perda};">{fmt_int(itens_diverg_menos)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_liq};">{fmt_brl(diferenca_liq)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{acuracia_itens:.2f}%</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;" colspan="2">{acuracia_valor:.2f}%</td>
                     </tr>
                 </table>
             </div>
@@ -1293,12 +1344,11 @@ with aba_inventarios:
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
             # =========================================================================
-            # SANFONA COM DETALHAMENTO EM ESTILO GRID DE CÉLULAS (CARDS)
+            # SANFONA COM DETALHAMENTO EM ESTILO GRID DE CÉLULAS (UNIDADES)
             # =========================================================================
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
                     
-                    # Cabeçalho da tabela com fundo e bordas de grade idênticas ao resumo
                     html_cabecalho_detalhe = """
                     <div style="background-color: #1f2836; border: 1px solid #2f3b4c; border-radius: 6px; padding: 10px; margin-bottom: 8px;">
                         <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 11px; font-weight: bold; color: #8c9ba5; text-transform: uppercase;">
@@ -1325,7 +1375,6 @@ with aba_inventarios:
                         str_geral = ", ".join(ids_geral) if ids_geral else "-"
                         str_rotativo = ", ".join(ids_rotativo) if ids_rotativo else "-"
 
-                        # Cada linha agora é um grid card com bordas e células bem definidas
                         col_r1, col_r2 = st.columns([8.6, 1.4], vertical_alignment="center")
                         
                         with col_r1:
@@ -1344,7 +1393,6 @@ with aba_inventarios:
                             st.markdown(html_linha_celulas, unsafe_allow_html=True)
                         
                         with col_r2:
-                            # O botão popover fica perfeitamente alinhado ao lado do grid da linha
                             with st.popover("🔎 Filtrar", use_container_width=True):
                                 with st.form(key=f"form_filtro_{emp_nome}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Selecionar Inventários:</div>", unsafe_allow_html=True)
