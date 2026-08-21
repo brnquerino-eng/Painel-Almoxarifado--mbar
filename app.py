@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Performance Máxima Sem Estalos)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Ajustes Visuais Executivos)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1141,7 +1141,7 @@ with aba_inventarios:
             ]
 
         # =========================================================================
-        # OTIMIZAÇÃO: PROCESSAMENTO DIRETO DA MEMÓRIA (Fim do Estalo)
+        # PROCESSAMENTO DE DADOS E MEMÓRIA
         # =========================================================================
         empresas_disponiveis = sorted([str(x) for x in df_base_global['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_base_global.columns else []
 
@@ -1163,7 +1163,6 @@ with aba_inventarios:
                 if chk_key not in st.session_state:
                     st.session_state[chk_key] = True 
                 
-                # O sistema lê a memória instantaneamente, sem precisar de recargas secundárias!
                 if st.session_state[chk_key]:
                     ids_ativos_nesta_emp.append(uid)
                 else:
@@ -1175,7 +1174,6 @@ with aba_inventarios:
                 'qtd_ativa': len(ids_ativos_nesta_emp)
             }
 
-        # Aplica exclusão na base principal
         if ids_excluidos:
             chave_temp = df_base_global['empresa_nome'].astype(str) + "||" + df_base_global['id_inventario'].apply(limpar_id)
             df_inv = df_base_global[~chave_temp.isin(ids_excluidos)].copy()
@@ -1186,7 +1184,7 @@ with aba_inventarios:
         st.markdown("<br>", unsafe_allow_html=True)
 
         if df_inv.empty and not df_base_global.empty:
-            st.info("⚠️ Você desmarcou todos os IDs nas linhas. Abra o filtro e clique em Aplicar marcando pelo menos um ID.")
+            st.info("⚠️ Você desmarcou todos os inventários nas linhas. Abra o filtro e clique em Aplicar marcando pelo menos um.")
         elif df_inv.empty:
             st.info("Nenhum dado de inventário encontrado para os filtros selecionados.")
         else:
@@ -1212,7 +1210,7 @@ with aba_inventarios:
                 </div>
                 <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
                     <tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; text-transform: uppercase;">
-                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(Qtde) Inventários</th>
+                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(QT) INV.'S</th>
                         <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">Total Linhas</th>
                         <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Ganhos</th>
                         <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Perdas</th>
@@ -1233,15 +1231,15 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Sanfona com Formulário Limpo (Sem duplo reload)
-            with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS IDs POR UNIDADE"):
+            # 5. Sanfona com Nomes e Cores Ajustadas (Branco e sem #)
+            with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
                     
                     c_h1, c_h2, c_h3, c_h4 = st.columns([2.5, 0.8, 2.5, 1.5])
                     c_h1.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nome da Empresa</div>", unsafe_allow_html=True)
-                    c_h2.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>(Qtde)</div>", unsafe_allow_html=True)
-                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>IDs Ativos</div>", unsafe_allow_html=True)
-                    c_h4.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>Gerenciar</div>", unsafe_allow_html=True)
+                    c_h2.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>(QT) INV.'S</div>", unsafe_allow_html=True)
+                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nº INVENTÁRIO</div>", unsafe_allow_html=True)
+                    c_h4.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>GERENCIAR</div>", unsafe_allow_html=True)
                     
                     st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
 
@@ -1252,25 +1250,26 @@ with aba_inventarios:
                         ids_ativos_tela = dados_emp['ids_ativos']
                         qtd_ativa_emp = dados_emp['qtd_ativa']
                         
-                        ids_str = ", ".join([f"#{uid}" for uid in ids_ativos_tela]) if ids_ativos_tela else "Nenhum ativo"
+                        # Sem o caractere '#' e com texto limpo
+                        ids_str = ", ".join([str(uid) for uid in ids_ativos_tela]) if ids_ativos_tela else "Nenhum ativo"
 
                         c1, c2, c3, c4 = st.columns([2.5, 0.8, 2.5, 1.5], vertical_alignment="center")
                         
+                        # Cores atualizadas para branco (#ffffff), combinando com as unidades
                         c1.markdown(f"<div style='color: #ffffff; font-size: 13px; font-weight: 500;'>{html.escape(emp_nome)}</div>", unsafe_allow_html=True)
-                        c2.markdown(f"<div style='color: #3498db; font-size: 14px; font-weight: bold; text-align: center;'>{qtd_ativa_emp}</div>", unsafe_allow_html=True)
-                        c3.markdown(f"<div style='color: #8c9ba5; font-size: 13px; font-family: monospace;'>{ids_str}</div>", unsafe_allow_html=True)
+                        c2.markdown(f"<div style='color: #ffffff; font-size: 14px; font-weight: bold; text-align: center;'>{qtd_ativa_emp}</div>", unsafe_allow_html=True)
+                        c3.markdown(f"<div style='color: #ffffff; font-size: 13px; font-family: monospace;'>{ids_str}</div>", unsafe_allow_html=True)
                         
                         with c4:
-                            with st.popover("🔎 Filtrar IDs", use_container_width=True):
+                            # Nome do botão de filtro atualizado para "Filtrar Inventário"
+                            with st.popover("🔎 Filtrar Inventário", use_container_width=True):
                                 with st.form(key=f"form_filtro_{emp_nome}"):
-                                    st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar IDs:</div>", unsafe_allow_html=True)
+                                    st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar Inventários:</div>", unsafe_allow_html=True)
                                     
-                                    # As caixinhas agora são gerenciadas de forma nativa e segura pelo Streamlit
                                     for uid in todos_ids_emp:
                                         chk_key = f"chk_id_{emp_nome}_{uid}"
-                                        st.checkbox(f"ID #{uid}", key=chk_key)
+                                        st.checkbox(f"Inventário #{uid}", key=chk_key)
                                     
-                                    # O botão aplica sem precisar do estalo do rerun manual
                                     st.form_submit_button("Aplicar Filtro", use_container_width=True)
                         
                         st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
