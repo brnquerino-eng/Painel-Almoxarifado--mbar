@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro, Separação Geral/Rotativo & Controle de Rascunho)
+# ABA 2: INVENTÁRIOS (Tema Escuro, Separação Geral/Rotativo & Filtro Limpo)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1252,7 +1252,7 @@ with aba_inventarios:
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
             # =========================================================================
-            # SANFONA COM BOTÃO DUPLO (APLICAR E VOLTAR)
+            # SANFONA COM FORMULÁRIO LIMPO (SÓ BOTÃO APLICAR)
             # =========================================================================
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
@@ -1287,41 +1287,23 @@ with aba_inventarios:
                         with c5:
                             with st.popover("🔎 Filtrar Inventário", use_container_width=True):
                                 
-                                # Controlador de Reset da Memória (Limpa o rascunho visual)
-                                reset_key = f"reset_form_idx_{emp_nome}"
-                                if reset_key not in st.session_state:
-                                    st.session_state[reset_key] = 0
-                                idx_versao = st.session_state[reset_key]
-
-                                with st.form(key=f"form_filtro_{emp_nome}_{idx_versao}"):
+                                with st.form(key=f"form_filtro_{emp_nome}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar Inventários:</div>", unsafe_allow_html=True)
                                     
                                     for uid in todos_ids_emp:
-                                        # Puxa sempre a versão oficial salva no sistema para renderizar as caixinhas
+                                        # Puxa a versão ativa (oficial)
                                         active_key = f"inv_active_{emp_nome}_{uid}"
                                         valor_oficial = st.session_state.get(active_key, True)
                                         
-                                        chk_key = f"chk_{emp_nome}_{uid}_{idx_versao}"
+                                        chk_key = f"chk_{emp_nome}_{uid}"
                                         st.checkbox(f"Inventário {uid}", value=valor_oficial, key=chk_key)
                                     
-                                    # Colunas para os dois botões
-                                    col_btn1, col_btn2 = st.columns(2)
-                                    
-                                    with col_btn1:
-                                        btn_aplicar = st.form_submit_button("✅ Aplicar", type="primary", use_container_width=True)
-                                    with col_btn2:
-                                        btn_restaurar = st.form_submit_button("🔄 Voltar", use_container_width=True)
+                                    btn_aplicar = st.form_submit_button("Aplicar Filtro", use_container_width=True)
 
                                     if btn_aplicar:
-                                        # Substitui o estado oficial pelo que foi marcado no rascunho
+                                        # Salva o rascunho como oficial e atualiza
                                         for uid in todos_ids_emp:
-                                            st.session_state[f"inv_active_{emp_nome}_{uid}"] = st.session_state[f"chk_{emp_nome}_{uid}_{idx_versao}"]
-                                        st.session_state[reset_key] += 1  # Força a limpeza visual no próximo carregamento
-                                        st.rerun()
-
-                                    if btn_restaurar:
-                                        # Não altera o estado oficial, apenas limpa a memória do formulário
-                                        st.session_state[reset_key] += 1
+                                            st.session_state[f"inv_active_{emp_nome}_{uid}"] = st.session_state[f"chk_{emp_nome}_{uid}"]
                                         st.rerun()
                         
                         st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
