@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro, Separação Geral/Rotativo & Filtros Globais Popover)
+# ABA 2: INVENTÁRIOS (Tema Escuro, Separação Geral/Rotativo & Marcar/Desmarcar Todos)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1090,15 +1090,13 @@ with aba_inventarios:
         mes_padrao_bruto = lista_meses_bruto[0] if lista_meses_bruto else "8"
         mes_padrao_visual = mapa_meses.get(str(int(mes_padrao_bruto)), "08 - Agosto") if mes_padrao_bruto.isdigit() else "08 - Agosto"
 
-        # Inicialização do session_state dos Filtros Superiores com Valores Padrão
+        # Inicialização do session_state dos Filtros Superiores
         if 'inv_empresa_sel' not in st.session_state: st.session_state.inv_empresa_sel = []
         if 'inv_ano_sel' not in st.session_state: st.session_state.inv_ano_sel = [ano_padrao_str] if ano_padrao_str else []
         if 'inv_mes_sel' not in st.session_state: st.session_state.inv_mes_sel = [mes_padrao_visual] if mes_padrao_visual else []
         if 'inv_tipo_sel' not in st.session_state: st.session_state.inv_tipo_sel = []
 
-        # =========================================================================
-        # 1. FILTROS SUPERIORES COMPACTOS (NOVO PADRÃO POPOVER EXECUTIVO)
-        # =========================================================================
+        # 1. Filtros Superiores Compactos (Popover)
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
             
@@ -1166,9 +1164,7 @@ with aba_inventarios:
                             st.session_state.inv_tipo_sel = novo_tipo
                             st.rerun()
 
-        # =========================================================================
         # 2. Lógica de Filtragem Global
-        # =========================================================================
         df_base_global = df_inventario.copy()
         
         if st.session_state.inv_empresa_sel: 
@@ -1309,7 +1305,7 @@ with aba_inventarios:
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
             # =========================================================================
-            # SANFONA COM FORMULÁRIO LIMPO
+            # SANFONA COM BOTÕES MARCAR / DESMARCAR TODOS
             # =========================================================================
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
@@ -1344,6 +1340,19 @@ with aba_inventarios:
                         with c5:
                             with st.popover("🔎 Filtrar Inventário", use_container_width=True):
                                 
+                                # Botões de Marcar / Desmarcar Todos direto no topo do popover
+                                col_b1, col_b2 = st.columns(2)
+                                if col_b1.button("✅ Todos", key=f"btn_all_{emp_nome}", use_container_width=True):
+                                    for uid in todos_ids_emp:
+                                        st.session_state[f"inv_active_{emp_nome}_{uid}"] = True
+                                    st.rerun()
+                                if col_b2.button("❌ Nenhum", key=f"btn_none_{emp_nome}", use_container_width=True):
+                                    for uid in todos_ids_emp:
+                                        st.session_state[f"inv_active_{emp_nome}_{uid}"] = False
+                                    st.rerun()
+
+                                st.markdown("<div style='margin-top: 4px;'></div>", unsafe_allow_html=True)
+
                                 with st.form(key=f"form_filtro_{emp_nome}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar Inventários:</div>", unsafe_allow_html=True)
                                     
