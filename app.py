@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Estado Temporário no Popover)
+# ABA 2: INVENTÁRIOS (Tema Escuro, Separação Geral/Rotativo & Controle de Rascunho)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1132,7 +1132,7 @@ with aba_inventarios:
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
             df_base_global = df_base_global[df_base_global['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
-        # Blindagem contra IDs vazios ou inválidos
+        # Blindagem contra IDs vazios
         if 'id_inventario' in df_base_global.columns:
             df_base_global = df_base_global[
                 df_base_global['id_inventario'].notna() & 
@@ -1141,7 +1141,7 @@ with aba_inventarios:
             ]
 
         # =========================================================================
-        # PROCESSAMENTO DE DADOS E SINCRONIZAÇÃO DE ESTADOS
+        # PROCESSAMENTO GERAL E ROTATIVO (MEMÓRIA OFICIAL)
         # =========================================================================
         empresas_disponiveis = sorted([str(x) for x in df_base_global['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_base_global.columns else []
 
@@ -1158,28 +1158,20 @@ with aba_inventarios:
 
         for emp_nome in empresas_disponiveis:
             df_emp_subset = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
-            
             todos_ids_emp = sorted(list(set([limpar_id(i) for i in df_emp_subset['id_inventario'].dropna()])), key=lambda val: int(val) if val.isdigit() else 0)
 
             ids_ativos_nesta_emp = []
             
             for uid in todos_ids_emp:
                 active_key = f"inv_active_{emp_nome}_{uid}"
-                form_key = f"inv_form_{emp_nome}_{uid}"
-                
-                # Estado real/ativo (inicia True)
                 if active_key not in st.session_state:
-                    st.session_state[active_key] = True
-                
-                # Sincroniza o formulário temporário sempre com o estado ativo atual ao renderizar
-                st.session_state[form_key] = st.session_state[active_key]
+                    st.session_state[active_key] = True 
                 
                 if st.session_state[active_key]:
                     ids_ativos_nesta_emp.append(uid)
                 else:
                     ids_excluidos.add(f"{emp_nome}||{uid}") 
 
-            # Separação entre Geral e Rotativo com base nos IDs ativos
             df_emp_ativos = df_emp_subset[df_emp_subset['id_inventario'].apply(limpar_id).isin(ids_ativos_nesta_emp)]
             
             ids_geral = []
@@ -1208,7 +1200,6 @@ with aba_inventarios:
             df_inv = df_base_global[~chave_temp.isin(ids_excluidos)].copy()
         else:
             df_inv = df_base_global.copy()
-        # =========================================================================
 
         st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1217,7 +1208,7 @@ with aba_inventarios:
         elif df_inv.empty:
             st.info("Nenhum dado de inventário encontrado para os filtros selecionados.")
         else:
-            # 3. Cálculos Macro (Totais Globais)
+            # Cálculos Macro (Totais Globais)
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
             ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
@@ -1231,7 +1222,7 @@ with aba_inventarios:
             cor_perda = "#e74c3c"
             cor_liq = cor_perda if diferenca_liq < 0 else (cor_ganho if diferenca_liq > 0 else "#8c9ba5")
 
-            # 4. Montagem Visual Macro
+            # Montagem Visual Macro
             html_tabela_geral = f"""
             <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
                 <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
@@ -1260,7 +1251,9 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Sanfona com Estado Isolado e Fechamento com Aplicar
+            # =========================================================================
+            # SANFONA COM BOTÃO DUPLO (APLICAR E VOLTAR)
+            # =========================================================================
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1293,19 +1286,42 @@ with aba_inventarios:
                         
                         with c5:
                             with st.popover("🔎 Filtrar Inventário", use_container_width=True):
-                                with st.form(key=f"form_filtro_{emp_nome}"):
+                                
+                                # Controlador de Reset da Memória (Limpa o rascunho visual)
+                                reset_key = f"reset_form_idx_{emp_nome}"
+                                if reset_key not in st.session_state:
+                                    st.session_state[reset_key] = 0
+                                idx_versao = st.session_state[reset_key]
+
+                                with st.form(key=f"form_filtro_{emp_nome}_{idx_versao}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar Inventários:</div>", unsafe_allow_html=True)
                                     
-                                    # Usa o estado temporário do formulário
                                     for uid in todos_ids_emp:
-                                        form_key = f"inv_form_{emp_nome}_{uid}"
-                                        st.checkbox(f"Inventário {uid}", key=form_key)
+                                        # Puxa sempre a versão oficial salva no sistema para renderizar as caixinhas
+                                        active_key = f"inv_active_{emp_nome}_{uid}"
+                                        valor_oficial = st.session_state.get(active_key, True)
+                                        
+                                        chk_key = f"chk_{emp_nome}_{uid}_{idx_versao}"
+                                        st.checkbox(f"Inventário {uid}", value=valor_oficial, key=chk_key)
                                     
-                                    submitted = st.form_submit_button("Aplicar Filtro", use_container_width=True)
-                                    if submitted:
-                                        # Quando clica em Aplicar, copia o temporário para o estado ativo oficial e recarrega
+                                    # Colunas para os dois botões
+                                    col_btn1, col_btn2 = st.columns(2)
+                                    
+                                    with col_btn1:
+                                        btn_aplicar = st.form_submit_button("✅ Aplicar", type="primary", use_container_width=True)
+                                    with col_btn2:
+                                        btn_restaurar = st.form_submit_button("🔄 Voltar", use_container_width=True)
+
+                                    if btn_aplicar:
+                                        # Substitui o estado oficial pelo que foi marcado no rascunho
                                         for uid in todos_ids_emp:
-                                            form_key = f"inv_form_{emp_nome}_{uid}"
-                                            active_key = f"inv_active_{emp_nome}_{uid}"
-                                            st.session_state[active_key] = st.session_state.get(form_key, True)
+                                            st.session_state[f"inv_active_{emp_nome}_{uid}"] = st.session_state[f"chk_{emp_nome}_{uid}_{idx_versao}"]
+                                        st.session_state[reset_key] += 1  # Força a limpeza visual no próximo carregamento
                                         st.rerun()
+
+                                    if btn_restaurar:
+                                        # Não altera o estado oficial, apenas limpa a memória do formulário
+                                        st.session_state[reset_key] += 1
+                                        st.rerun()
+                        
+                        st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
