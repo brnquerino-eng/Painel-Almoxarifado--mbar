@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Arquitetura de Callbacks Externa)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Multiselect Executivo no Formulário)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1305,18 +1305,8 @@ with aba_inventarios:
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
             # =========================================================================
-            # SANFONA COM CALLBACKS EXTERNAS (TODOS / NENHUM FORA DO FORM)
+            # SANFONA COM MULTISELECT NO FORMULÁRIO (ELEGÂNCIA MÁXIMA)
             # =========================================================================
-            
-            # Funções de callback para marcar/desmarcar o rascunho visual sem aplicar o filtro global
-            def marcar_todos_rascunho(emp, ids):
-                for uid in ids:
-                    st.session_state[f"chk_{emp}_{uid}"] = True
-
-            def desmarcar_todos_rascunho(emp, ids):
-                for uid in ids:
-                    st.session_state[f"chk_{emp}_{uid}"] = False
-
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1350,44 +1340,27 @@ with aba_inventarios:
                         with c5:
                             with st.popover("🔎 Filtrar Inventário", use_container_width=True):
                                 
-                                # Botões FORA DO FORMULÁRIO (Usando on_click e args)
-                                col_b1, col_b2 = st.columns(2)
-                                col_b1.button(
-                                    "✅ Todos", 
-                                    on_click=marcar_todos_rascunho, 
-                                    args=(emp_nome, todos_ids_emp), 
-                                    key=f"btn_all_{emp_nome}", 
-                                    use_container_width=True
-                                )
-                                col_b2.button(
-                                    "❌ Nenhum", 
-                                    on_click=desmarcar_todos_rascunho, 
-                                    args=(emp_nome, todos_ids_emp), 
-                                    key=f"btn_none_{emp_nome}", 
-                                    use_container_width=True
-                                )
-
-                                st.markdown("<div style='margin-top: 6px;'></div>", unsafe_allow_html=True)
-
-                                # Formulário contendo apenas as caixas e o botão Aplicar Filtro oficial
                                 with st.form(key=f"form_filtro_{emp_nome}"):
-                                    st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar Inventários:</div>", unsafe_allow_html=True)
+                                    st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Selecionar Inventários:</div>", unsafe_allow_html=True)
                                     
-                                    for uid in todos_ids_emp:
-                                        chk_key = f"chk_{emp_nome}_{uid}"
-                                        active_key = f"inv_active_{emp_nome}_{uid}"
-                                        
-                                        if chk_key not in st.session_state:
-                                            st.session_state[chk_key] = st.session_state.get(active_key, True)
-                                        
-                                        st.checkbox(f"Inventário {uid}", key=chk_key)
+                                    # Padrão: pega todos os que estão atualmente ativos no session_state
+                                    default_vals = [uid for uid in todos_ids_emp if st.session_state.get(f"inv_active_{emp_nome}_{uid}", True)]
+                                    
+                                    # Multiselect limpo e direto: gerencia tudo sem recarregar no meio do caminho
+                                    selecionados_multi = st.multiselect(
+                                        "Inventários",
+                                        options=todos_ids_emp,
+                                        default=default_vals,
+                                        key=f"multi_{emp_nome}",
+                                        label_visibility="collapsed"
+                                    )
                                     
                                     btn_aplicar = st.form_submit_button("Aplicar Filtro", use_container_width=True)
 
                                     if btn_aplicar:
-                                        # Só agora consolida o rascunho no estado oficial e recalcula o painel
+                                        # O que estiver selecionado vira True, o que foi removido vira False
                                         for uid in todos_ids_emp:
-                                            st.session_state[f"inv_active_{emp_nome}_{uid}"] = st.session_state[f"chk_{emp_nome}_{uid}"]
+                                            st.session_state[f"inv_active_{emp_nome}_{uid}"] = (uid in selecionados_multi)
                                         st.rerun()
                         
                         st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
