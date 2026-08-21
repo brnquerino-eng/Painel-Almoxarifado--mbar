@@ -1186,56 +1186,52 @@ with aba_inventarios:
                     
                     linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36; transition: 0.2s;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db;">{qtd}</td><td style="padding: 12px; text-align: left; padding-left: 15px; color: #8c9ba5; font-family: monospace; font-size: 13px; letter-spacing: 0.5px;">{ids}</td></tr>'
 
-            # 5. Montagem Final (O Painel Macro + A Sanfona Nativa HTML)
-            # DICA: As tags HTML ficam grudadas na esquerda para o Streamlit não achar que é bloco de código!
+# 5. Montagem Final (O Painel Macro + A Sanfona Nativa HTML)
+            # O .replace('\n', '') no final é o truque para o Streamlit não transformar em bloco de código!
             html_tabela_geral = f"""
-<div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
-    
-    <!-- TÍTULO DA CAIXA -->
-    <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
-        INVENTÁRIO GERAL - RESUMO EXECUTIVO
-    </div>
-    
-    <!-- BLOCO MACRO: O FINANCEIRO COMPLETO (SEMPRE VISÍVEL) -->
-    <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
-        <tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; text-transform: uppercase;">
-            <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(Qtde) Inventários</th>
-            <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">Total Linhas</th>
-            <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Ganhos</th>
-            <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Perdas</th>
-            <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Diferença</th>
-            <th style="padding: 12px; width: 20%;">Acurácia Global</th>
-        </tr>
-        <tr style="background-color: #161c24; font-size: 16px;">
-            <td style="padding: 18px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db;">{total_inventarios_distintos}</td>
-            <td style="padding: 18px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff;">{fmt_int(len(df_inv))}</td>
-            <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
-            <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
-            <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
-            <td style="padding: 18px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
-        </tr>
-    </table>
+            <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
+                
+                <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
+                    INVENTÁRIO GERAL - RESUMO EXECUTIVO
+                </div>
+                
+                <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
+                    <tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; text-transform: uppercase;">
+                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(Qtde) Inventários</th>
+                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">Total Linhas</th>
+                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Ganhos</th>
+                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Perdas</th>
+                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Diferença</th>
+                        <th style="padding: 12px; width: 20%;">Acurácia Global</th>
+                    </tr>
+                    <tr style="background-color: #161c24; font-size: 16px;">
+                        <td style="padding: 18px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db;">{total_inventarios_distintos}</td>
+                        <td style="padding: 18px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff;">{fmt_int(len(df_inv))}</td>
+                        <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
+                        <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
+                        <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_perda if diferenca_liq < 0 else cor_ganho}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
+                        <td style="padding: 18px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
+                    </tr>
+                </table>
 
-    <!-- O EFEITO SANFONA COM A TAG NATIVA HTML <details> -->
-    <details style="background-color: #1a222d; border-top: 2px solid #333d4d;">
-        <summary style="padding: 12px 15px; color: #ffffff; font-weight: bold; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s; background-color: #1f2836;">
-            <span style="color: #d85c27; margin-right: 8px;">📂</span> CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO (IDs POR UNIDADE)
-        </summary>
-        
-        <div style="border-top: 1px solid #232b36;">
-            <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
-                <tr style="background-color: #161c24; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;">
-                    <th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Nome da Empresa</th>
-                    <th style="padding: 10px; border-right: 1px solid #232b36; width: 160px;">(Qtde) Inventários</th>
-                    <th style="padding: 10px; text-align: left; padding-left: 15px;">IDs Rastreados</th>
-                </tr>
-                {linhas_tabela_html}
-            </table>
-        </div>
-    </details>
-    
-</div>
-"""
+                <details style="background-color: #1a222d; border-top: 2px solid #333d4d;">
+                    <summary style="padding: 12px 15px; color: #ffffff; font-weight: bold; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s; background-color: #1f2836;">
+                        <span style="color: #d85c27; margin-right: 8px;">📂</span> CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO (IDs POR UNIDADE)
+                    </summary>
+                    
+                    <div style="border-top: 1px solid #232b36;">
+                        <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
+                            <tr style="background-color: #161c24; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;">
+                                <th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Nome da Empresa</th>
+                                <th style="padding: 10px; border-right: 1px solid #232b36; width: 160px;">(Qtde) Inventários</th>
+                                <th style="padding: 10px; text-align: left; padding-left: 15px;">IDs Rastreados</th>
+                            </tr>
+                            {linhas_tabela_html}
+                        </table>
+                    </div>
+                </details>
+                
+            </div>
+            """.replace('\n', '')
             
-            # Usando st.markdown no lugar de st.write para forçar o HTML
-            st.markdown(html_tabela_geral, unsafe_allow_html=True)
+            st.write(html_tabela_geral, unsafe_allow_html=True)
