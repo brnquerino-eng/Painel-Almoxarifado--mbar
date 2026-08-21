@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros Compactos Elegantes)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros Compactos Elegantes com Busca por ID)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1086,22 +1086,18 @@ with aba_inventarios:
         lista_tipos_bruto = sorted([str(x) for x in df_inventario.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_inventario.columns else []
         lista_tipos_visual = [mapa_tipos.get(t, t) for t in lista_tipos_bruto]
 
-        # Definindo os valores padrão para o fallback inteligente
         ano_padrao_str = lista_anos[0] if lista_anos else "2026"
         mes_padrao_bruto = lista_meses_bruto[0] if lista_meses_bruto else "8"
         mes_padrao_visual = mapa_meses.get(str(int(mes_padrao_bruto)), "08 - Agosto") if mes_padrao_bruto.isdigit() else "08 - Agosto"
 
-        # Inicializando o session_state VAZIO para evitar tags vermelhas na abertura
-        if 'inv_empresa_sel' not in st.session_state:
-            st.session_state.inv_empresa_sel = []
-        if 'inv_ano_sel' not in st.session_state:
-            st.session_state.inv_ano_sel = []
-        if 'inv_mes_sel' not in st.session_state:
-            st.session_state.inv_mes_sel = []
-        if 'inv_tipo_sel' not in st.session_state:
-            st.session_state.inv_tipo_sel = []
+        # Inicializando o session_state VAZIO + A variável do ID interativo
+        if 'inv_empresa_sel' not in st.session_state: st.session_state.inv_empresa_sel = []
+        if 'inv_ano_sel' not in st.session_state: st.session_state.inv_ano_sel = []
+        if 'inv_mes_sel' not in st.session_state: st.session_state.inv_mes_sel = []
+        if 'inv_tipo_sel' not in st.session_state: st.session_state.inv_tipo_sel = []
+        if 'inv_id_sel' not in st.session_state: st.session_state.inv_id_sel = None
 
-        # 1. Filtros Superiores Compactos com Rótulos Brancos/Negrito e Placeholders Dinâmicos
+        # 1. Filtros Superiores Compactos
         with st.container(border=True):
             col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
             
@@ -1118,15 +1114,13 @@ with aba_inventarios:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
                 tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos_visual, key="inv_tipo_sel", placeholder="Todos os Tipos", label_visibility="collapsed")
 
-        # 2. Lógica de Filtragem com Fallback Automático para o Período Atual
+        # 2. Lógica de Filtragem Base
         df_inv = df_inventario.copy()
         
-        if empresas_sel: 
-            df_inv = df_inv[df_inv['empresa_nome'].astype(str).isin(empresas_sel)]
+        if empresas_sel: df_inv = df_inv[df_inv['empresa_nome'].astype(str).isin(empresas_sel)]
         
         anos_para_filtrar = anos_sel if anos_sel else [ano_padrao_str]
-        if anos_para_filtrar:
-            df_inv = df_inv[df_inv['ano_referencia'].astype(str).isin(anos_para_filtrar)]
+        if anos_para_filtrar: df_inv = df_inv[df_inv['ano_referencia'].astype(str).isin(anos_para_filtrar)]
             
         meses_selecionados_efetivos = meses_sel if meses_sel else [mes_padrao_visual]
         if meses_selecionados_efetivos:
@@ -1134,8 +1128,7 @@ with aba_inventarios:
             for m in meses_selecionados_efetivos:
                 val_original = mapa_meses_inverso.get(m, m)
                 meses_para_filtrar.append(val_original)
-                if val_original.isdigit():
-                    meses_para_filtrar.append(str(int(val_original)))
+                if val_original.isdigit(): meses_para_filtrar.append(str(int(val_original)))
             df_inv = df_inv[df_inv['mes_referencia'].astype(str).isin(meses_para_filtrar)]
             
         if tipos_sel: 
@@ -1144,57 +1137,54 @@ with aba_inventarios:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
+        # 3. FILTRO ADICIONAL PELO CLIQUE NO BOTÃO DE ID DA SANFONA
+        if st.session_state.inv_id_sel:
+            df_inv = df_inv[df_inv['id_inventario'].astype(str) == str(st.session_state.inv_id_sel)]
+            
+            # Alerta visual elegante mostrando que a auditoria está focada
+            col_alerta, col_limpar = st.columns([4, 1])
+            with col_alerta:
+                st.info(f"🔎 **AUDITORIA ATIVA:** Painel filtrado exclusivamente para o Inventário ID **#{st.session_state.inv_id_sel}**")
+            with col_limpar:
+                if st.button("❌ Limpar Filtro", use_container_width=True):
+                    st.session_state.inv_id_sel = None
+                    st.rerun()
+
         if df_inv.empty:
             st.info("Nenhum dado encontrado para os filtros selecionados.")
         else:
-            # 3. Cálculos Macro (Totais Globais) - A MATEMÁTICA INTACTA
+            # 4. Cálculos Macro (Totais Globais Intactos)
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
             ganhos = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum() if 'diferenca_val' in df_inv.columns else 0.0
             diferenca_liq = ganhos + perdas
             
             total_inventarios_distintos = df_inv['id_inventario'].nunique() if 'id_inventario' in df_inv.columns else 0
-
             divergencia_absoluta = abs(df_inv['diferenca_val']).sum() if 'diferenca_val' in df_inv.columns else 0.0
             acuracia_fin = max(0, (1 - (divergencia_absoluta / saldo_sistema)) * 100) if saldo_sistema > 0 else (100.0 if divergencia_absoluta == 0 else 0.0)
 
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
 
-            # 4. Agrupamento para a Sanfona (Apenas Empresa, Qtd e IDs)
+            # 5. Agrupamento para a Sanfona (Gerando LISTA REAIS de IDs para montar os botões)
             if 'empresa_nome' in df_inv.columns:
-                def get_ids_str(x):
-                    # Pega os IDs únicos, ordena numericamente e formata bonitinho com '#'
+                def get_ids_list(x):
                     ids_limpos = [str(i).strip() for i in x.dropna() if str(i).strip() != '']
-                    ids_unicos = sorted(list(set(ids_limpos)), key=lambda val: int(val) if val.isdigit() else 0)
-                    return ", ".join([f"#{uid}" for uid in ids_unicos]) if ids_unicos else "-"
+                    return sorted(list(set(ids_limpos)), key=lambda val: int(val) if val.isdigit() else 0)
 
                 df_empresas_resumo = df_inv.groupby('empresa_nome').agg(
                     qtd_inv=('id_inventario', 'nunique'),
-                    lista_ids=('id_inventario', get_ids_str)
+                    lista_ids=('id_inventario', get_ids_list)
                 ).reset_index()
             else:
                 df_empresas_resumo = pd.DataFrame()
 
-            # Construção das linhas da Sanfona HTML
-            linhas_tabela_html = ""
-            if not df_empresas_resumo.empty:
-                for _, row in df_empresas_resumo.iterrows():
-                    emp = html.escape(str(row['empresa_nome']))
-                    qtd = row['qtd_inv']
-                    ids = html.escape(str(row['lista_ids']))
-                    
-                    linhas_tabela_html += f'<tr style="border-bottom: 1px solid #232b36; transition: 0.2s;"><td style="padding: 12px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px; color: #ffffff;">{emp}</td><td style="padding: 12px; border-right: 1px solid #232b36; text-align: center; font-weight: bold; color: #3498db;">{qtd}</td><td style="padding: 12px; text-align: left; padding-left: 15px; color: #8c9ba5; font-family: monospace; font-size: 13px; letter-spacing: 0.5px;">{ids}</td></tr>'
-
-# 5. Montagem Final (O Painel Macro + A Sanfona Nativa HTML)
-            # O .replace('\n', '') no final é o truque para o Streamlit não transformar em bloco de código!
+            # 6. Montagem Visual Macro (Sempre Fixa no Topo)
             html_tabela_geral = f"""
-            <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
-                
+            <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 5px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
                 <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
                     INVENTÁRIO GERAL - RESUMO EXECUTIVO
                 </div>
-                
                 <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
                     <tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; text-transform: uppercase;">
                         <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(Qtde) Inventários</th>
@@ -1213,25 +1203,49 @@ with aba_inventarios:
                         <td style="padding: 18px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
                     </tr>
                 </table>
-
-                <details style="background-color: #1a222d; border-top: 2px solid #333d4d;">
-                    <summary style="padding: 12px 15px; color: #ffffff; font-weight: bold; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.3s; background-color: #1f2836;">
-                        <span style="color: #d85c27; margin-right: 8px;">📂</span> CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO (IDs POR UNIDADE)
-                    </summary>
-                    
-                    <div style="border-top: 1px solid #232b36;">
-                        <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
-                            <tr style="background-color: #161c24; font-weight: bold; font-size: 11px; color: #8c9ba5; border-bottom: 1px solid #232b36; text-transform: uppercase;">
-                                <th style="padding: 10px; border-right: 1px solid #232b36; text-align: left; padding-left: 15px;">Nome da Empresa</th>
-                                <th style="padding: 10px; border-right: 1px solid #232b36; width: 160px;">(Qtde) Inventários</th>
-                                <th style="padding: 10px; text-align: left; padding-left: 15px;">IDs Rastreados</th>
-                            </tr>
-                            {linhas_tabela_html}
-                        </table>
-                    </div>
-                </details>
-                
             </div>
             """.replace('\n', '')
             
             st.write(html_tabela_geral, unsafe_allow_html=True)
+
+            # 7. Efeito Sanfona Nativo Interativo (A Mágica dos Botões!)
+            with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E FILTRAR POR ID DA UNIDADE"):
+                with st.container(border=True):
+                    
+                    # Cabeçalho da sanfona alinhado milimetricamente
+                    c_h1, c_h2, c_h3 = st.columns([2.5, 1, 2.5])
+                    c_h1.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nome da Empresa</div>", unsafe_allow_html=True)
+                    c_h2.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>(Qtde) Inventários</div>", unsafe_allow_html=True)
+                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>IDs Rastreados (Clique no botão para filtrar)</div>", unsafe_allow_html=True)
+                    
+                    st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
+                    
+                    if not df_empresas_resumo.empty:
+                        for _, row in df_empresas_resumo.iterrows():
+                            emp = row['empresa_nome']
+                            qtd = row['qtd_inv']
+                            ids_unicos = row['lista_ids']
+                            
+                            c1, c2, c3 = st.columns([2.5, 1, 2.5], vertical_alignment="center")
+                            
+                            # Coluna 1: Nome da Empresa
+                            c1.markdown(f"<div style='color: #ffffff; font-size: 13px; font-weight: 500;'>{html.escape(str(emp))}</div>", unsafe_allow_html=True)
+                            
+                            # Coluna 2: Quantidade Centralizada
+                            c2.markdown(f"<div style='color: #3498db; font-size: 14px; font-weight: bold; text-align: center;'>{qtd}</div>", unsafe_allow_html=True)
+                            
+                            # Coluna 3: Botões Mágicos de ID
+                            with c3:
+                                if ids_unicos:
+                                    n_btn = min(len(ids_unicos), 6) # Proteção para não espremer se tiver mais de 6 IDs no mês
+                                    b_cols = st.columns(n_btn)
+                                    for idx, uid in enumerate(ids_unicos[:6]): 
+                                        with b_cols[idx]:
+                                            # Aqui o clique envia o dado para a memória e manda o Streamlit rodar de novo (st.rerun)
+                                            if st.button(f"🔍 #{uid}", key=f"btn_{uid}_{emp}", use_container_width=True):
+                                                st.session_state.inv_id_sel = uid
+                                                st.rerun()
+                                else:
+                                    st.markdown("<div style='color: #8c9ba5; font-size: 13px;'>-</div>", unsafe_allow_html=True)
+                            
+                            st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
