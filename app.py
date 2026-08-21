@@ -1179,6 +1179,133 @@ with aba_inventarios:
                 (df_base_global['id_inventario'].astype(str).str.strip().str.lower() != 'none')
             ]
 
+# ==========================================
+# ABA 2: INVENTÁRIOS (Tema Escuro & Grid Executivo de Células)
+# ==========================================
+with aba_inventarios:
+    st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
+
+    if df_inventario.empty:
+        st.warning("⚠️ Nenhum dado de inventário encontrado na base.")
+    else:
+        # Dicionários de Tradução Visual
+        mapa_meses = {
+            "1": "01 - Janeiro", "2": "02 - Fevereiro", "3": "03 - Março", 
+            "4": "04 - Abril", "5": "05 - Maio", "6": "06 - Junho", 
+            "7": "07 - Julho", "8": "08 - Agosto", "9": "09 - Setembro", 
+            "10": "10 - Outubro", "11": "11 - Novembro", "12": "12 - Dezembro"
+        }
+        mapa_meses_inverso = {v: k for k, v in mapa_meses.items()}
+
+        mapa_tipos = {
+            "0-Não": "0-Não (Geral)",
+            "1-Sim": "1-Sim (Rotativo)"
+        }
+        mapa_tipos_inverso = {v: k for k, v in mapa_tipos.items()}
+
+        # Extração das listas brutas para filtros
+        lista_empresas = sorted([str(x) for x in df_inventario.get('empresa_nome', pd.Series()).dropna().unique()]) if 'empresa_nome' in df_inventario.columns else []
+        lista_anos = sorted([str(x) for x in df_inventario.get('ano_referencia', pd.Series()).dropna().unique()], reverse=True) if 'ano_referencia' in df_inventario.columns else []
+        
+        lista_meses_bruto = sorted([str(x) for x in df_inventario.get('mes_referencia', pd.Series()).dropna().unique()], key=lambda x: int(x) if str(x).isdigit() else 0, reverse=True) if 'mes_referencia' in df_inventario.columns else []
+        lista_meses_visual = [mapa_meses.get(str(int(m)), m) if str(m).isdigit() else m for m in lista_meses_bruto]
+
+        lista_tipos_bruto = sorted([str(x) for x in df_inventario.get('tipo_inventario', pd.Series()).dropna().unique()]) if 'tipo_inventario' in df_inventario.columns else []
+        lista_tipos_visual = [mapa_tipos.get(t, t) for t in lista_tipos_bruto]
+
+        ano_padrao_str = lista_anos[0] if lista_anos else "2026"
+        mes_padrao_bruto = lista_meses_bruto[0] if lista_meses_bruto else "8"
+        mes_padrao_visual = mapa_meses.get(str(int(mes_padrao_bruto)), "08 - Agosto") if mes_padrao_bruto.isdigit() else "08 - Agosto"
+
+        # Inicialização do session_state dos Filtros Superiores
+        if 'inv_empresa_sel' not in st.session_state: st.session_state.inv_empresa_sel = []
+        if 'inv_ano_sel' not in st.session_state: st.session_state.inv_ano_sel = [ano_padrao_str] if ano_padrao_str else []
+        if 'inv_mes_sel' not in st.session_state: st.session_state.inv_mes_sel = [mes_padrao_visual] if mes_padrao_visual else []
+        if 'inv_tipo_sel' not in st.session_state: st.session_state.inv_tipo_sel = []
+
+        # =========================================================================
+        # 1. FILTROS SUPERIORES COMPACTOS (POPOVER COM MULTISELECT)
+        # =========================================================================
+        with st.container(border=True):
+            col_inv_f1, col_inv_f2, col_inv_f3, col_inv_f4 = st.columns(4, gap="small")
+            
+            with col_inv_f1:
+                st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Empresa:</div>", unsafe_allow_html=True)
+                sel_emp = st.session_state.inv_empresa_sel
+                lbl_emp = "Todas" if not sel_emp else f"{len(sel_emp)} sel."
+                with st.popover(f"🔎 Empresa ({lbl_emp})", use_container_width=True):
+                    with st.form("form_g_emp"):
+                        st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Empresa(s):</div>", unsafe_allow_html=True)
+                        novo_emp = st.multiselect("Empresa", lista_empresas, default=sel_emp, label_visibility="collapsed")
+                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
+                            st.session_state.inv_empresa_sel = novo_emp
+                            st.rerun()
+
+            with col_inv_f2:
+                st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Ano:</div>", unsafe_allow_html=True)
+                sel_ano = st.session_state.inv_ano_sel
+                lbl_ano = "Todos" if not sel_ano else ", ".join(sel_ano)
+                with st.popover(f"🔎 Ano ({lbl_ano})", use_container_width=True):
+                    with st.form("form_g_ano"):
+                        st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Ano(s):</div>", unsafe_allow_html=True)
+                        novo_ano = st.multiselect("Ano", lista_anos, default=sel_ano, label_visibility="collapsed")
+                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
+                            st.session_state.inv_ano_sel = novo_ano
+                            st.rerun()
+
+            with col_inv_f3:
+                st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Mês:</div>", unsafe_allow_html=True)
+                sel_mes = st.session_state.inv_mes_sel
+                lbl_mes = "Todos" if not sel_mes else f"{len(sel_mes)} sel."
+                with st.popover(f"🔎 Mês ({lbl_mes})", use_container_width=True):
+                    with st.form("form_g_mes"):
+                        st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Mês(es):</div>", unsafe_allow_html=True)
+                        novo_mes = st.multiselect("Mês", lista_meses_visual, default=sel_mes, label_visibility="collapsed")
+                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
+                            st.session_state.inv_mes_sel = novo_mes
+                            st.rerun()
+
+            with col_inv_f4:
+                st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
+                sel_tipo = st.session_state.inv_tipo_sel
+                lbl_tipo = "Todos" if not sel_tipo else f"{len(sel_tipo)} sel."
+                with st.popover(f"🔎 Tipo ({lbl_tipo})", use_container_width=True):
+                    with st.form("form_g_tipo"):
+                        st.markdown("<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Filtrar Tipo(s):</div>", unsafe_allow_html=True)
+                        novo_tipo = st.multiselect("Tipo", lista_tipos_visual, default=sel_tipo, label_visibility="collapsed")
+                        if st.form_submit_button("Aplicar Filtro", use_container_width=True):
+                            st.session_state.inv_tipo_sel = novo_tipo
+                            st.rerun()
+
+        # 2. Lógica de Filtragem Global
+        df_base_global = df_inventario.copy()
+        
+        if st.session_state.inv_empresa_sel: 
+            df_base_global = df_base_global[df_base_global['empresa_nome'].astype(str).isin(st.session_state.inv_empresa_sel)]
+        
+        if st.session_state.inv_ano_sel: 
+            df_base_global = df_base_global[df_base_global['ano_referencia'].astype(str).isin(st.session_state.inv_ano_sel)]
+            
+        if st.session_state.inv_mes_sel:
+            meses_para_filtrar = []
+            for m in st.session_state.inv_mes_sel:
+                val_original = mapa_meses_inverso.get(m, m)
+                meses_para_filtrar.append(val_original)
+                if val_original.isdigit(): meses_para_filtrar.append(str(int(val_original)))
+            df_base_global = df_base_global[df_base_global['mes_referencia'].astype(str).isin(meses_para_filtrar)]
+            
+        if st.session_state.inv_tipo_sel: 
+            tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in st.session_state.inv_tipo_sel]
+            df_base_global = df_base_global[df_base_global['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
+
+        # Blindagem contra IDs vazios
+        if 'id_inventario' in df_base_global.columns:
+            df_base_global = df_base_global[
+                df_base_global['id_inventario'].notna() & 
+                (df_base_global['id_inventario'].astype(str).str.strip() != '') &
+                (df_base_global['id_inventario'].astype(str).str.strip().str.lower() != 'none')
+            ]
+
         # =========================================================================
         # PROCESSAMENTO GERAL E ROTATIVO (MEMÓRIA OFICIAL)
         # =========================================================================
@@ -1261,28 +1388,30 @@ with aba_inventarios:
             cor_perda = "#e74c3c"
             cor_liq = cor_perda if diferenca_liq < 0 else (cor_ganho if diferenca_liq > 0 else "#8c9ba5")
 
-            # Montagem Visual Macro
+            # =========================================================================
+            # TABELA MACRO COM ESTILO DE GRID E CÉLULAS DEFINIDAS
+            # =========================================================================
             html_tabela_geral = f"""
-            <div style="background-color: #161c24; border: 1px solid #232b36; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
+            <div style="background-color: #161c24; border: 1px solid #2f3b4c; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
                 <div style="background-color: #1a222d; padding: 12px; text-align: center; font-weight: bold; color: #ffffff; border-bottom: 2px solid #d85c27; font-size: 15px; letter-spacing: 0.5px;">
                     INVENTÁRIO GERAL - RESUMO EXECUTIVO
                 </div>
                 <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 13px;">
                     <tr style="background-color: #1f2836; font-weight: bold; font-size: 11px; color: #8c9ba5; text-transform: uppercase;">
-                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(QT) INV.'S</th>
-                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">Total Linhas</th>
-                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Ganhos</th>
-                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Perdas</th>
-                        <th style="padding: 12px; border-right: 1px solid #232b36; width: 16%;">(R$) Diferença</th>
-                        <th style="padding: 12px; width: 20%;">Acurácia Global</th>
+                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">(QT) INV.'S</th>
+                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">Total Linhas</th>
+                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">(R$) Ganhos</th>
+                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">(R$) Perdas</th>
+                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 16%;">(R$) Diferença</th>
+                        <th style="padding: 12px; border: 1px solid #2f3b4c; width: 20%;">Acurácia Global</th>
                     </tr>
                     <tr style="background-color: #161c24; font-size: 16px;">
-                        <td style="padding: 18px; border-right: 1px solid #232b36; font-weight: 900; color: #3498db;">{total_inventarios_distintos}</td>
-                        <td style="padding: 18px; border-right: 1px solid #232b36; font-weight: 900; color: #ffffff;">{fmt_int(len(df_inv))}</td>
-                        <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
-                        <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
-                        <td style="padding: 18px; border-right: 1px solid #232b36; color: {cor_liq}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
-                        <td style="padding: 18px; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
+                        <td style="padding: 16px; border: 1px solid #2f3b4c; font-weight: 900; color: #3498db;">{total_inventarios_distintos}</td>
+                        <td style="padding: 16px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{fmt_int(len(df_inv))}</td>
+                        <td style="padding: 16px; border: 1px solid #2f3b4c; color: {cor_ganho}; font-weight: 900;">{fmt_brl(ganhos)}</td>
+                        <td style="padding: 16px; border: 1px solid #2f3b4c; color: {cor_perda}; font-weight: 900;">{fmt_brl(perdas)}</td>
+                        <td style="padding: 16px; border: 1px solid #2f3b4c; color: {cor_liq}; font-weight: 900;">{fmt_brl(diferenca_liq)}</td>
+                        <td style="padding: 16px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{acuracia_fin:.2f}%</td>
                     </tr>
                 </table>
             </div>
