@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Ajustes Visuais Executivos)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Separação Geral / Rotativo)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1141,7 +1141,7 @@ with aba_inventarios:
             ]
 
         # =========================================================================
-        # PROCESSAMENTO DE DADOS E MEMÓRIA
+        # PROCESSAMENTO DE DADOS E SEPARAÇÃO GERAL / ROTATIVO
         # =========================================================================
         empresas_disponiveis = sorted([str(x) for x in df_base_global['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_base_global.columns else []
 
@@ -1152,8 +1152,14 @@ with aba_inventarios:
             try: return str(int(float(val)))
             except: return str(val).strip()
 
+        def eh_rotativo(val_tipo):
+            t_str = str(val_tipo).lower()
+            return '1' in t_str or 'sim' in t_str or 'rotativo' in t_str
+
         for emp_nome in empresas_disponiveis:
             df_emp_subset = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
+            
+            # Todos os IDs desta empresa
             todos_ids_emp = sorted(list(set([limpar_id(i) for i in df_emp_subset['id_inventario'].dropna()])), key=lambda val: int(val) if val.isdigit() else 0)
 
             ids_ativos_nesta_emp = []
@@ -1168,9 +1174,29 @@ with aba_inventarios:
                 else:
                     ids_excluidos.add(f"{emp_nome}||{uid}") 
 
+            # Separação entre Geral e Rotativo com base nos IDs ativos
+            df_emp_ativos = df_emp_subset[df_emp_subset['id_inventario'].apply(limpar_id).isin(ids_ativos_nesta_emp)]
+            
+            ids_geral = []
+            ids_rotativo = []
+            
+            for _, row in df_emp_ativos.iterrows():
+                uid = limpar_id(row['id_inventario'])
+                t_val = row.get('tipo_inventario', '')
+                if eh_rotativo(t_val):
+                    if uid not in ids_rotativo: ids_rotativo.append(uid)
+                else:
+                    if uid not in ids_geral: ids_geral.append(uid)
+
+            # Ordenação numérica segura
+            ids_geral = sorted(list(set(ids_geral)), key=lambda val: int(val) if val.isdigit() else 0)
+            ids_rotativo = sorted(list(set(ids_rotativo)), key=lambda val: int(val) if val.isdigit() else 0)
+
             dict_empresas_dados[emp_nome] = {
                 'todos_ids': todos_ids_emp,
                 'ids_ativos': ids_ativos_nesta_emp,
+                'ids_geral': ids_geral,
+                'ids_rotativo': ids_rotativo,
                 'qtd_ativa': len(ids_ativos_nesta_emp)
             }
 
@@ -1231,15 +1257,17 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Sanfona com Nomes e Cores Ajustadas (Branco e sem #)
+            # 5. Sanfona com Colunas Separadas (Geral / Rotativo) e Filtros sem #
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
                     
-                    c_h1, c_h2, c_h3, c_h4 = st.columns([2.5, 0.8, 2.5, 1.5])
+                    # Nova distribuição de colunas para acomodar Geral e Rotativo perfeitamente
+                    c_h1, c_h2, c_h3, c_h4, c_h5 = st.columns([2.2, 0.7, 2.0, 2.0, 1.4])
                     c_h1.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nome da Empresa</div>", unsafe_allow_html=True)
                     c_h2.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>(QT) INV.'S</div>", unsafe_allow_html=True)
-                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nº INVENTÁRIO</div>", unsafe_allow_html=True)
-                    c_h4.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>GERENCIAR</div>", unsafe_allow_html=True)
+                    c_h3.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nº INV. GERAL</div>", unsafe_allow_html=True)
+                    c_h4.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase;'>Nº INV. ROTATIVO</div>", unsafe_allow_html=True)
+                    c_h5.markdown("<div style='color: #8c9ba5; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: center;'>GERENCIAR</div>", unsafe_allow_html=True)
                     
                     st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
 
@@ -1247,28 +1275,29 @@ with aba_inventarios:
                         dados_emp = dict_empresas_dados[emp_nome]
                         
                         todos_ids_emp = dados_emp['todos_ids']
-                        ids_ativos_tela = dados_emp['ids_ativos']
+                        ids_geral = dados_emp['ids_geral']
+                        ids_rotativo = dados_emp['ids_rotativo']
                         qtd_ativa_emp = dados_emp['qtd_ativa']
                         
-                        # Sem o caractere '#' e com texto limpo
-                        ids_str = ", ".join([str(uid) for uid in ids_ativos_tela]) if ids_ativos_tela else "Nenhum ativo"
+                        str_geral = ", ".join(ids_geral) if ids_geral else "-"
+                        str_rotativo = ", ".join(ids_rotativo) if ids_rotativo else "-"
 
-                        c1, c2, c3, c4 = st.columns([2.5, 0.8, 2.5, 1.5], vertical_alignment="center")
+                        c1, c2, c3, c4, c5 = st.columns([2.2, 0.7, 2.0, 2.0, 1.4], vertical_alignment="center")
                         
-                        # Cores atualizadas para branco (#ffffff), combinando com as unidades
                         c1.markdown(f"<div style='color: #ffffff; font-size: 13px; font-weight: 500;'>{html.escape(emp_nome)}</div>", unsafe_allow_html=True)
                         c2.markdown(f"<div style='color: #ffffff; font-size: 14px; font-weight: bold; text-align: center;'>{qtd_ativa_emp}</div>", unsafe_allow_html=True)
-                        c3.markdown(f"<div style='color: #ffffff; font-size: 13px; font-family: monospace;'>{ids_str}</div>", unsafe_allow_html=True)
+                        c3.markdown(f"<div style='color: #ffffff; font-size: 13px; font-family: monospace;'>{str_geral}</div>", unsafe_allow_html=True)
+                        c4.markdown(f"<div style='color: #ffffff; font-size: 13px; font-family: monospace;'>{str_rotativo}</div>", unsafe_allow_html=True)
                         
-                        with c4:
-                            # Nome do botão de filtro atualizado para "Filtrar Inventário"
+                        with c5:
                             with st.popover("🔎 Filtrar Inventário", use_container_width=True):
                                 with st.form(key=f"form_filtro_{emp_nome}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar Inventários:</div>", unsafe_allow_html=True)
                                     
+                                    # Caixa de seleção limpa, sem o caractere '#'
                                     for uid in todos_ids_emp:
                                         chk_key = f"chk_id_{emp_nome}_{uid}"
-                                        st.checkbox(f"Inventário #{uid}", key=chk_key)
+                                        st.checkbox(f"Inventário {uid}", key=chk_key)
                                     
                                     st.form_submit_button("Aplicar Filtro", use_container_width=True)
                         
