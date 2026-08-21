@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros com Checkboxes Nativas Livres de Bugs)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Filtros Nativos Livres de Fantasmas)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1113,7 +1113,7 @@ with aba_inventarios:
                 st.markdown("<div style='font-size: 12px; color: #ffffff; font-weight: bold; margin-bottom: -2px;'>Tipo de Inventário:</div>", unsafe_allow_html=True)
                 tipos_sel = st.multiselect("Tipo de Inventário:", lista_tipos_visual, key="inv_tipo_sel", placeholder="Todos os Tipos", label_visibility="collapsed")
 
-        # 2. Lógica de Filtragem Global
+        # 2. Lógica de Filtragem Global (O CHEFE DO PAINEL)
         df_base_global = df_inventario.copy()
         if empresas_sel: df_base_global = df_base_global[df_base_global['empresa_nome'].astype(str).isin(empresas_sel)]
         
@@ -1133,28 +1133,34 @@ with aba_inventarios:
             tipos_para_filtrar = [mapa_tipos_inverso.get(t, t) for t in tipos_sel]
             df_base_global = df_base_global[df_base_global['tipo_inventario'].astype(str).isin(tipos_para_filtrar)]
 
+        # --- A BLINDAGEM DO GOL ---
+        # Garantir que só ficam na base empresas que TÊM um ID de inventário válido no período!
+        if 'id_inventario' in df_base_global.columns:
+            df_base_global = df_base_global[
+                df_base_global['id_inventario'].notna() & 
+                (df_base_global['id_inventario'].astype(str).str.strip() != '') &
+                (df_base_global['id_inventario'].astype(str).str.strip().str.lower() != 'none')
+            ]
+
         # =========================================================================
-        # O SEGREDO DO VAR (FILTRAGEM DE CHECKBOXES NATIVA SEM LOOP DE RERUN)
+        # O SEGREDO DOS IDs (Checkboxes Nativas)
         # =========================================================================
+        # A lista de empresas agora SÓ contém quem passou no filtro rigoroso acima
         empresas_disponiveis = sorted([str(x) for x in df_base_global['empresa_nome'].dropna().unique()]) if 'empresa_nome' in df_base_global.columns else []
 
         ids_excluidos = set()
-        # Varremos todas as empresas e criamos o estado nativo na memória do Streamlit
         for emp_nome in empresas_disponiveis:
             df_emp_subset = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
-            todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_subset['id_inventario'].dropna() if str(i).strip()])), key=lambda val: int(val) if val.isdigit() else 0)
+            todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_subset['id_inventario'].dropna()])), key=lambda val: int(val) if val.isdigit() else 0)
 
             for uid in todos_ids_emp:
                 chk_key = f"chk_id_{emp_nome}_{uid}"
-                # Se for a primeira vez, marcamos como True (selecionado)
                 if chk_key not in st.session_state:
                     st.session_state[chk_key] = True
                 
-                # Se a caixinha estiver desmarcada, adicionamos à lista negra
                 if not st.session_state[chk_key]:
                     ids_excluidos.add(f"{emp_nome}||{uid}")
 
-        # Se houver IDs desmarcados, removemos da base antes de fazer a conta
         if ids_excluidos:
             temp_key = df_base_global['empresa_nome'].astype(str) + "||" + df_base_global['id_inventario'].astype(str).str.strip()
             df_inv = df_base_global[~temp_key.isin(ids_excluidos)].copy()
@@ -1167,7 +1173,7 @@ with aba_inventarios:
         if df_inv.empty and not df_base_global.empty:
             st.info("⚠️ Você desmarcou todos os IDs nas linhas. Volte na caixinha e marque pelo menos um para recalcular os totais.")
         elif df_inv.empty:
-            st.info("Nenhum dado encontrado para os filtros selecionados.")
+            st.info("Nenhum dado de inventário encontrado para os filtros selecionados.")
         else:
             # 3. Cálculos Macro (Totais Globais)
             saldo_sistema = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
@@ -1211,7 +1217,7 @@ with aba_inventarios:
             
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
-            # 5. Sanfona com Caixinhas Nativas (Sem Gaguejar!)
+            # 5. Sanfona com Checkboxes Nativas
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS IDs POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1223,11 +1229,11 @@ with aba_inventarios:
                     
                     st.markdown("<hr style='margin: 8px 0px; border-color: #232b36;'>", unsafe_allow_html=True)
 
+                    # O loop agora só roda para as empresas que SOBREVIVERAM aos filtros superiores!
                     for emp_nome in empresas_disponiveis:
                         df_emp_full = df_base_global[df_base_global['empresa_nome'].astype(str) == emp_nome]
-                        todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_full['id_inventario'].dropna() if str(i).strip()])), key=lambda val: int(val) if val.isdigit() else 0)
+                        todos_ids_emp = sorted(list(set([str(i).strip() for i in df_emp_full['id_inventario'].dropna()])), key=lambda val: int(val) if val.isdigit() else 0)
                         
-                        # Pegar apenas os IDs que estão checados (True) para exibir no texto e na Qtde
                         ids_ativos_tela = [uid for uid in todos_ids_emp if st.session_state.get(f"chk_id_{emp_nome}_{uid}", True)]
                         
                         ids_str = ", ".join([f"#{uid}" for uid in ids_ativos_tela]) if ids_ativos_tela else "Nenhum ativo"
@@ -1243,7 +1249,6 @@ with aba_inventarios:
                             with st.popover("🔎 Filtrar IDs", use_container_width=True):
                                 st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar IDs:</div>", unsafe_allow_html=True)
                                 
-                                # Aqui a mágica: a checkbox atua direto no session_state (sem o rerun manual)
                                 for uid in todos_ids_emp:
                                     st.checkbox(f"ID #{uid}", key=f"chk_id_{emp_nome}_{uid}")
                         
