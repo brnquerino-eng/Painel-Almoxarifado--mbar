@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro, Separação Geral/Rotativo & Rascunho Isolado)
+# ABA 2: INVENTÁRIOS (Tema Escuro & Arquitetura de Callbacks Externa)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1305,8 +1305,18 @@ with aba_inventarios:
             st.markdown(html_tabela_geral, unsafe_allow_html=True)
 
             # =========================================================================
-            # SANFONA COM BOTÕES DE MARCAR E LIMPAR PURAMENTE COMO RASCUNHO
+            # SANFONA COM CALLBACKS EXTERNAS (TODOS / NENHUM FORA DO FORM)
             # =========================================================================
+            
+            # Funções de callback para marcar/desmarcar o rascunho visual sem aplicar o filtro global
+            def marcar_todos_rascunho(emp, ids):
+                for uid in ids:
+                    st.session_state[f"chk_{emp}_{uid}"] = True
+
+            def desmarcar_todos_rascunho(emp, ids):
+                for uid in ids:
+                    st.session_state[f"chk_{emp}_{uid}"] = False
+
             with st.expander("📂 CLIQUE AQUI PARA EXPANDIR O DETALHAMENTO E GERENCIAR OS INVENTÁRIOS POR UNIDADE"):
                 with st.container(border=True):
                     
@@ -1340,44 +1350,44 @@ with aba_inventarios:
                         with c5:
                             with st.popover("🔎 Filtrar Inventário", use_container_width=True):
                                 
-                                # Controlador de versão para forçar a atualização visual dos checkboxes no form
-                                ver_key = f"ver_form_{emp_nome}"
-                                if ver_key not in st.session_state:
-                                    st.session_state[ver_key] = 0
-                                v_atual = st.session_state[ver_key]
+                                # Botões FORA DO FORMULÁRIO (Usando on_click e args)
+                                col_b1, col_b2 = st.columns(2)
+                                col_b1.button(
+                                    "✅ Todos", 
+                                    on_click=marcar_todos_rascunho, 
+                                    args=(emp_nome, todos_ids_emp), 
+                                    key=f"btn_all_{emp_nome}", 
+                                    use_container_width=True
+                                )
+                                col_b2.button(
+                                    "❌ Nenhum", 
+                                    on_click=desmarcar_todos_rascunho, 
+                                    args=(emp_nome, todos_ids_emp), 
+                                    key=f"btn_none_{emp_nome}", 
+                                    use_container_width=True
+                                )
 
-                                with st.form(key=f"form_filtro_{emp_nome}_{v_atual}"):
+                                st.markdown("<div style='margin-top: 6px;'></div>", unsafe_allow_html=True)
+
+                                # Formulário contendo apenas as caixas e o botão Aplicar Filtro oficial
+                                with st.form(key=f"form_filtro_{emp_nome}"):
                                     st.markdown(f"<div style='font-size: 12px; font-weight: bold; color: #ffffff; margin-bottom: 8px;'>Marcar / Desmarcar Inventários:</div>", unsafe_allow_html=True)
                                     
-                                    # Botões de Todos e Nenhum DENTRO do formulário (agirão apenas no rascunho visual)
-                                    col_b1, col_b2 = st.columns(2)
-                                    btn_todos = col_b1.form_submit_button("✅ Todos", use_container_width=True)
-                                    btn_nenhum = col_b2.form_submit_button("❌ Nenhum", use_container_width=True)
-                                    
                                     for uid in todos_ids_emp:
-                                        active_key = f"inv_active_{emp_nome}_{uid}"
-                                        valor_oficial = st.session_state.get(active_key, True)
-                                        
                                         chk_key = f"chk_{emp_nome}_{uid}"
+                                        active_key = f"inv_active_{emp_nome}_{uid}"
                                         
-                                        # Se clicou no botão "Todos" ou "Nenhum", forçamos o valor temporário no session_state do checkbox
-                                        if btn_todos:
-                                            st.session_state[chk_key] = True
-                                        elif btn_nenhum:
-                                            st.session_state[chk_key] = False
-                                        elif chk_key not in st.session_state:
-                                            st.session_state[chk_key] = valor_oficial
-                                            
+                                        if chk_key not in st.session_state:
+                                            st.session_state[chk_key] = st.session_state.get(active_key, True)
+                                        
                                         st.checkbox(f"Inventário {uid}", key=chk_key)
                                     
-                                    btn_aplicar = st.form_submit_button("Aplicar Filtro", type="primary", use_container_width=True)
+                                    btn_aplicar = st.form_submit_button("Aplicar Filtro", use_container_width=True)
 
                                     if btn_aplicar:
-                                        # Só agora o filtro global é afetado e a página atualiza de verdade
+                                        # Só agora consolida o rascunho no estado oficial e recalcula o painel
                                         for uid in todos_ids_emp:
                                             st.session_state[f"inv_active_{emp_nome}_{uid}"] = st.session_state[f"chk_{emp_nome}_{uid}"]
                                         st.rerun()
-                                    elif btn_todos or btn_nenhum:
-                                        # Apenas avança a versão do form para redesenhar as caixinhas marcadas/desmarcadas na hora, SEM aplicar o filtro global
-                                        st.session_state[ver_key] += 1
-                                        st.rerun()
+                        
+                        st.markdown("<hr style='margin: 8px 0px; border-color: #232b36; opacity: 0.3;'>", unsafe_allow_html=True)
