@@ -1053,7 +1053,7 @@ with aba_geral:
                 st.info("Nenhum material operacional parado há mais de 3 meses para o período selecionado.")
 
 # ==========================================
-# ABA 2: INVENTÁRIOS (Tema Escuro, Grid Executivo & Inventário Congelado)
+# ABA 2: INVENTÁRIOS (Tema Escuro, Grid Executivo & Painel Congelado Completo)
 # ==========================================
 with aba_inventarios:
     st.markdown("<div style='color: #ffffff; font-size: 16px; font-weight: bold; margin-bottom: 15px;'>📦 GESTÃO DE INVENTÁRIOS (FECHAMENTO EXECUTIVO)</div>", unsafe_allow_html=True)
@@ -1252,7 +1252,7 @@ with aba_inventarios:
             # =========================================================================
             total_invs = df_inv['id_inventario'].nunique() if 'id_inventario' in df_inv.columns else 0
             
-            # Contagem de Rotativo vs Geral baseada no tipo
+            # Contagem de Rotativo vs Geral
             invs_rotativos = 0
             invs_geral = 0
             if 'id_inventario' in df_inv.columns and 'tipo_inventario' in df_inv.columns:
@@ -1265,39 +1265,54 @@ with aba_inventarios:
                         invs_geral += 1
 
             total_linhas = len(df_inv)
-            skus_unicos = df_inv['sku'].nunique() if 'sku' in df_inv.columns else (df_inv['codigo_material'].nunique() if 'codigo_material' in df_inv.columns else 0)
-
-            # Itens Contados / Quantidades (Baseline vs Físico)
-            col_qtd_sistema = 'saldo_anterior_qtd' if 'saldo_anterior_qtd' in df_inv.columns else ('quantidade_sistema' if 'quantidade_sistema' in df_inv.columns else None)
-            col_qtd_fisico = 'quantidade_fisica' if 'quantidade_fisica' in df_inv.columns else ('quantidade_contada' if 'quantidade_contada' in df_inv.columns else None)
-
-            itens_contados_total = df_inv[col_qtd_fisico].sum() if col_qtd_fisico and col_qtd_fisico in df_inv.columns else total_linhas
             
-            # Divergências para mais e para menos
-            col_diff_val = 'diferenca_val' if 'diferenca_val' in df_inv.columns else 0.0
-            ganhos_val = df_inv[df_inv[col_diff_val] > 0][col_diff_val].sum() if col_diff_val in df_inv.columns else 0.0
-            perdas_val = df_inv[df_inv[col_diff_val] < 0][col_diff_val].sum() if col_diff_val in df_inv.columns else 0.0
-            diferenca_liq = ganhos_val + perdas_val
+            # Radar Inteligente de SKUs Únicos (corrige o bug do 0)
+            colunas_possiveis_sku = ['codigo_material', 'cod_material', 'sku', 'id_produto', 'material', 'codigo']
+            col_sku = next((col for col in colunas_possiveis_sku if col in df_inv.columns), None)
+            skus_unicos = df_inv[col_sku].nunique() if col_sku else 0
 
-            # Contagem de linhas divergentes (para mais / para menos)
-            itens_diverg_mais = len(df_inv[df_inv[col_diff_val] > 0]) if col_diff_val in df_inv.columns else 0
-            itens_diverg_menos = len(df_inv[df_inv[col_diff_val] < 0]) if col_diff_val in df_inv.columns else 0
+            # -------------------------------------------------------------
+            # BLOCO DE QUANTIDADES (PEÇAS/ITENS)
+            # -------------------------------------------------------------
+            qtd_congelada = df_inv['saldo_anterior_qtd'].sum() if 'saldo_anterior_qtd' in df_inv.columns else 0.0
+            qtd_contada = df_inv['quantidade_fisica'].sum() if 'quantidade_fisica' in df_inv.columns else (df_inv['quantidade_contada'].sum() if 'quantidade_contada' in df_inv.columns else 0.0)
+            
+            if 'diferenca_qtd' in df_inv.columns:
+                qtd_sobras = df_inv[df_inv['diferenca_qtd'] > 0]['diferenca_qtd'].sum()
+                qtd_perdas = df_inv[df_inv['diferenca_qtd'] < 0]['diferenca_qtd'].sum()
+                linhas_sem_divergencia = len(df_inv[df_inv['diferenca_qtd'] == 0])
+            else:
+                qtd_sobras = 0.0
+                qtd_perdas = 0.0
+                linhas_sem_divergencia = total_linhas
 
-            # Acurácias
-            saldo_sistema_val = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
-            divergencia_absoluta = abs(df_inv[col_diff_val]).sum() if col_diff_val in df_inv.columns else 0.0
-            acuracia_valor = max(0, (1 - (divergencia_absoluta / saldo_sistema_val)) * 100) if saldo_sistema_val > 0 else (100.0 if divergencia_absoluta == 0 else 0.0)
-
-            # Acurácia de itens (linhas sem divergência vs total de linhas)
-            linhas_sem_divergencia = len(df_inv[df_inv[col_diff_val] == 0]) if col_diff_val in df_inv.columns else total_linhas
             acuracia_itens = (linhas_sem_divergencia / total_linhas * 100) if total_linhas > 0 else 100.0
 
+            # -------------------------------------------------------------
+            # BLOCO FINANCEIRO (VALORES R$)
+            # -------------------------------------------------------------
+            val_congelado = df_inv['saldo_anterior_val'].sum() if 'saldo_anterior_val' in df_inv.columns else 0.0
+            
+            if 'diferenca_val' in df_inv.columns:
+                val_sobras = df_inv[df_inv['diferenca_val'] > 0]['diferenca_val'].sum()
+                val_perdas = df_inv[df_inv['diferenca_val'] < 0]['diferenca_val'].sum()
+                val_diff_total = df_inv['diferenca_val'].sum()
+            else:
+                val_sobras = 0.0
+                val_perdas = 0.0
+                val_diff_total = 0.0
+                
+            val_contado = val_congelado + val_diff_total
+            
+            divergencia_absoluta_val = df_inv['diferenca_val'].abs().sum() if 'diferenca_val' in df_inv.columns else 0.0
+            acuracia_valor = max(0, (1 - (divergencia_absoluta_val / val_congelado)) * 100) if val_congelado > 0 else (100.0 if divergencia_absoluta_val == 0 else 0.0)
+
+            # Cores Semânticas
             cor_ganho = "#2ecc71"
             cor_perda = "#e74c3c"
-            cor_liq = cor_perda if diferenca_liq < 0 else (cor_ganho if diferenca_liq > 0 else "#8c9ba5")
 
             # =========================================================================
-            # TABELA MACRO EXECUTIVA - INVENTÁRIO CONGELADO (GRID DE CÉLULAS)
+            # TABELA MACRO EXECUTIVA - 3 ANDARES (VOLUMETRIA, QUANTIDADE, FINANCEIRO)
             # =========================================================================
             html_tabela_geral = f"""
             <div style="background-color: #161c24; border: 1px solid #2f3b4c; border-radius: 8px; overflow: hidden; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.5);">
@@ -1305,14 +1320,14 @@ with aba_inventarios:
                     INVENTÁRIO CONGELADO - PAINEL EXECUTIVO DE RESULTADOS
                 </div>
                 <table style="width: 100%; text-align: center; border-collapse: collapse; font-size: 12px;">
-                    <!-- Linha 1: Escopo e Volumetria -->
+                    
+                    <!-- LINHA 1: VOLUMETRIA DE INVENTÁRIOS -->
                     <tr style="background-color: #1f2836; font-weight: bold; color: #8c9ba5; text-transform: uppercase; font-size: 10px;">
-                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">Qtd. Inv. Total</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">Inv. Rotativo</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">Inv. Geral</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">Total Linhas</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 14%;">SKUs Únicos</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 30%;">Itens Contados</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 20%;">Qtd. Inv. Total</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 20%;">Inv. Rotativo</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 20%;">Inv. Geral</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 20%;">Total Linhas</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c; width: 20%;">SKUs Únicos</th>
                     </tr>
                     <tr style="background-color: #161c24; font-size: 15px;">
                         <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #3498db;">{total_invs}</td>
@@ -1320,23 +1335,40 @@ with aba_inventarios:
                         <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #9b59b6;">{invs_geral}</td>
                         <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{fmt_int(total_linhas)}</td>
                         <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #1abc9c;">{fmt_int(skus_unicos)}</td>
-                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{fmt_int(itens_contados_total)}</td>
                     </tr>
-                    <!-- Linha 2: Divergências e Acurácias -->
+
+                    <!-- LINHA 2: BALANÇO DE QUANTIDADES FÍSICAS (PEÇAS) -->
                     <tr style="background-color: #1f2836; font-weight: bold; color: #8c9ba5; text-transform: uppercase; font-size: 10px;">
-                        <th style="padding: 10px; border: 1px solid #2f3b4c;">Diverg. (+) Sobras</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c;">Diverg. (-) Perdas</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(R$) Ganhos / Perdas</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c;">Acurácia de Itens</th>
-                        <th style="padding: 10px; border: 1px solid #2f3b4c;" colspan="2">Acurácia de Valor</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(Qtd) Itens Congelados</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(Qtd) Itens Contados</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(Qtd) Diverg. (+) Sobras</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(Qtd) Diverg. (-) Perdas</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">Acurácia (Itens)</th>
                     </tr>
                     <tr style="background-color: #161c24; font-size: 15px;">
-                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_ganho};">{fmt_int(itens_diverg_mais)}</td>
-                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_perda};">{fmt_int(itens_diverg_menos)}</td>
-                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_liq};">{fmt_brl(diferenca_liq)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{fmt_int(qtd_congelada)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #3498db;">{fmt_int(qtd_contada)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_ganho};">{fmt_int(qtd_sobras)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_perda};">{fmt_int(qtd_perdas)}</td>
                         <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{acuracia_itens:.2f}%</td>
-                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;" colspan="2">{acuracia_valor:.2f}%</td>
                     </tr>
+
+                    <!-- LINHA 3: BALANÇO FINANCEIRO (R$) -->
+                    <tr style="background-color: #1f2836; font-weight: bold; color: #8c9ba5; text-transform: uppercase; font-size: 10px;">
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(R$) Valor Congelado</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(R$) Valor Contado</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(R$) Valor (+) Sobras</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">(R$) Valor (-) Perdas</th>
+                        <th style="padding: 10px; border: 1px solid #2f3b4c;">Acurácia (Valor)</th>
+                    </tr>
+                    <tr style="background-color: #161c24; font-size: 15px;">
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{fmt_brl(val_congelado)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #3498db;">{fmt_brl(val_contado)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_ganho};">{fmt_brl(val_sobras)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: {cor_perda};">{fmt_brl(val_perdas)}</td>
+                        <td style="padding: 12px; border: 1px solid #2f3b4c; font-weight: 900; color: #ffffff;">{acuracia_valor:.2f}%</td>
+                    </tr>
+
                 </table>
             </div>
             """.replace('\n', '')
